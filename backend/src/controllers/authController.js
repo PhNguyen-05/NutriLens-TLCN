@@ -21,7 +21,8 @@ const LOGIN_LOCK_MINUTES = 15;
 const REFRESH_TOKEN_DAYS = 7;
 const MAX_REFRESH_SESSIONS = 5; // giữ tối đa 5 phiên/thiết bị gần nhất
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID;
+const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // ===================== ĐĂNG KÝ (UC01) =====================
 
@@ -281,10 +282,11 @@ async function googleLogin(req, res) {
     try {
       const ticket = await googleClient.verifyIdToken({
         idToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
+        audience: process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID,
       });
       payload = ticket.getPayload();
     } catch (err) {
+      console.error('[googleLogin] verifyIdToken error:', err.message);
       return res.status(401).json({ message: 'Đăng nhập bằng Google thất bại, vui lòng thử lại' });
     }
 
@@ -299,6 +301,13 @@ async function googleLogin(req, res) {
         authProvider: 'google',
         status: 'active',
       });
+    } else {
+      if (user.status === 'pending') {
+        user.status = 'active';
+      }
+      if (!user.avatarUrl && payload.picture) {
+        user.avatarUrl = payload.picture;
+      }
     }
 
     if (user.status === 'locked') {

@@ -245,21 +245,22 @@ input[type='date']::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
-/* Ẩn icon toggle mật khẩu của browser (Edge / Chrome / IE)
-   để tránh bị trùng với icon toggle tự code */
+
+/* Hide browser native password reveal button — Edge & Chrome
+   prevents the double eye-icon bug */
 input[type='password']::-ms-reveal,
 input[type='password']::-ms-clear {
-  display: none !important;
+  display: none;
 }
-input[type='password']::-webkit-contacts-auto-fill-button,
-input[type='password']::-webkit-credentials-auto-fill-button {
+/* Chrome (some versions) */
+input[type='password']::-webkit-credentials-auto-fill-button,
+input[type='password']::-webkit-caps-lock-indicator,
+input[type='password']::-webkit-strong-password-auto-fill-button {
   display: none !important;
-  pointer-events: none;
   visibility: hidden;
+  pointer-events: none;
 }
-.input-group:focus-within .input-group-text {
-  border-color: var(--nl-brand-mid);
-}
+
 
 .input-group:focus-within .form-control,
 .input-group:focus-within .form-select {

@@ -116,8 +116,20 @@ export const resetPasswordThunk = createAsyncThunk(
   }
 )
 
-// ---------------------------------------------------------------------------
-// Slice
+/** UC02: Đăng nhập bằng Google — gửi idToken từ Google Identity Services */
+export const googleLoginThunk = createAsyncThunk(
+  'auth/googleLogin',
+  async ({ idToken }, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.post(`${BASE_URL}/auth/google`, { idToken })
+      return data
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.')
+    }
+  }
+)
+
+
 // ---------------------------------------------------------------------------
 const { accessToken, refreshToken, user } = loadAuthFromStorage()
 
@@ -180,6 +192,15 @@ const authSlice = createSlice({
     addAuthCases(resendOtpThunk)
     addAuthCases(forgotPasswordThunk)
     addAuthCases(resetPasswordThunk)
+
+    // Google login — same state update as email login
+    addAuthCases(googleLoginThunk, (state, action) => {
+      const { user, accessToken, refreshToken } = action.payload
+      state.user = user
+      state.accessToken = accessToken
+      state.refreshToken = refreshToken
+      persistAuth(accessToken, refreshToken, user)
+    })
   },
 })
 
