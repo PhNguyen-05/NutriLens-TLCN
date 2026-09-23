@@ -28,6 +28,12 @@ const userSchema = new Schema(
 
     // --- Thông tin cá nhân (theo UC06, tách phần sức khỏe sang UserProfile) ---
     fullName: { type: String, required: true, trim: true },
+    dateOfBirth: { type: Date, default: null },
+    gender: {
+      type: String,
+      enum: ['male', 'female', 'other', null],
+      default: null,
+    },
     phone: { type: String, default: null },
     avatarUrl: { type: String, default: null },
 

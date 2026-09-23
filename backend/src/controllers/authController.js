@@ -44,10 +44,13 @@ async function issueOtp(email, purpose) {
 // POST /api/auth/register
 async function register(req, res) {
   try {
-    const { fullName, email, password, confirmPassword } = req.body;
+    const { fullName, email, password, confirmPassword, dateOfBirth, gender } = req.body;
 
-    if (!fullName || !email || !password || !confirmPassword) {
-      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
+    if (!fullName || !email || !password) {
+      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin bắt buộc' });
+    }
+    if (confirmPassword && password !== confirmPassword) {
+      return res.status(400).json({ message: 'Mat khau xac nhan khong khop' });
     }
     if (!EMAIL_REGEX.test(email)) {
       return res.status(400).json({ message: 'Email không đúng định dạng' });
@@ -57,10 +60,6 @@ async function register(req, res) {
         message: 'Mật khẩu phải có tối thiểu 8 ký tự gồm chữ, số và ký tự đặc biệt',
       });
     }
-    if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp' });
-    }
-
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await User.findOne({ email: normalizedEmail });
 
@@ -76,6 +75,8 @@ async function register(req, res) {
       email: normalizedEmail,
       password: passwordHash,
       fullName: fullName.trim(),
+      dateOfBirth: dateOfBirth || null,
+      gender: gender || null,
       authProvider: 'local',
       status: 'pending',
     });

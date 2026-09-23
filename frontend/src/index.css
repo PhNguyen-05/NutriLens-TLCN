@@ -1,111 +1,413 @@
+/* ==========================================================================
+   NutriLens — Global Styles
+   Chỉ chứa: CSS variables, reset nhỏ, typography gốc.
+   Bootstrap 5 được import trong main.jsx và xử lý phần còn lại.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Design Tokens
+   -------------------------------------------------------------------------- */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --nl-brand-dark:    #0f3029;
+  --nl-brand-mid:     #137a5b;
+  --nl-brand-hover:   #0f6048;
+  --nl-brand-light:   #d9f7c9;
+  --nl-brand-text:    #eef8f2;
+  --nl-brand-copy:    #cbe8dd;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --nl-surface:       #ffffff;
+  --nl-bg:            #f4f7f5;
+  --nl-border:        #dee2df;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --nl-radius-sm:     8px;
+  --nl-radius-md:     12px;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  --nl-shadow-card:   0 4px 24px rgba(15, 48, 41, 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+/* --------------------------------------------------------------------------
+   Base Reset
+   -------------------------------------------------------------------------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
+  background: var(--nl-bg);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+  color: #1a2e28;
+  -webkit-font-smoothing: antialiased;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
+/* --------------------------------------------------------------------------
+   Auth Shell — 2-Panel Layout
+   -------------------------------------------------------------------------- */
+.auth-shell {
   min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(340px, 0.85fr) minmax(380px, 1.15fr);
+}
+
+/* --------------------------------------------------------------------------
+   Brand Panel (left dark-green column)
+   -------------------------------------------------------------------------- */
+.brand-panel {
+  background: var(--nl-brand-dark);
+  color: var(--nl-brand-text);
+  padding: 56px 52px;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
+  gap: 0;
+  overflow: hidden;
+  position: relative;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+/* Subtle radial glow accent */
+.brand-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 20% 30%, rgba(19, 122, 91, 0.25) 0%, transparent 70%);
+  pointer-events: none;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
+.brand-mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: var(--nl-brand-light);
+  color: #164139;
+  font-weight: 800;
+  font-size: 17px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: -0.5px;
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+
+.brand-eyebrow {
+  margin: 24px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nl-brand-mid);
 }
-p {
+
+.brand-heading {
+  margin: 0 0 16px;
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1.12;
+  color: #ffffff;
+  max-width: 480px;
+}
+
+.brand-copy {
   margin: 0;
+  color: var(--nl-brand-copy);
+  font-size: 15.5px;
+  line-height: 1.65;
+  max-width: 440px;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
+.brand-features {
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.brand-feature-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--nl-brand-copy);
+}
+
+.brand-feature-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--nl-brand-light);
+  font-size: 13px;
+}
+
+.brand-image {
+  width: min(260px, 72%);
+  margin-top: auto;
+  padding-top: 32px;
+  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.35));
+  align-self: flex-end;
+}
+
+/* --------------------------------------------------------------------------
+   Auth Panel (right white column)
+   -------------------------------------------------------------------------- */
+.auth-panel {
+  background: var(--nl-surface);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 52px clamp(24px, 7vw, 88px);
+  overflow-y: auto;
+}
+
+.auth-form-wrapper {
+  width: 100%;
+  max-width: 440px;
+}
+
+.auth-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--nl-brand-mid);
+  margin: 0 0 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Custom Button — Brand Green
+   -------------------------------------------------------------------------- */
+.btn-brand {
+  background-color: var(--nl-brand-mid);
+  border-color: var(--nl-brand-mid);
+  color: #ffffff;
+  font-weight: 600;
+  border-radius: var(--nl-radius-sm);
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.btn-brand:hover,
+.btn-brand:focus-visible {
+  background-color: var(--nl-brand-hover);
+  border-color: var(--nl-brand-hover);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(19, 122, 91, 0.35);
+}
+
+.btn-brand:disabled,
+.btn-brand.disabled {
+  background-color: var(--nl-brand-mid);
+  border-color: var(--nl-brand-mid);
+  color: #ffffff;
+  opacity: 0.68;
+  cursor: not-allowed;
+}
+
+.btn-brand:active {
+  background-color: #0d5440 !important;
+  border-color: #0d5440 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Brand-colored links
+   -------------------------------------------------------------------------- */
+.link-brand {
+  color: var(--nl-brand-mid);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.link-brand:hover { color: var(--nl-brand-hover); }
+
+/* --------------------------------------------------------------------------
+   Input Group — brand focus ring
+   -------------------------------------------------------------------------- */
+.input-group-text {
+  background-color: #f6f9f7;
+  border-right: none;
+  color: #7a9089;
+}
+
+.input-group .form-control,
+.input-group .form-select {
+  border-left: none;
+}
+
+/* Date input — hiển thị đúng placeholder trên các trình duyệt */
+input[type='date']::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+/* Ẩn icon toggle mật khẩu của browser (Edge / Chrome / IE)
+   để tránh bị trùng với icon toggle tự code */
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear {
+  display: none !important;
+}
+input[type='password']::-webkit-contacts-auto-fill-button,
+input[type='password']::-webkit-credentials-auto-fill-button {
+  display: none !important;
+  pointer-events: none;
+  visibility: hidden;
+}
+.input-group:focus-within .input-group-text {
+  border-color: var(--nl-brand-mid);
+}
+
+.input-group:focus-within .form-control,
+.input-group:focus-within .form-select {
+  border-color: var(--nl-brand-mid);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--nl-brand-mid);
+  box-shadow: 0 0 0 0.2rem rgba(19, 122, 91, 0.18);
+}
+
+.form-label {
+  color: #2a3d38;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   Step Indicator
+   -------------------------------------------------------------------------- */
+.step-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.step-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background-color 0.25s, color 0.25s;
+}
+
+.step-dot--active   { background: var(--nl-brand-mid); color: #fff; }
+.step-dot--done     { background: var(--nl-brand-light); color: var(--nl-brand-mid); }
+.step-dot--inactive { background: #e9ecef; color: #9ca3af; }
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background: #e9ecef;
+  margin: 0 6px;
+  transition: background-color 0.25s;
+}
+.step-line--done { background: var(--nl-brand-mid); }
+
+/* --------------------------------------------------------------------------
+   OTP Input Grid
+   -------------------------------------------------------------------------- */
+.otp-cell {
+  width: 52px;
+  height: 60px;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  border: 1.5px solid var(--nl-border);
+  border-radius: var(--nl-radius-sm);
+  transition: border-color 0.18s, box-shadow 0.18s;
+  caret-color: var(--nl-brand-mid);
+}
+
+.otp-cell:focus {
+  border-color: var(--nl-brand-mid);
+  box-shadow: 0 0 0 0.2rem rgba(19, 122, 91, 0.18);
+  outline: none;
+}
+
+.otp-cell--filled {
+  border-color: var(--nl-brand-mid);
+  background: #f0faf6;
+}
+
+/* --------------------------------------------------------------------------
+   Password Strength Bar
+   -------------------------------------------------------------------------- */
+.strength-bar {
+  height: 4px;
   border-radius: 4px;
-  color: var(--text-h);
+  background: #e9ecef;
+  overflow: hidden;
+  margin-top: 8px;
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+.strength-bar__fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.strength-label {
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Dashboard Placeholder
+   -------------------------------------------------------------------------- */
+.dashboard-card {
+  max-width: 480px;
+  width: 100%;
+  border-radius: var(--nl-radius-md);
+  box-shadow: var(--nl-shadow-card);
+}
+
+/* --------------------------------------------------------------------------
+   Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .brand-panel {
+    padding: 32px 28px;
+  }
+
+  .brand-heading {
+    font-size: 1.75rem;
+  }
+
+  .brand-image,
+  .brand-features {
+    display: none;
+  }
+
+  .auth-panel {
+    padding: 40px 24px 56px;
+    min-height: 100svh;
+  }
+}
+
+@media (max-width: 480px) {
+  .otp-cell {
+    width: 42px;
+    height: 52px;
+    font-size: 1.25rem;
+  }
+
+  .brand-panel {
+    padding: 24px 20px;
+  }
 }
