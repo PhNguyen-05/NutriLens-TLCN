@@ -1,10 +1,11 @@
 const { verifyAccessToken } = require('../utils/jwt');
+const User = require('../models/User');
 
 /**
  * Kiểm tra header: Authorization: Bearer <accessToken>
  * Nếu hợp lệ, gắn req.user = { id, role } rồi cho đi tiếp.
  */
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization || '';
   const [scheme, token] = authHeader.split(' ');
 
@@ -14,8 +15,27 @@ function requireAuth(req, res, next) {
 
   try {
     const payload = verifyAccessToken(token); // { id, role, iat, exp }
-    req.user = { id: payload.id, role: payload.role };
-    next();
+
+    const user = await User.findById(payload.id).select('role status').lean();
+
+    if (!user) {
+      return res.status(401).json({ message: 'Token không hợp lệ hoặc tài khoản không tồn tại' });
+    }
+
+    if (user.status === 'locked') {
+      return res
+        .status(403)
+        .json({ message: 'Tài khoản của bạn đã bị khóa, vui lòng liên hệ quản trị viên' });
+    }
+
+    if (user.status === 'pending') {
+      return res
+        .status(403)
+        .json({ message: 'Tài khoản chưa xác thực, vui lòng kiểm tra email để nhập mã OTP' });
+    }
+
+    req.user = { id: user._id.toString(), role: user.role };
+    return next();
   } catch (err) {
     return res.status(401).json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
   }

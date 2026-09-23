@@ -341,6 +341,20 @@ async function refreshAccessToken(req, res) {
       return res.status(401).json({ message: 'Refresh token không hợp lệ' });
     }
 
+    if (user.status === 'locked') {
+      user.refreshTokens = [];
+      await user.save();
+      return res
+        .status(403)
+        .json({ message: 'Tài khoản của bạn đã bị khóa, vui lòng liên hệ quản trị viên' });
+    }
+
+    if (user.status === 'pending') {
+      return res
+        .status(403)
+        .json({ message: 'Tài khoản chưa xác thực, vui lòng kiểm tra email để nhập mã OTP' });
+    }
+
     const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
     const stored = user.refreshTokens.find((t) => t.tokenHash === tokenHash);
 
