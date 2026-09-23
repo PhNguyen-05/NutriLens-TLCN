@@ -6,7 +6,13 @@ const OtpToken = require('../models/OtpToken');
 const { hashValue, compareValue } = require('../utils/hash');
 const { generateOtp, getOtpExpiry } = require('../utils/otp');
 const { sendOtpEmail, sendSecurityAlertEmail } = require('../utils/mailer');
-const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
+const {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  signResetPasswordToken,
+  verifyResetPasswordToken,
+} = require('../utils/jwt');
 
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -126,6 +132,13 @@ async function verifyOtp(req, res) {
     }
 
     await OtpToken.deleteOne({ _id: record._id });
+
+    // UC03: cấp resetToken tạm (10 phút) để FE dùng ở bước đặt mật khẩu mới,
+    // tránh phải gửi lại OTP khi submit form mật khẩu mới
+    if (purpose === 'reset') {
+      const resetToken = signResetPasswordToken({ email: normalizedEmail });
+      return res.status(200).json({ message: 'Xác thực OTP thành công', resetToken });
+    }
 
     return res.status(200).json({ message: 'Xác thực OTP thành công' });
   } catch (err) {
@@ -459,6 +472,102 @@ async function changePassword(req, res) {
   }
 }
 
+// ===================== QUÊN MẬT KHẨU (UC03) =====================
+
+// POST /api/auth/forgot-password
+// Body: { email } -> gửi OTP (purpose 'reset') nếu email tồn tại
+async function forgotPassword(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Vui lòng nhập email' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
+
+    // UC03 - 4b/5b: đặc tả yêu cầu báo rõ email không tồn tại (khác UC02
+    // vốn không tiết lộ, vì đây là bước khôi phục tài khoản của chính mình)
+    if (!user) {
+      return res.status(404).json({ message: 'Email không tồn tại trong hệ thống' });
+    }
+
+    if (user.authProvider !== 'local') {
+      return res.status(400).json({
+        message: 'Tài khoản này đăng nhập bằng Google, không thể đặt lại mật khẩu qua email',
+      });
+    }
+
+    await issueOtp(normalizedEmail, 'reset');
+
+    return res.status(200).json({
+      message: 'Đã gửi mã OTP đến email của bạn',
+      email: normalizedEmail,
+    });
+  } catch (err) {
+    console.error('[forgotPassword] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Gửi mã xác nhận thất bại, vui lòng thử lại sau' });
+  }
+}
+
+// POST /api/auth/reset-password
+// Body: { email, resetToken, newPassword, confirmNewPassword }
+// resetToken lấy từ response của /verify-otp (purpose 'reset')
+async function resetPassword(req, res) {
+  try {
+    const { email, resetToken, newPassword, confirmNewPassword } = req.body;
+
+    if (!email || !resetToken || !newPassword || !confirmNewPassword) {
+      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    let payload;
+    try {
+      payload = verifyResetPasswordToken(resetToken);
+    } catch (err) {
+      // Hết hạn 10 phút hoặc token sai -> UC03 tương tự nhánh OTP hết hạn
+      return res
+        .status(401)
+        .json({ message: 'Yêu cầu đặt lại mật khẩu đã hết hạn, vui lòng thực hiện lại từ đầu' });
+    }
+
+    if (payload.email !== normalizedEmail) {
+      return res.status(401).json({ message: 'Yêu cầu đặt lại mật khẩu không hợp lệ' });
+    }
+
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      // UC03 - 10e/11e
+      return res.status(400).json({
+        message: 'Mật khẩu mới phải có tối thiểu 8 ký tự gồm chữ, số và ký tự đặc biệt',
+      });
+    }
+    if (newPassword !== confirmNewPassword) {
+      return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp' });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    }
+
+    user.password = await hashValue(newPassword);
+    user.loginAttempts = 0;
+    user.lockUntil = null;
+    // Đặt lại mật khẩu -> vô hiệu hóa toàn bộ phiên đang đăng nhập (bảo mật)
+    user.refreshTokens = [];
+
+    await user.save();
+
+    // UC03 - bước 12: đặt lại mật khẩu thành công
+    return res.status(200).json({ message: 'Đặt lại mật khẩu thành công' });
+  } catch (err) {
+    console.error('[resetPassword] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Đặt lại mật khẩu thất bại, vui lòng thử lại' });
+  }
+}
+
 module.exports = {
   register,
   verifyOtp,
@@ -468,5 +577,7 @@ module.exports = {
   refreshAccessToken,
   logout,
   changePassword,
+  forgotPassword,
+  resetPassword,
   issueOtp,
 };

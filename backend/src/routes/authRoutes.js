@@ -10,6 +10,8 @@ const {
   refreshAccessToken,
   logout,
   changePassword,
+  forgotPassword,
+  resetPassword,
 } = require('../controllers/authController');
 
 const { authActionLimiter, otpResendLimiter, loginLimiter } = require('../middleware/rateLimiters');
@@ -32,6 +34,10 @@ router.post('/google', loginLimiter, googleLogin);
 
 // Làm mới access token bằng refresh token
 router.post('/refresh-token', refreshAccessToken);
+
+// UC03: Quên mật khẩu - gửi OTP, sau đó đặt lại mật khẩu bằng resetToken
+router.post('/forgot-password', authActionLimiter, forgotPassword);
+router.post('/reset-password', authActionLimiter, resetPassword);
 
 // UC04: Đăng xuất - cần đã đăng nhập (có access token hợp lệ)
 router.post('/logout', requireAuth, logout);
