@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
-import DashboardPage from './pages/DashboardPage'
+import DashboardPage from './pages/user/DashboardPage'
 
 // ---------------------------------------------------------------------------
 // Route Guards
