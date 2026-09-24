@@ -31,6 +31,10 @@ export default function LoginPage() {
   // Ref container để Google Identity Services render nút chính thức
   const googleBtnRef = useRef(null)
 
+  function getHomeRoute(user) {
+    return String(user?.role || '').toLowerCase() === 'admin' ? '/admin' : '/dashboard'
+  }
+
   // ── Khởi tạo Google Identity Services ─────────────────────────────────────
   useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -46,7 +50,7 @@ export default function LoginPage() {
         googleLoginThunk({ idToken: credentialResponse.credential })
       )
       if (googleLoginThunk.fulfilled.match(result)) {
-        navigate('/dashboard', { replace: true })
+        navigate(getHomeRoute(result.payload?.user), { replace: true })
       } else {
         setGoogleError(result.payload || 'Đăng nhập Google thất bại.')
       }
@@ -103,7 +107,7 @@ export default function LoginPage() {
     setSuccessMsg('')
     const result = await dispatch(loginThunk(form))
     if (loginThunk.fulfilled.match(result)) {
-      navigate('/dashboard', { replace: true })
+      navigate(getHomeRoute(result.payload?.user), { replace: true })
     }
   }
 

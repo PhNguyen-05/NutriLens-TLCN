@@ -4,6 +4,11 @@ import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import DashboardPage from './pages/user/DashboardPage'
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+
+function isAdminUser(user) {
+  return String(user?.role || '').toLowerCase() === 'admin'
+}
 
 // ---------------------------------------------------------------------------
 // Route Guards
@@ -15,7 +20,13 @@ import DashboardPage from './pages/user/DashboardPage'
  */
 function PrivateRoute({ children }) {
   const { user, accessToken } = useSelector((state) => state.auth)
-  return user && accessToken ? children : <Navigate to="/login" replace />
+  if (!user || !accessToken) return <Navigate to="/login" replace />
+  return isAdminUser(user) ? <Navigate to="/admin" replace /> : children
+}
+
+function AdminRoute({ children }) {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  return user && accessToken && isAdminUser(user) ? children : <Navigate to="/dashboard" replace />
 }
 
 /**
@@ -24,7 +35,7 @@ function PrivateRoute({ children }) {
  */
 function PublicRoute({ children }) {
   const { user, accessToken } = useSelector((state) => state.auth)
-  return user && accessToken ? <Navigate to="/dashboard" replace /> : children
+  return user && accessToken ? <Navigate to={isAdminUser(user) ? '/admin' : '/dashboard'} replace /> : children
 }
 
 // ---------------------------------------------------------------------------
@@ -54,6 +65,10 @@ export default function App() {
       <Route
         path="/dashboard"
         element={<PrivateRoute><DashboardPage /></PrivateRoute>}
+      />
+      <Route
+        path="/admin"
+        element={<AdminRoute><AdminDashboardPage /></AdminRoute>}
       />
 
       {/* Catch-all */}
