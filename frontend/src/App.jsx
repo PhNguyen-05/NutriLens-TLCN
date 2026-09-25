@@ -72,6 +72,10 @@ export default function App() {
         element={<PrivateRoute><HealthProfilePage /></PrivateRoute>}
       />
       <Route
+        path="/nutrition-goal"
+        element={<Navigate to="/profile" replace />}
+      />
+      <Route
         path="/admin"
         element={<AdminRoute><AdminDashboardPage /></AdminRoute>}
       />
