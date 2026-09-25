@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 
   const metrics = [
@@ -27,6 +28,7 @@ import { useAuth } from '../../hooks/useAuth'
 
   export default function DashboardPage() {
     const { user, handleLogout } = useAuth()
+    const navigate = useNavigate()
     const [profileOpen, setProfileOpen] = useState(false)
     const firstName = user?.fullName?.split(' ')[0] || 'bạn'
 
@@ -35,7 +37,7 @@ import { useAuth } from '../../hooks/useAuth'
         <header className="dashboard-header">
           <a className="dashboard-logo" href="/dashboard"><span><i className="bi bi-leaf-fill" /></span> NutriLens</a>
           <nav className="dashboard-nav"><a className="active" href="/dashboard">Tổng quan</a><a href="/dashboard">Nhận diện & Đồ ăn</a><a href="/dashboard">Luyện tập</a><a href="/dashboard">Chỉ số & Xu hướng</a><a href="/dashboard">Cộng đồng</a><a href="/dashboard">Bài viết & Mẹo</a></nav>
-          <div className="dashboard-actions"><span className="dashboard-search"><i className="bi bi-search" /> Tra cứu thực phẩm...</span><i className="bi bi-bell dashboard-bell" /><div className="profile-menu"><button className="dashboard-avatar" onClick={() => setProfileOpen((isOpen) => !isOpen)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">{firstName.charAt(0).toUpperCase()}</button>{profileOpen && <div className="profile-dropdown" role="menu"><div className="profile-name">Xin chào, {firstName}</div><button onClick={handleLogout} role="menuitem"><i className="bi bi-box-arrow-right" /> Đăng xuất</button></div>}</div></div>
+          <div className="dashboard-actions"><span className="dashboard-search"><i className="bi bi-search" /> Tra cứu thực phẩm...</span><i className="bi bi-bell dashboard-bell" /><div className="profile-menu"><button className="dashboard-avatar" onClick={() => setProfileOpen((isOpen) => !isOpen)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">{user?.avatarUrl ? <img src={user.avatarUrl} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}</button>{profileOpen && <div className="profile-dropdown" role="menu"><div className="profile-name">Xin chào, {firstName}</div><button className="profile-link" onClick={() => navigate('/profile')} role="menuitem"><i className="bi bi-person-circle" /> Hồ sơ của tôi</button><button onClick={handleLogout} role="menuitem"><i className="bi bi-box-arrow-right" /> Đăng xuất</button></div>}</div></div>
         </header>
 
         <main className="dashboard-main">

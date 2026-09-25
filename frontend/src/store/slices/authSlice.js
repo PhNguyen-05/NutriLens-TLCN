@@ -160,6 +160,11 @@ const authSlice = createSlice({
     clearError(state) {
       state.error = null
     },
+    /** Đồng bộ thông tin hiển thị sau khi người dùng cập nhật hồ sơ. */
+    userUpdated(state, action) {
+      state.user = { ...state.user, ...action.payload }
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(state.user))
+    },
   },
   extraReducers: (builder) => {
     // Helper tái sử dụng cho các trạng thái pending / rejected
@@ -204,5 +209,5 @@ const authSlice = createSlice({
   },
 })
 
-export const { tokenRefreshed, logout, clearError } = authSlice.actions
+export const { tokenRefreshed, logout, clearError, userUpdated } = authSlice.actions
 export default authSlice.reducer

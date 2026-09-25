@@ -4,6 +4,7 @@ import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import DashboardPage from './pages/user/DashboardPage'
+import HealthProfilePage from './pages/user/HealthProfilePage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 
 function isAdminUser(user) {
@@ -65,6 +66,10 @@ export default function App() {
       <Route
         path="/dashboard"
         element={<PrivateRoute><DashboardPage /></PrivateRoute>}
+      />
+      <Route
+        path="/profile"
+        element={<PrivateRoute><HealthProfilePage /></PrivateRoute>}
       />
       <Route
         path="/admin"

@@ -200,7 +200,16 @@ async function issueTokens(user) {
 }
 
 function buildUserResponse(user) {
-  return { id: user._id, fullName: user.fullName, email: user.email, role: user.role };
+  return {
+    id: user._id,
+    fullName: user.fullName,
+    email: user.email,
+    phone: user.phone || '',
+    dateOfBirth: user.dateOfBirth,
+    gender: user.gender,
+    avatarUrl: user.avatarUrl || null,
+    role: user.role,
+  };
 }
 
 // POST /api/auth/login
