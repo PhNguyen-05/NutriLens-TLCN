@@ -3,21 +3,29 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const AdminActionLog = require('../models/AdminActionLog');
 
-const USER_LIST_FIELDS = 'fullName email avatarUrl role status lockReason authProvider createdAt updatedAt';
+const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
 
-function buildUserQuery({ search, status }) {
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildUserQuery({ search, status, authProvider }) {
   const query = {};
 
   if (status && status !== 'all') {
     query.status = status;
   }
 
+  if (authProvider && authProvider !== 'all') {
+    query.authProvider = authProvider;
+  }
+
   if (search) {
     const keyword = search.trim();
     if (keyword) {
       query.$or = [
-        { fullName: { $regex: keyword, $options: 'i' } },
-        { email: { $regex: keyword, $options: 'i' } },
+        { fullName: { $regex: escapeRegex(keyword), $options: 'i' } },
+        { email: { $regex: escapeRegex(keyword), $options: 'i' } },
       ];
     }
   }
@@ -38,16 +46,33 @@ function normalizePagination(page, limit) {
 
 async function listUsers(req, res) {
   try {
-    const { search = '', status = 'all', page, limit } = req.query;
+    const { search = '', status = 'all', authProvider = 'all', page, limit } = req.query;
+
+    await User.updateMany(
+      { role: 'user', status: 'locked', adminLockUntil: { $ne: null, $lte: new Date() } },
+      {
+        $set: {
+          status: 'active',
+          lockReason: null,
+          adminLockUntil: null,
+          adminLockDurationDays: null,
+          adminLockNote: null,
+        },
+      }
+    );
 
     if (status !== 'all' && !['pending', 'active', 'locked'].includes(status)) {
       return res.status(400).json({ message: 'Trạng thái lọc không hợp lệ' });
     }
 
-    const pagination = normalizePagination(page, limit);
-    const query = buildUserQuery({ search, status });
+    if (authProvider !== 'all' && !['local', 'google'].includes(authProvider)) {
+      return res.status(400).json({ message: 'Phương thức xác thực không hợp lệ' });
+    }
 
-    const [users, total] = await Promise.all([
+    const pagination = normalizePagination(page, limit);
+    const query = { role: 'user', ...buildUserQuery({ search, status, authProvider }) };
+
+    const [users, total, totalUsers, active, locked] = await Promise.all([
       User.find(query)
         .select(USER_LIST_FIELDS)
         .sort({ createdAt: -1 })
@@ -55,6 +80,9 @@ async function listUsers(req, res) {
         .limit(pagination.limit)
         .lean(),
       User.countDocuments(query),
+      User.countDocuments({ role: 'user' }),
+      User.countDocuments({ role: 'user', status: 'active' }),
+      User.countDocuments({ role: 'user', status: 'locked' }),
     ]);
 
     return res.status(200).json({
@@ -65,6 +93,7 @@ async function listUsers(req, res) {
         total,
         totalPages: Math.ceil(total / pagination.limit),
       },
+      summary: { total: totalUsers, active, locked },
     });
   } catch (err) {
     console.error('[listUsers] Lỗi:', err.message);
@@ -96,7 +125,7 @@ async function getUserDetail(req, res) {
 async function updateUserStatus(req, res) {
   try {
     const { id } = req.params;
-    const { status, lockReason } = req.body;
+    const { status, lockReason, lockDurationDays = 0, lockNote } = req.body;
     const adminId = req.user.id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -127,10 +156,19 @@ async function updateUserStatus(req, res) {
       return res.status(400).json({ message: 'Vui lòng nhập lý do khóa tài khoản' });
     }
 
+    if (status === 'locked' && ![0, 7, 14].includes(Number(lockDurationDays))) {
+      return res.status(400).json({ message: 'Thời hạn khóa tài khoản không hợp lệ' });
+    }
+
     const action = status === 'locked' ? 'lock_user' : 'unlock_user';
 
     targetUser.status = status;
     targetUser.lockReason = status === 'locked' ? String(lockReason).trim() : null;
+    targetUser.adminLockDurationDays = status === 'locked' ? Number(lockDurationDays) : null;
+    targetUser.adminLockUntil = status === 'locked' && Number(lockDurationDays) > 0
+      ? new Date(Date.now() + Number(lockDurationDays) * 24 * 60 * 60 * 1000)
+      : null;
+    targetUser.adminLockNote = status === 'locked' ? String(lockNote || '').trim() || null : null;
 
     if (status === 'locked') {
       targetUser.refreshTokens = [];
@@ -142,10 +180,13 @@ async function updateUserStatus(req, res) {
     await targetUser.save();
 
     await AdminActionLog.create({
-      admin: adminId,
-      targetUser: targetUser._id,
-      action,
+      adminId,
+      actionType: action,
+      targetType: 'User',
+      targetId: targetUser._id,
       reason: targetUser.lockReason,
+      durationDays: status === 'locked' ? Number(lockDurationDays) : null,
+      note: status === 'locked' ? targetUser.adminLockNote : null,
     });
 
     const safeUser = await User.findById(targetUser._id).select(USER_LIST_FIELDS).lean();

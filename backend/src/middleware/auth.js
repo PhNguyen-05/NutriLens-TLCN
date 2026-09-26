@@ -1,5 +1,6 @@
 const { verifyAccessToken } = require('../utils/jwt');
 const User = require('../models/User');
+const restoreExpiredAdminLock = require('../utils/adminLock');
 
 /**
  * Kiểm tra header: Authorization: Bearer <accessToken>
@@ -16,11 +17,13 @@ async function requireAuth(req, res, next) {
   try {
     const payload = verifyAccessToken(token); // { id, role, iat, exp }
 
-    const user = await User.findById(payload.id).select('role status').lean();
+    const user = await User.findById(payload.id).select('role status adminLockUntil lockReason adminLockDurationDays adminLockNote loginAttempts lockUntil');
 
     if (!user) {
       return res.status(401).json({ message: 'Token không hợp lệ hoặc tài khoản không tồn tại' });
     }
+
+    await restoreExpiredAdminLock(user);
 
     if (user.status === 'locked') {
       return res

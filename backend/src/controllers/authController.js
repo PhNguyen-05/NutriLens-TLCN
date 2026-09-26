@@ -3,6 +3,7 @@ const { OAuth2Client } = require('google-auth-library');
 
 const User = require('../models/User');
 const OtpToken = require('../models/OtpToken');
+const restoreExpiredAdminLock = require('../utils/adminLock');
 const { hashValue, compareValue } = require('../utils/hash');
 const { generateOtp, getOtpExpiry } = require('../utils/otp');
 const { sendOtpEmail, sendSecurityAlertEmail } = require('../utils/mailer');
@@ -249,6 +250,8 @@ async function login(req, res) {
       return res.status(401).json({ message: 'Sai email hoặc mật khẩu' });
     }
 
+    await restoreExpiredAdminLock(user);
+
     if (user.status === 'locked') {
       return res
         .status(403)
@@ -319,6 +322,8 @@ async function googleLogin(req, res) {
       }
     }
 
+    await restoreExpiredAdminLock(user);
+
     if (user.status === 'locked') {
       return res
         .status(403)
@@ -359,6 +364,8 @@ async function refreshAccessToken(req, res) {
     if (!user) {
       return res.status(401).json({ message: 'Refresh token không hợp lệ' });
     }
+
+    await restoreExpiredAdminLock(user);
 
     if (user.status === 'locked') {
       user.refreshTokens = [];

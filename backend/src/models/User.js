@@ -49,6 +49,9 @@ const userSchema = new Schema(
       default: 'pending', // 'pending' cho tới khi xác thực OTP xong (UC01)
     },
     lockReason: { type: String, default: null }, // lý do khóa (UC12)
+    adminLockUntil: { type: Date, default: null },
+    adminLockDurationDays: { type: Number, enum: [0, 7, 14, null], default: null },
+    adminLockNote: { type: String, default: null, trim: true },
 
     // --- Chống brute-force đăng nhập sai (UC02) ---
     loginAttempts: { type: Number, default: 0 },
