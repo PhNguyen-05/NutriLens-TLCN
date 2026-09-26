@@ -487,11 +487,10 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .user-summary small { display: block; color: #547086; font-size: 12px; }.user-summary strong { display: block; margin-top: 2px; color: #132d46; font-size: 22px; line-height: 1.1; }
 .user-list-panel { padding: 12px 9px 10px; border: 1px solid #e2eaf1; border-radius: 10px; background: #fff; }
 .user-list-tools { min-height: 41px; display: flex; align-items: center; gap: 10px; padding: 0 0 11px; }
-.user-search, .user-filter, .user-limit { height: 34px; display: flex; align-items: center; gap: 9px; border: 1px solid #dce7f0; border-radius: 7px; color: #587c99; background: #fff; }
+.user-search, .user-filter { height: 34px; display: flex; align-items: center; gap: 9px; border: 1px solid #dce7f0; border-radius: 7px; color: #587c99; background: #fff; }
 .user-search { width: min(225px, 28%); padding: 0 11px; }.user-search i, .user-filter i { flex: 0 0 auto; }
 .user-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: #24435e; font-size: 11px; }.user-search input::placeholder { color: #8298aa; }
-.user-filter { padding: 0 10px; }.user-filter i { color: #148f69; }.user-filter select, .user-limit select { height: 100%; border: 0; outline: 0; background: transparent; color: #536f87; font-size: 11px; }
-.user-limit { margin-left: auto; border-color: transparent; white-space: nowrap; font-size: 10px; }.user-limit select { padding: 0 7px; border: 1px solid #dce7f0; border-radius: 6px; }
+.user-filter { padding: 0 10px; }.user-filter i { color: #148f69; }.user-filter select { height: 100%; border: 0; outline: 0; background: transparent; color: #536f87; font-size: 11px; }
 .user-table-wrap { overflow-x: auto; border: 1px solid #e1ebf3; border-radius: 8px; }
 .user-table { width: 100%; min-width: 800px; border-collapse: collapse; font-size: 11px; }
 .user-table th { height: 37px; padding: 0 11px; background: #f3f7fb; color: #45637d; font-weight: 600; white-space: nowrap; }
@@ -516,8 +515,8 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .lock-duration-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }.lock-duration-options button { min-height: 33px; border: 1px solid #dce6ee; border-radius: 7px; background: #fff; color: #536b80; font-size: 10px; }.lock-duration-options button.selected { border: 1.5px solid #ef4960; background: #fff8f8; color: #d51f3d; }
 .lock-audit { display: flex; gap: 9px; margin-top: 10px; padding: 8px 10px; border: 1px solid #dce9f4; border-radius: 7px; background: #f3f8fc; color: #48617a; }.lock-audit > i { padding-top: 2px; color: #3482d2; font-size: 13px; }.lock-audit > div { display: flex; flex-direction: column; gap: 2px; }.lock-audit strong { margin-bottom: 1px; color: #3c5871; font-size: 10px; font-weight: 600; }.lock-audit span { color: #6e8498; font-size: 9px; line-height: 1.3; }
 .user-lock-modal .user-modal-actions { margin-top: 11px; }.user-lock-modal .user-modal-actions > button { min-height: 32px; }.user-modal-actions .user-lock-confirm { min-width: 108px; border-color: #df2947; background: #df2947; color: #fff; font-weight: 600; }.user-lock-confirm:disabled { opacity: .65; }
-@media (max-width: 850px) { .user-list-tools { flex-wrap: wrap; }.user-search { width: min(100%, 260px); }.user-limit { margin-left: 0; }.user-summary article { gap: 9px; padding: 10px; }.summary-icon { width: 39px; height: 39px; flex-basis: 39px; } }
-@media (max-width: 560px) { .user-summary { grid-template-columns: 1fr; }.user-summary article { min-height: 64px; }.user-list-panel { padding: 9px 7px; }.user-list-tools { gap: 7px; }.user-search { width: 100%; }.user-filter { flex: 1; min-width: 0; }.user-filter select { width: 100%; min-width: 0; }.user-limit { margin-left: auto; }.user-pagination { align-items: flex-start; flex-direction: column; }.user-pagination > div { align-self: flex-end; } }
+@media (max-width: 850px) { .user-list-tools { flex-wrap: wrap; }.user-search { width: min(100%, 260px); }.user-summary article { gap: 9px; padding: 10px; }.summary-icon { width: 39px; height: 39px; flex-basis: 39px; } }
+@media (max-width: 560px) { .user-summary { grid-template-columns: 1fr; }.user-summary article { min-height: 64px; }.user-list-panel { padding: 9px 7px; }.user-list-tools { gap: 7px; }.user-search { width: 100%; }.user-filter { flex: 1; min-width: 0; }.user-filter select { width: 100%; min-width: 0; }.user-pagination { align-items: flex-start; flex-direction: column; }.user-pagination > div { align-self: flex-end; } }
 @media (max-width: 480px) { .user-lock-content { padding: 10px 12px 13px; }.user-lock-header { padding: 12px; }.user-lock-person { gap: 8px; }.lock-reason-select { font-size: 9px; } }
 
 /* Hourly telemetry chart */
