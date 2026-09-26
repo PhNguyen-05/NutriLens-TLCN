@@ -163,11 +163,10 @@ export default function UserManagementPage() {
         {error ? <div className="user-state error" role="alert"><i className="bi bi-exclamation-circle" /><span>{error}</span><button onClick={() => { setError(''); setRefreshKey((key) => key + 1) }}>Thử lại</button></div> : (
           <div className="user-table-wrap">
             <table className="user-table">
-              <thead><tr><th aria-label="Chọn" /><th>Người dùng</th><th>Email</th><th>Giới tính</th><th>Trạng thái</th><th>Xác thực</th><th>Ngày tham gia</th><th>Thao tác</th></tr></thead>
+              <thead><tr><th>Người dùng</th><th>Email</th><th>Giới tính</th><th>Trạng thái</th><th>Xác thực</th><th>Ngày tham gia</th><th>Thao tác</th></tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan="8" className="user-table-message"><span className="user-spinner" /> Đang tải danh sách...</td></tr> : users.length === 0 ? <tr><td colSpan="8" className="user-table-message">Không tìm thấy kết quả phù hợp</td></tr> : users.map((listedUser) => (
+                {loading ? <tr><td colSpan="7" className="user-table-message"><span className="user-spinner" /> Đang tải danh sách...</td></tr> : users.length === 0 ? <tr><td colSpan="7" className="user-table-message">Không tìm thấy kết quả phù hợp</td></tr> : users.map((listedUser) => (
                   <tr key={listedUser._id}>
-                    <td><input type="checkbox" aria-label={`Chọn ${listedUser.fullName}`} /></td>
                     <td><div className="user-identity"><span className="user-avatar">{listedUser.avatarUrl ? <img src={getAvatarUrl(listedUser.avatarUrl)} alt="" /> : listedUser.fullName?.charAt(0)?.toUpperCase()}</span><span><strong>{listedUser.fullName}</strong><small>#{listedUser._id.slice(-6).toUpperCase()}</small></span></div></td>
                     <td className="user-email">{listedUser.email}</td>
                     <td><span className={`gender-pill ${listedUser.gender === 'female' ? 'female' : ''}`}>{listedUser.gender === 'female' ? 'Nữ' : listedUser.gender === 'male' ? 'Nam' : '—'}</span></td>
