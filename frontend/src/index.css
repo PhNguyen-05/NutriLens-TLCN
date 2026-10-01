@@ -1622,3 +1622,219 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   .hp-macro-calories { flex-direction: column; align-items: flex-start; }
 }
 
+/* ── Expert Advice Box ── */
+.hp-expert-advice {
+  margin-top: 20px;
+  padding: 18px 20px;
+  border: 2px solid #10b981;
+  border-radius: 14px;
+  background: #f0fdf4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hp-expert-advice__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+.hp-expert-advice__header i {
+  font-size: 18px;
+}
+.hp-expert-advice__text {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+}
+.hp-expert-advice__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  width: fit-content;
+}
+
+/* ── Goal recommended badge ── */
+.hp-goal-card__recommended {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* ── Target Weight Section ── */
+.hp-target-weight-section {
+  margin-top: 24px;
+  padding: 18px 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+.hp-target-weight-section__title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.hp-target-weight-disabled {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  font-size: 14px;
+  color: #1e40af;
+}
+.hp-target-weight-disabled i {
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.hp-target-weight-hint {
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* ── Goal Warning Dialog ── */
+.hp-goal-warning-modal {
+  background: #fff;
+  border-radius: 20px;
+  padding: 32px 28px;
+  max-width: 480px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.hp-goal-warning-modal__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #fff7ed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hp-goal-warning-modal__icon i {
+  font-size: 30px;
+  color: #f59e0b;
+}
+.hp-goal-warning-modal h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+.hp-goal-warning-modal p {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.65;
+  margin: 0;
+}
+.hp-goal-warning-modal__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Goal warning modal — level variants */
+.hp-goal-warning-modal--danger .hp-goal-warning-modal__icon { background: #fef2f2; }
+.hp-goal-warning-modal--danger .hp-goal-warning-modal__icon i { color: #ef4444; }
+.hp-goal-warning-modal--warning .hp-goal-warning-modal__icon { background: #fff7ed; }
+.hp-goal-warning-modal--warning .hp-goal-warning-modal__icon i { color: #f59e0b; }
+.hp-goal-warning-modal--info .hp-goal-warning-modal__icon { background: #eff6ff; }
+.hp-goal-warning-modal--info .hp-goal-warning-modal__icon i { color: #3b82f6; }
+
+.hp-goal-warning-modal__confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.hp-goal-warning-modal__confirm:hover { opacity: 0.85; }
+.hp-goal-warning-modal__confirm--danger  { background: #ef4444; color: #fff; }
+.hp-goal-warning-modal__confirm--warning { background: #f59e0b; color: #fff; }
+.hp-goal-warning-modal__confirm--info    { background: #3b82f6; color: #fff; }
+
+.hp-goal-warning-modal__disclaimer {
+  font-size: 12px !important;
+  color: #94a3b8 !important;
+  font-style: italic;
+  margin: -4px 0 0 !important;
+}
+
+/* ── Inline advice/note boxes ── */
+.hp-advice-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  margin-top: 10px;
+}
+.hp-advice-note i { font-size: 15px; flex-shrink: 0; margin-top: 1px; }
+.hp-advice-note--info    { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+.hp-advice-note--warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+.hp-advice-note--danger  { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* ── Inline field warning (below input) ── */
+.hp-field__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.hp-field__warning i { flex-shrink: 0; margin-top: 1px; }
+
+/* ── Subtle helper text below inputs ── */
+.hp-field__hint {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+/* ── Expert advice disclaimer line ── */
+.hp-expert-advice__disclaimer {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #64748b;
+  font-style: italic;
+  margin: 0;
+}
+

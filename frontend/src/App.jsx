@@ -6,6 +6,7 @@ import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import DashboardPage from './pages/user/DashboardPage'
 import HealthProfilePage from './pages/user/HealthProfilePage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import { useIdleTimer } from './hooks/useIdleTimer'
 
 function isAdminUser(user) {
   return String(user?.role || '').toLowerCase() === 'admin'
@@ -43,6 +44,10 @@ function PublicRoute({ children }) {
 // App Routes
 // ---------------------------------------------------------------------------
 export default function App() {
+  // Tự động logout sau 30 phút không hoạt động.
+  // Thay đổi giá trị nếu muốn chỉnh thời gian, ví dụ: 15 * 60 * 1000 = 15 phút.
+  useIdleTimer(30 * 60 * 1000)
+
   return (
     <Routes>
       {/* Mặc định redirect về trang đăng nhập */}
