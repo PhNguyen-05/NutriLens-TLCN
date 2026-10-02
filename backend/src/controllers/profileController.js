@@ -1,7 +1,7 @@
 const UserProfile = require('../models/UserProfile');
 const User = require('../models/User');
 const WeightLog = require('../models/WeightLog');
-const { calculateHealthMetrics } = require('../utils/healthMetrics');
+const { calculateHealthMetrics, calcSafeCalorieTarget, CALORIE_FLOOR, getAge } = require('../utils/healthMetrics');
 
 const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
 const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight', 'eat_healthier'];
@@ -65,6 +65,7 @@ function buildUserResponse(user) {
 }
 
 function normalizeProfile(payload) {
+  const VALID_SPECIAL_CONDITIONS = ['pregnant', 'diabetes', 'kidney', 'eating_disorder'];
   return {
     heightCm: Number(payload.heightCm),
     currentWeightKg: Number(payload.currentWeightKg),
@@ -77,6 +78,8 @@ function normalizeProfile(payload) {
       .filter((item) => typeof item === 'string')
       .map((item) => item.trim())
       .filter(Boolean))],
+    specialConditions: [...new Set((payload.specialConditions || [])
+      .filter((item) => VALID_SPECIAL_CONDITIONS.includes(item)))],
     allergies: typeof payload.allergies === 'string' ? payload.allergies.trim() : '',
     medicalConditions: typeof payload.medicalConditions === 'string' ? payload.medicalConditions.trim() : '',
   };
@@ -117,12 +120,36 @@ function buildNutritionGoal(goal, calorieTarget, macroPercentages, customized = 
   };
 }
 
-function calculateNutritionProposal(metrics, goal) {
-  const calorieTarget = goal === 'lose_weight'
-    ? Math.max(metrics.bmr, metrics.tdee - 500)
-    : goal === 'gain_weight' ? metrics.tdee + 350 : metrics.tdee;
+function calculateNutritionProposal(metrics, goal, gender) {
+  const calorieTarget = calcSafeCalorieTarget(metrics, goal, gender);
   return buildNutritionGoal(goal, calorieTarget, MACRO_RATIOS[goal]);
 }
+
+/**
+ * Kiểm tra xem mục tiêu dinh dưỡng có bị chặn vì nguy hiểm với BMI hiện tại không.
+ * @returns {string|null} thông báo lỗi hoặc null nếu OK
+ */
+function checkGoalSafety(bmiCategory, goal, age, specialConditions = []) {
+  // Chặn tuyệt đối: Thiếu cân + giảm cân, Béo phì + tăng cân
+  if (bmiCategory === 'Thiếu cân' && goal === 'lose_weight') {
+    return 'Mục tiêu giảm cân không phù hợp khi BMI ở mức thiếu cân. Vui lòng chọn mục tiêu tăng cân hoặc duy trì.';
+  }
+  if (bmiCategory === 'Béo phì' && goal === 'gain_weight') {
+    return 'Mục tiêu tăng cân không phù hợp khi BMI ở mức béo phì. Vui lòng chọn mục tiêu giảm cân hoặc duy trì.';
+  }
+  // Cảnh báo tuổi dưới 18 + giảm cân
+  if (age != null && age < 18 && goal === 'lose_weight') {
+    return 'Mục tiêu giảm cân không khuyến nghị cho người dưới 18 tuổi do ảnh hưởng đến tăng trưởng. Vui lòng tham khảo bác sĩ.';
+  }
+  // Chặn tình trạng đặc biệt + mục tiêu thay đổi cân nặng
+  const DEFICIT_BLOCKING_CONDITIONS = ['pregnant', 'kidney', 'eating_disorder'];
+  const hasBlockingCondition = (specialConditions || []).some((c) => DEFICIT_BLOCKING_CONDITIONS.includes(c));
+  if (hasBlockingCondition && goal !== 'maintain_weight') {
+    return 'Với tình trạng sức khỏe đặc biệt đã khai báo, mục tiêu thay đổi cân nặng cần có sự tư vấn của bác sĩ hoặc chuyên gia dinh dưỡng.';
+  }
+  return null;
+}
+
 
 async function getProfile(req, res) {
   try {
@@ -196,20 +223,42 @@ async function saveProfile(req, res) {
       ? requestedGoal
       : 'maintain_weight';
 
+    // ── Safety gate: chặn tổ hợp nguy hiểm (BMI × goal × specialConditions) ──
+    if (healthMetrics.bmiCategory) {
+      const ageVal = getAge(user.dateOfBirth);
+      const safetyError = checkGoalSafety(healthMetrics.bmiCategory, validGoal, ageVal, req.body.specialConditions);
+      if (safetyError) return res.status(400).json({ code: 'UNSAFE_GOAL', message: safetyError });
+    }
+
     let resolvedNutritionGoal = existingProfile?.nutritionGoal || null;
     if (healthMetrics.bmr && healthMetrics.tdee) {
+      const floor = CALORIE_FLOOR[user.gender] ?? 1200;
       if (req.body.nutritionGoal && req.body.nutritionGoal.customized) {
         const cal = Number(req.body.nutritionGoal.calorieTarget);
         const macros = req.body.nutritionGoal.macroPercentages;
-        if (Number.isFinite(cal) && macros) {
+        // Calo tùy chỉnh phải >= floor, <= TDEE + 1000
+        if (!Number.isFinite(cal) || cal < floor || cal > healthMetrics.tdee + 1000) {
+          return res.status(400).json({
+            code: 'INVALID_CALORIES',
+            message: `Calo mục tiêu phải nằm trong khoảng ${floor}–${healthMetrics.tdee + 1000} kcal.`,
+          });
+        }
+        if (macros) {
+          const macroTotal = Number(macros.protein || 0) + Number(macros.carbs || 0) + Number(macros.fat || 0);
+          if (Math.abs(macroTotal - 100) > 0.5) {
+            return res.status(400).json({ code: 'INVALID_MACROS', message: 'Tổng tỉ lệ Protein, Carb và Fat phải bằng 100%.' });
+          }
           resolvedNutritionGoal = buildNutritionGoal(validGoal, cal, macros, true);
         } else {
-          resolvedNutritionGoal = calculateNutritionProposal(healthMetrics, validGoal);
+          resolvedNutritionGoal = calculateNutritionProposal(healthMetrics, validGoal, user.gender);
         }
       } else {
-        resolvedNutritionGoal = calculateNutritionProposal(healthMetrics, validGoal);
+        resolvedNutritionGoal = calculateNutritionProposal(healthMetrics, validGoal, user.gender);
       }
     }
+
+    const newWeightKg = Number(req.body.currentWeightKg);
+    const prevWeightKg = existingProfile?.currentWeightKg;
 
     const profile = await UserProfile.findOneAndUpdate(
       { user: req.user.id },
@@ -228,14 +277,26 @@ async function saveProfile(req, res) {
       { new: true, upsert: true, runValidators: true }
     ).lean();
 
-    // Khởi tạo bản ghi cân nặng hôm nay nếu chưa từng có bản ghi nào
-    const existingLog = await WeightLog.findOne({ user: req.user.id });
-    if (!existingLog) {
-      await WeightLog.create({
-        user: req.user.id,
-        weightKg: Number(req.body.currentWeightKg),
-        recordedDate: getTodayDate(),
-      }).catch((logErr) => console.warn('[saveProfile] Khởi tạo bản ghi cân nặng ban đầu:', logErr.message));
+    // Upsert bản ghi cân nặng hôm nay khi cân nặng thay đổi hoặc chưa có log nào
+    const weightChanged = prevWeightKg == null || prevWeightKg !== newWeightKg;
+    if (weightChanged) {
+      const todayDate = getTodayDate();
+      const existingTodayLog = await WeightLog.findOne({ user: req.user.id, recordedDate: todayDate });
+      if (existingTodayLog) {
+        // Cập nhật log hôm nay nếu đã có
+        await WeightLog.findByIdAndUpdate(existingTodayLog._id, { $set: { weightKg: newWeightKg } })
+          .catch((logErr) => console.warn('[saveProfile] Cập nhật bản ghi cân nặng hôm nay:', logErr.message));
+      } else {
+        // Tạo log mới nếu chưa có (chỉ khi đây là lần đầu hoặc weight thực sự đổi)
+        const hasAnyLog = await WeightLog.exists({ user: req.user.id });
+        if (!hasAnyLog || weightChanged) {
+          await WeightLog.create({
+            user: req.user.id,
+            weightKg: newWeightKg,
+            recordedDate: todayDate,
+          }).catch((logErr) => console.warn('[saveProfile] Khởi tạo bản ghi cân nặng:', logErr.message));
+        }
+      }
     }
 
     return res.status(200).json({
@@ -243,6 +304,7 @@ async function saveProfile(req, res) {
       user: buildUserResponse(user),
       profile,
     });
+
   } catch (err) {
     console.error('[saveProfile] Lỗi:', err.message);
     return res.status(500).json({ message: 'Không thể lưu hồ sơ sức khỏe, vui lòng thử lại' });
@@ -285,16 +347,27 @@ async function saveNutritionGoal(req, res) {
       return res.status(422).json({ code: 'MISSING_TDEE', message: 'Vui lòng hoàn tất hồ sơ sức khỏe để xem chỉ số BMI/BMR/TDEE' });
     }
 
-    let nutritionGoal = calculateNutritionProposal(metrics, goal);
+    // Safety gate
+    if (metrics.bmiCategory) {
+      const user = await User.findById(req.user.id).select('dateOfBirth gender').lean();
+      const ageVal = user ? getAge(user.dateOfBirth) : null;
+      const safetyError = checkGoalSafety(metrics.bmiCategory, goal, ageVal, profile.specialConditions);
+      if (safetyError) return res.status(400).json({ code: 'UNSAFE_GOAL', message: safetyError });
+    }
+
+    const user = await User.findById(req.user.id).select('gender').lean();
+    const floor = CALORIE_FLOOR[user?.gender] ?? 1200;
+
+    let nutritionGoal = calculateNutritionProposal(metrics, goal, user?.gender);
     if (customized) {
       const calorieTarget = Number(req.body.calorieTarget);
       const macroPercentages = Object.fromEntries(['protein', 'carbs', 'fat'].map((key) => [key, Number(req.body.macroPercentages?.[key])]));
       const macroTotal = macroPercentages.protein + macroPercentages.carbs + macroPercentages.fat;
-      if (!Number.isFinite(calorieTarget) || calorieTarget < metrics.bmr || calorieTarget > metrics.tdee + 1000) {
-        return res.status(400).json({ code: 'INVALID_CALORIES', message: 'Giá trị calo mục tiêu không phù hợp với sức khỏe' });
+      if (!Number.isFinite(calorieTarget) || calorieTarget < floor || calorieTarget > metrics.tdee + 1000) {
+        return res.status(400).json({ code: 'INVALID_CALORIES', message: `Calo mục tiêu phải nằm trong khoảng ${floor}–${metrics.tdee + 1000} kcal.` });
       }
-      if (Object.values(macroPercentages).some((value) => !Number.isFinite(value) || value < 0) || Math.abs(macroTotal - 100) > 0.001) {
-        return res.status(400).json({ code: 'INVALID_MACROS', message: 'Tổng tỉ lệ Protein, Carb và Fat phải bằng 100%' });
+      if (Object.values(macroPercentages).some((value) => !Number.isFinite(value) || value < 0) || Math.abs(macroTotal - 100) > 0.5) {
+        return res.status(400).json({ code: 'INVALID_MACROS', message: 'Tổng tỉ lệ Protein, Carb và Fat phải bằng 100%.' });
       }
       nutritionGoal = buildNutritionGoal(goal, calorieTarget, macroPercentages, true);
     }
@@ -313,6 +386,7 @@ async function saveNutritionGoal(req, res) {
     return res.status(500).json({ message: 'Không thể lưu mục tiêu dinh dưỡng, vui lòng thử lại' });
   }
 }
+
 
 async function saveWeightLog(req, res) {
   try {

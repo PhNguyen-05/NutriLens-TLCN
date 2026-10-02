@@ -25,6 +25,11 @@ const userProfileSchema = new Schema(
       default: 'maintain_weight',
     },
     dietaryPreferences: [{ type: String, trim: true, maxlength: 50 }],
+    specialConditions: [{
+      type: String,
+      enum: ['pregnant', 'diabetes', 'kidney', 'eating_disorder'],
+      trim: true,
+    }],
     allergies: { type: String, trim: true, maxlength: 1000, default: '' },
     medicalConditions: { type: String, trim: true, maxlength: 1000, default: '' },
     healthMetrics: {

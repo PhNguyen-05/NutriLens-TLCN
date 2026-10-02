@@ -9,6 +9,9 @@ const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://lo
 /** Regex số điện thoại Việt Nam: bắt đầu 0, đủ 10 chữ số */
 const PHONE_RE = /^0\d{9}$/
 
+/** Calo tối thiểu an toàn theo giới tính */
+const CALORIE_FLOOR = { male: 1500, female: 1200 }
+
 const ACTIVITY_OPTIONS = [
   { value: 'sedentary', label: 'Ít vận động', detail: 'Hầu như chỉ ngồi hoặc nằm', icon: 'bi-person-seated' },
   { value: 'light', label: 'Vận động nhẹ', detail: 'Đi bộ hoặc tập nhẹ 1–3 ngày/tuần', icon: 'bi-person-walking' },
@@ -21,11 +24,20 @@ const NUTRITION_GOAL_OPTIONS = [
   {
     value: 'lose_weight',
     label: 'Giảm cân',
-    sub: 'Thâm hụt calo/ngày (tối đa 500 kcal, giới hạn ở BMR)',
+    sub: 'Thâm hụt tối đa 20% TDEE (không quá 500 kcal/ngày), không dưới ngưỡng an toàn',
     icon: 'bi-arrow-down-circle',
     color: '#3b82f6',
     bg: '#eff6ff',
-    calcCalo: (bmr, tdee) => Math.max(bmr, tdee - 500),
+    /**
+     * @param {number} bmr
+     * @param {number} tdee
+     * @param {'male'|'female'|string} gender
+     */
+    calcCalo: (bmr, tdee, gender) => {
+      const deficit = Math.min(500, Math.round(tdee * 0.2))
+      const floor = CALORIE_FLOOR[gender] ?? 1200
+      return Math.max(bmr, tdee - deficit, floor)
+    },
     macros: { protein: 30, carbs: 40, fat: 30 },
   },
   {
@@ -50,6 +62,7 @@ const NUTRITION_GOAL_OPTIONS = [
   },
 ]
 
+
 const DIETARY_OPTIONS = [
   { label: 'Ăn chay', icon: '🥗' },
   { label: 'Thuần chay', icon: '🌱' },
@@ -59,10 +72,17 @@ const DIETARY_OPTIONS = [
   { label: 'Không lactose', icon: '🥛' },
 ]
 
+const SPECIAL_CONDITIONS = [
+  { key: 'pregnant', label: 'Thai kỳ hoặc đang cho con bú', icon: '🤰', blockDeficit: true },
+  { key: 'diabetes', label: 'Tiểu đường (đang dùng thuốc)', icon: '💉', blockDeficit: false },
+  { key: 'kidney', label: 'Bệnh thận mạn tính', icon: '🫘', blockDeficit: true },
+  { key: 'eating_disorder', label: 'Tiền sử rối loạn ăn uống', icon: '⚠️', blockDeficit: true },
+]
+
 const EMPTY_FORM = {
   fullName: '', phone: '', dateOfBirth: '', gender: '', avatarUrl: '',
   heightCm: '', currentWeightKg: '', targetWeightKg: '', activityLevel: '', healthGoal: 'maintain_weight',
-  dietaryPreferences: [], allergies: '', medicalConditions: '',
+  dietaryPreferences: [], allergies: '', medicalConditions: '', specialConditions: []
 }
 
 // ---------------------------------------------------------------------------
@@ -159,8 +179,9 @@ function getLocalDateValue() {
 }
 
 function formatLogDate(date) {
+  const dateStr = typeof date === 'string' ? date.slice(0, 10) : date
   return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(
-    new Date(`${date}T00:00:00`)
+    new Date(`${dateStr}T00:00:00`)
   )
 }
 
@@ -182,11 +203,23 @@ function WeightChart({ weightLogs }) {
   const padding = Math.max((max - min) * 0.2, 1)
   const lower = min - padding
   const upper = max + padding
-  const points = weightLogs.map((log, index) => {
-    const x = weightLogs.length === 1 ? 300 : 24 + (552 * index) / (weightLogs.length - 1)
-    const y = 154 - ((Number(log.weightKg) - lower) / (upper - lower)) * 118
-    return { x, y, log }
-  })
+  const points = (() => {
+    if (weightLogs.length === 1) {
+      const log = weightLogs[0]
+      const y = 154 - ((Number(log.weightKg) - lower) / (upper - lower)) * 118
+      return [{ x: 300, y, log }]
+    }
+    const dates = weightLogs.map((log) => new Date(log.recordedDate.slice(0, 10) + 'T00:00:00').getTime())
+    const minDate = Math.min(...dates)
+    const maxDate = Math.max(...dates)
+    const dateRange = maxDate - minDate || 1
+    return weightLogs.map((log, index) => {
+      const t = new Date(log.recordedDate.slice(0, 10) + 'T00:00:00').getTime()
+      const x = 24 + ((t - minDate) / dateRange) * 552
+      const y = 154 - ((Number(log.weightKg) - lower) / (upper - lower)) * 118
+      return { x, y, log }
+    })
+  })()
 
   return (
     <>
@@ -232,6 +265,10 @@ export default function HealthProfilePage() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const formRef = useRef(null)
+  const weightModalRef = useRef(null)
+  const goalWarningModalRef = useRef(null)
+  const timeoutRef = useRef(null)
+
   /**
    * Lưu BMI category lần trước để auto-select goal chỉ chạy khi category THỰC SỰ thay đổi,
    * không override goal đã lưu khi tải trang lần đầu.
@@ -255,6 +292,7 @@ export default function HealthProfilePage() {
   const [weightError, setWeightError] = useState({ field: '', message: '' })
   const [savingWeight, setSavingWeight] = useState(false)
   const [confirmOverwrite, setConfirmOverwrite] = useState(false)
+  const [weightDiffWarning, setWeightDiffWarning] = useState(false)
 
   // Goal conflict warning
   // { pendingGoal, risk: { level, msg }, fromSubmit: bool }
@@ -266,6 +304,51 @@ export default function HealthProfilePage() {
   // Custom calorie/macro mode
   const [customized, setCustomized] = useState(false)
   const [customForm, setCustomForm] = useState({ calorieTarget: '', protein: '', carbs: '', fat: '' })
+
+  // Cleanup navigate timeout on unmount
+  useEffect(() => {
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current) }
+  }, [])
+
+  // Esc + focus trap — weight modal
+  useEffect(() => {
+    if (!weightDialogOpen) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') { closeWeightDialog(); return }
+      if (e.key === 'Tab') {
+        const modal = weightModalRef.current
+        if (!modal) return
+        const focusable = modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        const first = focusable[0]; const last = focusable[focusable.length - 1]
+        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last?.focus() } }
+        else { if (document.activeElement === last) { e.preventDefault(); first?.focus() } }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [weightDialogOpen])
+
+  // Esc + focus trap — goal warning modal
+  useEffect(() => {
+    if (!goalWarning) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') { if (!goalWarning.fromSubmit) setGoalWarning(null); return }
+      if (e.key === 'Tab') {
+        const modal = goalWarningModalRef.current
+        if (!modal) return
+        const focusable = modal.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        const first = focusable[0]; const last = focusable[focusable.length - 1]
+        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last?.focus() } }
+        else { if (document.activeElement === last) { e.preventDefault(); first?.focus() } }
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [goalWarning])
 
   // ---------------------------------------------------------------------------
   // Load profile
@@ -284,7 +367,7 @@ export default function HealthProfilePage() {
         const {
           heightCm, currentWeightKg, targetWeightKg,
           activityLevel, healthGoal, dietaryPreferences,
-          allergies, medicalConditions, nutritionGoal,
+          allergies, medicalConditions, nutritionGoal, specialConditions
         } = profile
         const initialGoal = nutritionGoal?.goal || healthGoal || 'maintain_weight'
 
@@ -302,6 +385,7 @@ export default function HealthProfilePage() {
           dietaryPreferences: dietaryPreferences || [],
           allergies: allergies || '',
           medicalConditions: medicalConditions || '',
+          specialConditions: specialConditions || [],
         })
 
         if (nutritionGoal?.customized) {
@@ -349,13 +433,17 @@ export default function HealthProfilePage() {
   // ---------------------------------------------------------------------------
   const age = useMemo(() => {
     if (!form.dateOfBirth) return 0
-    const birthDate = new Date(form.dateOfBirth)
+    // Parse as local date to avoid UTC shift in UTC-N timezones
+    const [y, m, d] = form.dateOfBirth.split('-').map(Number)
+    if (!y || !m || !d) return 0
+    const birthDate = new Date(y, m - 1, d)
     const today = new Date()
     let a = today.getFullYear() - birthDate.getFullYear()
-    const m = today.getMonth() - birthDate.getMonth()
-    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) a--
+    const mo = today.getMonth() - birthDate.getMonth()
+    if (mo < 0 || (mo === 0 && today.getDate() < birthDate.getDate())) a--
     return a
   }, [form.dateOfBirth])
+
 
   const bmi = useMemo(() => {
     const h = Number(form.heightCm)
@@ -367,7 +455,12 @@ export default function HealthProfilePage() {
     return null
   }, [form.heightCm, form.currentWeightKg])
 
-  const bmiInfo = useMemo(() => (bmi ? getBmiCategory(bmi) : null), [bmi])
+  /** Dưới 18 tuổi: ngưỡng BMI người lớn không áp dụng, không nên tự giảm cân */
+  const isMinor = age > 0 && age < 18
+
+  // Không hiển thị phân loại BMI và gợi ý cho người dưới 18
+  const bmiInfo = useMemo(() => (bmi && !isMinor ? getBmiCategory(bmi) : null), [bmi, isMinor])
+
 
   // System advice: derived from BMI
   const systemAdvice = useMemo(() => getSystemAdvice(bmiInfo), [bmiInfo])
@@ -396,7 +489,7 @@ export default function HealthProfilePage() {
 
   const calculatedProposal = useMemo(() => {
     if (!bmr || !tdee) return null
-    const cal = selectedGoalConfig.calcCalo(bmr, tdee)
+    const cal = selectedGoalConfig.calcCalo(bmr, tdee, form.gender)
     const mac = selectedGoalConfig.macros
     return {
       calorieTarget: cal,
@@ -405,14 +498,20 @@ export default function HealthProfilePage() {
       carbsG: Math.round((cal * mac.carbs) / 400),
       fatG: Math.round((cal * mac.fat) / 900),
     }
-  }, [bmr, tdee, selectedGoalConfig])
+  }, [bmr, tdee, selectedGoalConfig, form.gender])
 
-  // Actual deficit for lose_weight when capped at BMR
+  // Actual deficit for lose_weight — reflects the 20%-TDEE capped formula
   const actualDeficit = useMemo(() => {
     if (form.healthGoal !== 'lose_weight' || !bmr || !tdee) return null
-    const capped = tdee - 500 < bmr
-    return capped ? { kcal: tdee - bmr, capped: true } : { kcal: 500, capped: false }
-  }, [form.healthGoal, bmr, tdee])
+    const deficit = Math.min(500, Math.round(tdee * 0.2))
+    const floor = CALORIE_FLOOR[form.gender] ?? 1200
+    const target = Math.max(bmr, tdee - deficit, floor)
+    const realDeficit = tdee - target
+    const defaultDeficit = deficit
+    const capped = realDeficit < defaultDeficit
+    return { kcal: realDeficit, capped }
+  }, [form.healthGoal, bmr, tdee, form.gender])
+
 
   // No silent 2000 fallback — return null when unavailable
   const activeCalorieTarget = useMemo(() => {
@@ -445,9 +544,22 @@ export default function HealthProfilePage() {
     }
   }, [activeCalorieTarget, activeMacros])
 
-  // Consistent 1% tolerance for both UI indicator and submit validation
+  const estimatedWeeks = useMemo(() => {
+    if (form.healthGoal === 'maintain_weight') return null
+    const current = Number(form.currentWeightKg)
+    const target = Number(form.targetWeightKg)
+    if (!current || !target || !activeCalorieTarget || !tdee) return null
+    const diffKg = Math.abs(current - target)
+    const dailyDiff = Math.abs(tdee - activeCalorieTarget) // kcal/ngày chênh lệch
+    if (!diffKg || !dailyDiff) return null
+    const days = Math.round((diffKg * 7700) / dailyDiff)
+    const weeks = Math.round(days / 7)
+    return weeks > 0 ? weeks : null
+  }, [form.healthGoal, form.currentWeightKg, form.targetWeightKg, activeCalorieTarget, tdee])
+
+  // Strict 100% requirement (no tolerance in UI either; backend enforces 0.5% for rounding)
   const macroSum = (Number(customForm.protein) || 0) + (Number(customForm.carbs) || 0) + (Number(customForm.fat) || 0)
-  const macroSumOk = Math.abs(macroSum - 100) <= 1
+  const macroSumOk = macroSum === 100
 
   // Real-time warnings for custom mode (inline, not just on submit)
   const customWarnings = useMemo(() => {
@@ -456,14 +568,30 @@ export default function HealthProfilePage() {
     const cal = Number(customForm.calorieTarget)
     const fat = Number(customForm.fat)
     const protein = Number(customForm.protein)
-    if (cal > 0 && bmr && cal < bmr)
+    const floor = CALORIE_FLOOR[form.gender] ?? 1200
+
+    if (cal > 0 && cal < floor)
+      warnings.push({ level: 'danger', msg: `Calo mục tiêu (${cal} kcal) thấp hơn ngưỡng an toàn (${floor} kcal). Điều này có thể gây hại cho sức khỏe.` })
+    else if (cal > 0 && bmr && cal < bmr)
       warnings.push({ level: 'danger', msg: `Calo mục tiêu (${cal} kcal) thấp hơn BMR (${bmr} kcal). Điều này có thể gây hại cho sức khỏe.` })
+    if (tdee && cal > 0 && cal > tdee + 1000)
+      warnings.push({ level: 'warning', msg: `Calo mục tiêu (${cal} kcal) vượt quá TDEE + 1000 kcal (${tdee + 1000} kcal). Mức dư thừa này quá lớn.` })
+    // Goal-calorie consistency
+    if (cal > 0 && tdee) {
+      if (form.healthGoal === 'lose_weight' && cal >= tdee)
+        warnings.push({ level: 'warning', msg: `Bạn đang chọn mục tiêu Giảm cân nhưng calo mục tiêu (${cal} kcal) ≥ TDEE (${tdee} kcal).` })
+      if (form.healthGoal === 'gain_weight' && cal <= tdee)
+        warnings.push({ level: 'warning', msg: `Bạn đang chọn mục tiêu Tăng cân nhưng calo mục tiêu (${cal} kcal) ≤ TDEE (${tdee} kcal).` })
+    }
     if (fat > 0 && fat < 20)
       warnings.push({ level: 'warning', msg: 'Chất béo dưới 20% có thể ảnh hưởng đến hấp thu vitamin tan trong dầu (A, D, E, K).' })
+    if (protein > 0 && protein < 10)
+      warnings.push({ level: 'warning', msg: 'Protein dưới 10% có thể không đủ nhu cầu cơ bản.' })
     if (protein > 0 && protein > 35)
-      warnings.push({ level: 'warning', msg: 'Protein trên 35% có thể gây áp lực cho thận trong dài hạn.' })
+      warnings.push({ level: 'warning', msg: 'Protein trên 35% có thể gây áp lực cho thận nếu bạn có bệnh thận. Tham khảo bác sĩ nếu cần.' })
     return warnings
-  }, [customized, customForm, bmr])
+  }, [customized, customForm, bmr, tdee, form.gender, form.healthGoal])
+
 
   // Target weight constraints based on healthGoal + BMI safety
   const targetWeightConstraint = useMemo(() => {
@@ -484,8 +612,8 @@ export default function HealthProfilePage() {
         }
       }
       case 'gain_weight': {
-        // Show safe upper hint = BMI 25
-        const maxBmiSafe = h >= 100 ? Math.floor(25 * (h / 100) ** 2 * 10) / 10 : null
+        // Show safe upper hint = BMI 23 (WHO Châu Á)
+        const maxBmiSafe = h >= 100 ? Math.floor(23 * (h / 100) ** 2 * 10) / 10 : null
         return {
           min: Number((current + 0.1).toFixed(1)),
           max: 300,
@@ -494,6 +622,7 @@ export default function HealthProfilePage() {
           safeguardMax: maxBmiSafe,
         }
       }
+
       case 'maintain_weight':
         return { min: current, max: current, disabled: true }
       default:
@@ -501,18 +630,19 @@ export default function HealthProfilePage() {
     }
   }, [form.healthGoal, form.currentWeightKg, form.heightCm])
 
-  // Warn if gain_weight target pushes BMI >= 25
+  // Warn if gain_weight target pushes BMI >= 23 (Asian WHO threshold for overweight)
   const targetWeightBmiWarning = useMemo(() => {
     if (form.healthGoal !== 'gain_weight') return null
     const h = Number(form.heightCm)
     const targetW = Number(form.targetWeightKg)
     if (!h || !targetW || h < 100) return null
     const targetBmi = targetW / (h / 100) ** 2
-    if (targetBmi >= 25) {
-      return `Cân nặng mục tiêu này tương ứng BMI ${targetBmi.toFixed(1)} — mức thừa cân. Cân nhắc đặt mục tiêu thấp hơn.`
+    if (targetBmi >= 23) {
+      return `Cân nặng mục tiêu này tương ứng BMI ${targetBmi.toFixed(1)} — mức thừa cân (ngưỡng WHO Châu Á ≥ 23). Cân nhắc đặt mục tiêu thấp hơn.`
     }
     return null
   }, [form.healthGoal, form.heightCm, form.targetWeightKg])
+
 
   /**
    * Auto-select mục tiêu dinh dưỡng theo gợi ý hệ thống khi BMI category thay đổi.
@@ -578,16 +708,45 @@ export default function HealthProfilePage() {
     }))
   }
 
+  function toggleSpecialCondition(key) {
+    setForm((c) => ({
+      ...c,
+      specialConditions: c.specialConditions.includes(key)
+        ? c.specialConditions.filter((k) => k !== key)
+        : [...c.specialConditions, key],
+    }))
+  }
+
+  /** True nếu có tình trạng đặc biệt chặn mục tiêu thâm hụt calo */
+  const specialBlocksDeficit = form.specialConditions?.some(
+    (key) => SPECIAL_CONDITIONS.find((c) => c.key === key)?.blockDeficit
+  )
+
   function applyGoal(newGoal) {
     const opt = NUTRITION_GOAL_OPTIONS.find((g) => g.value === newGoal)
     setForm((current) => {
-      const newTarget = newGoal === 'maintain_weight' ? current.currentWeightKg : current.targetWeightKg
+      const currentW = Number(current.currentWeightKg)
+      const targetW = Number(current.targetWeightKg)
+      let newTarget = current.targetWeightKg
+
+      if (newGoal === 'maintain_weight') {
+        newTarget = current.currentWeightKg
+      } else if (
+        // Se stale target: target == current (left over from maintain), or direction is flipped
+        !current.targetWeightKg ||
+        targetW === currentW ||
+        (newGoal === 'lose_weight' && targetW >= currentW) ||
+        (newGoal === 'gain_weight' && targetW <= currentW)
+      ) {
+        newTarget = ''
+      }
+
       return { ...current, healthGoal: newGoal, targetWeightKg: newTarget }
     })
     // Only update custom form if we have real BMR/TDEE values; otherwise keep existing
     if (customized && opt && bmr && tdee) {
       setCustomForm({
-        calorieTarget: String(opt.calcCalo(bmr, tdee)),
+        calorieTarget: String(opt.calcCalo(bmr, tdee, form.gender)),
         protein: String(opt.macros.protein),
         carbs: String(opt.macros.carbs),
         fat: String(opt.macros.fat),
@@ -598,12 +757,19 @@ export default function HealthProfilePage() {
     setSuccess('')
   }
 
+
   /**
    * Called when user clicks a nutrition goal card.
    * Opens risk warning dialog if the goal conflicts with system advice.
    * Also marks prevBmiLabelRef so auto-select won't override the user's manual choice.
    */
   function handleGoalChange(newGoal) {
+    // Chặn giảm cân cho người dưới 18 tuổi
+    if (isMinor && newGoal === 'lose_weight') {
+      setError('Mục tiêu giảm cân không được khuyến nghị cho người dưới 18 tuổi. Vui lòng tham khảo bác sĩ hoặc chuyên gia dinh dưỡng.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     const risk = bmiInfo ? getGoalRisk(newGoal, bmiInfo.label) : null
     // Record current BMI label — auto-select won't fire again for same category after manual pick
     prevBmiLabelRef.current = bmiInfo?.label ?? prevBmiLabelRef.current
@@ -614,6 +780,7 @@ export default function HealthProfilePage() {
       applyGoal(newGoal)
     }
   }
+
 
 
   /** Called when user clicks "Continue anyway" in the goal warning dialog. */
@@ -643,6 +810,7 @@ export default function HealthProfilePage() {
     setWeightDialogOpen(false)
     setWeightError({ field: '', message: '' })
     setConfirmOverwrite(false)
+    setWeightDiffWarning(false)
   }
 
   async function saveWeightLog(overwrite = false) {
@@ -661,6 +829,16 @@ export default function HealthProfilePage() {
       return
     }
 
+    // Cảnh báo mềm khi chênh > 5 kg (tránh gõ nhầm)
+    if (!weightDiffWarning && !overwrite && weightLogs.length > 0) {
+      const sortedByDate = [...weightLogs].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))
+      const lastWeight = Number(sortedByDate[0].weightKg)
+      if (Math.abs(weightKg - lastWeight) > 5) {
+        setWeightDiffWarning(true)
+        return
+      }
+    }
+
     setSavingWeight(true)
     setWeightError({ field: '', message: '' })
     try {
@@ -676,6 +854,7 @@ export default function HealthProfilePage() {
       setSuccess('Đã ghi nhận cân nặng thành công')
       setWeightDialogOpen(false)
       setConfirmOverwrite(false)
+      setWeightDiffWarning(false)
     } catch (err) {
       if (err.response?.data?.code === 'WEIGHT_LOG_EXISTS') {
         setConfirmOverwrite(true)
@@ -762,6 +941,12 @@ export default function HealthProfilePage() {
 
     // ── Step 3: Target weight validation based on healthGoal ──
     const currentW = w
+    if (form.healthGoal !== 'maintain_weight' && !form.targetWeightKg) {
+      setError('Vui lòng nhập cân nặng mục tiêu khi chọn mục tiêu giảm cân hoặc tăng cân.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     // For maintain, we'll force targetWeightKg = currentWeightKg at payload time
     if (form.healthGoal === 'lose_weight' && form.targetWeightKg) {
       const targetW = Number(form.targetWeightKg)
@@ -788,10 +973,23 @@ export default function HealthProfilePage() {
 
     // ── Step 4: Goal risk check — run even if user didn't touch the goal selector ──
     const risk = bmiInfo ? getGoalRisk(form.healthGoal, bmiInfo.label) : null
+    // Hard block for danger-level risks — no override allowed
+    if (risk?.level === 'danger') {
+      setError('Mục tiêu này không phù hợp với BMI hiện tại và không thể lưu. Vui lòng chọn lại mục tiêu phù hợp.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     const alreadyAcknowledged =
       acknowledgedRisk?.goal === form.healthGoal && acknowledgedRisk?.bmiLabel === bmiInfo?.label
     if (risk && !alreadyAcknowledged) {
       setGoalWarning({ pendingGoal: form.healthGoal, risk, fromSubmit: true })
+      return
+    }
+
+    // ── Step 4b: Chặn deficit goal khi có tình trạng đặc biệt ──
+    if (specialBlocksDeficit && form.healthGoal !== 'maintain_weight') {
+      setError('Với tình trạng sức khỏe đặc biệt bạn đã chọn, hệ thống không thể tự đề xuất mục tiêu thay đổi cân nặng. Vui lòng tham khảo bác sĩ hoặc chuyên gia dinh dưỡng.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
@@ -801,9 +999,15 @@ export default function HealthProfilePage() {
       const prot = Number(customForm.protein)
       const carbs = Number(customForm.carbs)
       const fat = Number(customForm.fat)
+      const floor = CALORIE_FLOOR[form.gender] ?? 1200
 
       if (!customForm.calorieTarget || !cal || cal <= 0) {
         setError('Vui lòng nhập mục tiêu calo hợp lệ.')
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
+      if (cal < floor) {
+        setError(`Calo mục tiêu (${cal} kcal) không được thấp hơn ngưỡng an toàn ${floor} kcal.`)
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
@@ -832,11 +1036,12 @@ export default function HealthProfilePage() {
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
-      if (Math.abs(prot + carbs + fat - 100) > 1) {
-        setError('Tổng tỷ lệ Protein + Tinh bột + Chất béo phải bằng 100% (sai số cho phép ±1%).')
+      if (prot + carbs + fat !== 100) {
+        setError(`Tổng tỷ lệ Protein + Tinh bột + Chất béo phải bằng chính xác 100% (hiện tại: ${prot + carbs + fat}%).`)
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
+
     } else if (!calculatedProposal) {
       // Non-customized but no BMR/TDEE → block save to avoid storing 2000 kcal as phantom value
       setError('Vui lòng hoàn tất giới tính, ngày sinh, chiều cao, cân nặng và mức độ vận động để hệ thống tính toán chỉ số dinh dưỡng.')
@@ -869,7 +1074,8 @@ export default function HealthProfilePage() {
       const { data } = await axiosInstance.put('/profile', payload)
       dispatch(userUpdated(data.user))
       setSuccess('Lưu hồ sơ và mục tiêu dinh dưỡng thành công! Đang chuyển về Trang chủ...')
-      setTimeout(() => navigate('/dashboard'), 1200)
+      timeoutRef.current = setTimeout(() => navigate('/dashboard'), 1200)
+
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể lưu hồ sơ sức khỏe.')
     } finally {
@@ -987,11 +1193,22 @@ export default function HealthProfilePage() {
 
               <div className={`hp-field ${submitted && !PHONE_RE.test(form.phone) ? 'is-invalid' : ''}`}>
                 <label htmlFor="phone">Số điện thoại <span className="hp-required">*</span></label>
-                <input id="phone" name="phone" type="tel" inputMode="numeric" maxLength="10" placeholder="0912 345 678" value={form.phone} onChange={updateField} />
+                <input
+                  id="phone" name="phone" type="tel" inputMode="numeric" maxLength="10"
+                  placeholder="0912345678"
+                  value={form.phone}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+                    setForm((c) => ({ ...c, phone: digits }))
+                    setError('')
+                    setSuccess('')
+                  }}
+                />
                 {submitted && !PHONE_RE.test(form.phone) && (
                   <span className="hp-field__error">Số điện thoại phải gồm 10 chữ số, bắt đầu bằng 0</span>
                 )}
               </div>
+
 
               <div className={`hp-field ${isInvalid('gender') ? 'is-invalid' : ''}`}>
                 <label htmlFor="gender">Giới tính <span className="hp-required">*</span></label>
@@ -1038,8 +1255,9 @@ export default function HealthProfilePage() {
               <div className="hp-card__badge">2</div>
               <div>
                 <h2 id="sec-body">Chỉ số thể chất &amp; Chuyển hóa</h2>
-                <p>NutriLens ứng dụng công thức khoa học Mifflin-St Jeor để xác định BMR và TDEE.</p>
+                <p>NutriLens ứng dụng công thức Mifflin-St Jeor để ước tính BMR và TDEE. <em>Lưu ý: BMR/TDEE chỉ là ước tính (sai số khoảng ±10%) — nên điều chỉnh sau 2–4 tuần dựa trên xu hướng cân nặng thực tế.</em></p>
               </div>
+
             </div>
 
             <div className="hp-grid hp-grid--2">
@@ -1196,7 +1414,7 @@ export default function HealthProfilePage() {
               <div className="hp-card__badge">4</div>
               <div>
                 <h2 id="sec-goal">Mục tiêu dinh dưỡng &amp; Phân bổ năng lượng</h2>
-                <p>Hệ thống tự động đề xuất mục tiêu calo và tỉ lệ macro chuẩn khoa học dựa trên chỉ số trao đổi chất của bạn.</p>
+                <p>Hệ thống tự động đề xuất mục tiêu calo và tỉ lệ macro dựa trên chỉ số trao đổi chất của bạn. Kết quả chỉ mang tính tham khảo.</p>
               </div>
             </div>
 
@@ -1282,8 +1500,18 @@ export default function HealthProfilePage() {
                   {/* Safe upper hint for gain_weight */}
                   {form.healthGoal === 'gain_weight' && targetWeightConstraint.safeguardMax && (
                     <small className="hp-target-weight-hint" style={{ display: 'block', marginTop: '4px' }}>
-                      <i className="bi bi-shield" /> Cân nặng dưới {targetWeightConstraint.safeguardMax} kg tương ứng BMI &lt; 25 (ngưỡng an toàn).
+                      <i className="bi bi-shield" /> Cân nặng dưới {targetWeightConstraint.safeguardMax} kg tương ứng BMI &lt; 23 (ngưỡng thừa cân WHO Châu Á).
                     </small>
+                  )}
+                  {estimatedWeeks && (
+                    <div className="hp-advice-note hp-advice-note--info" style={{ marginTop: '8px' }}>
+                      <i className="bi bi-clock" />
+                      Ước tính đạt mục tiêu sau khoảng <strong>{estimatedWeeks} tuần</strong>
+                      {' '}({Math.round(estimatedWeeks / 4.3)} tháng) với chế độ hiện tại.
+                      <small style={{ display: 'block', marginTop: '4px', color: '#64748b' }}>
+                        Chỉ mang tính tham khảo — kết quả thực tế phụ thuộc vào nhiều yếu tố.
+                      </small>
+                    </div>
                   )}
                 </div>
               )}
@@ -1293,7 +1521,7 @@ export default function HealthProfilePage() {
             <div className="hp-macro-panel">
               <div className="hp-macro-panel__header">
                 <div className="hp-macro-panel__title">
-                  <span className="hp-macro-panel__tag">Đề xuất khoa học mỗi ngày</span>
+                  <span className="hp-macro-panel__tag">Đề xuất của hệ thống mỗi ngày</span>
                   <h3>{selectedGoalConfig.label}</h3>
                 </div>
                 <button
@@ -1311,9 +1539,10 @@ export default function HealthProfilePage() {
                   }}
                 >
                   <i className={`bi ${customized ? 'bi-stars' : 'bi-sliders2'}`} />
-                  {customized ? 'Dùng đề xuất khoa học' : 'Tùy chỉnh mục tiêu'}
+                  {customized ? 'Dùng đề xuất của hệ thống' : 'Tùy chỉnh mục tiêu'}
                 </button>
               </div>
+
 
               <div className="hp-macro-calories">
                 <div>
@@ -1442,6 +1671,46 @@ export default function HealthProfilePage() {
               </div>
             </div>
 
+            {/* Tình trạng sức khỏe đặc biệt */}
+            <div className="hp-special-conditions" style={{ marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
+                <i className="bi bi-heart-pulse me-1" style={{ color: '#ef4444' }} />
+                Tình trạng sức khỏe đặc biệt
+              </h3>
+              <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '10px' }}>
+                Chọn nếu áp dụng — giúp hệ thống đưa ra lời khuyên phù hợp hơn.
+                <strong> BMI không phản ánh chính xác với người tập thể hình (cơ nhiều) hoặc người cao tuổi.</strong>
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {SPECIAL_CONDITIONS.map(({ key, label, icon }) => (
+                  <label
+                    key={key}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+                      padding: '8px 12px', borderRadius: '8px', border: '1.5px solid',
+                      borderColor: form.specialConditions?.includes(key) ? '#ef4444' : '#e2e8f0',
+                      backgroundColor: form.specialConditions?.includes(key) ? '#fff5f5' : '#fafafa',
+                      fontSize: '0.88rem', fontWeight: 500,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.specialConditions?.includes(key) ?? false}
+                      onChange={() => toggleSpecialCondition(key)}
+                      style={{ accentColor: '#ef4444', width: '16px', height: '16px' }}
+                    />
+                    <span>{icon} {label}</span>
+                  </label>
+                ))}
+              </div>
+              {specialBlocksDeficit && form.healthGoal !== 'maintain_weight' && (
+                <div className="hp-advice-note hp-advice-note--danger" style={{ marginTop: '12px' }}>
+                  <i className="bi bi-exclamation-triangle-fill" />
+                  Với tình trạng sức khỏe đã chọn, mục tiêu thay đổi cân nặng không được khuyến nghị nếu chưa có tư vấn y tế.
+                </div>
+              )}
+            </div>
+
             <div className="hp-tag-group">
               {DIETARY_OPTIONS.map(({ label, icon }) => (
                 <button
@@ -1510,6 +1779,7 @@ export default function HealthProfilePage() {
       {weightDialogOpen && (
         <div className="hp-modal-backdrop" role="presentation" onMouseDown={closeWeightDialog}>
           <section
+            ref={weightModalRef}
             className="hp-weight-modal" role="dialog" aria-modal="true" aria-labelledby="weight-dialog-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -1590,6 +1860,7 @@ export default function HealthProfilePage() {
           onMouseDown={() => { if (!goalWarning.fromSubmit) setGoalWarning(null) }}
         >
           <section
+            ref={goalWarningModalRef}
             className={`hp-goal-warning-modal hp-goal-warning-modal--${goalWarning.risk.level}`}
             role="alertdialog" aria-modal="true" aria-labelledby="goal-warning-title"
             onMouseDown={(e) => e.stopPropagation()}
@@ -1614,15 +1885,18 @@ export default function HealthProfilePage() {
               <button type="button" className="hp-weight-modal__cancel" onClick={() => setGoalWarning(null)}>
                 <i className="bi bi-arrow-left" /> Hủy, chọn lại
               </button>
-              <button
-                type="button"
-                className={`hp-goal-warning-modal__confirm hp-goal-warning-modal__confirm--${goalWarning.risk.level}`}
-                onClick={confirmGoalWarning}
-              >
-                <i className="bi bi-check2" />
-                {goalWarning.risk.level === 'danger' ? 'Tôi hiểu rủi ro, vẫn tiếp tục' : 'Tiếp tục với lựa chọn này'}
-              </button>
+              {goalWarning.risk.level !== 'danger' && (
+                <button
+                  type="button"
+                  className={`hp-goal-warning-modal__confirm hp-goal-warning-modal__confirm--${goalWarning.risk.level}`}
+                  onClick={confirmGoalWarning}
+                >
+                  <i className="bi bi-check2" />
+                  Tiếp tục với lựa chọn này
+                </button>
+              )}
             </div>
+
           </section>
         </div>
       )}
