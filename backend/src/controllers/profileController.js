@@ -98,11 +98,78 @@ function getTodayDate() {
   return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
 }
 
+const MAX_DAILY_UPDATES = 5;
+
+/**
+ * Kiểm tra xem biến động cân nặng có bất khả thi về mặt sinh học không (Chặn cứng).
+ * - Trong vòng <= 1 ngày: biến động > 5 kg => Chặn
+ * - Trong vòng <= 3 ngày: biến động > 8 kg => Chặn
+ * - Trong vòng <= 7 ngày: biến động > 12 kg => Chặn
+ * @param {number} newWeight
+ * @param {Date} targetDate
+ * @param {Object} neighborLog
+ * @returns {string|null} Lỗi chặn cứng hoặc null nếu hợp lệ
+ */
+function checkUnrealisticWeightJump(newWeight, targetDate, neighborLog) {
+  if (!neighborLog || !neighborLog.recordedDate || neighborLog.weightKg == null) return null;
+  const targetTime = targetDate.getTime();
+  const neighborTime = new Date(neighborLog.recordedDate).getTime();
+  const daysDiff = Math.abs((targetTime - neighborTime) / (1000 * 60 * 60 * 24));
+  const weightDiff = Math.abs(newWeight - Number(neighborLog.weightKg));
+
+  if (daysDiff <= 1.05 && weightDiff > 5) {
+    return `Chênh lệch cân nặng không hợp lý (biến động ${weightDiff.toFixed(1)} kg trong vòng 1 ngày, vượt quá giới hạn an toàn 5 kg). Hệ thống từ chối ghi nhận để bảo vệ tính chính xác của dữ liệu. Vui lòng kiểm tra lại số cân.`;
+  }
+  if (daysDiff <= 3.05 && weightDiff > 8) {
+    return `Chênh lệch cân nặng không hợp lý (biến động ${weightDiff.toFixed(1)} kg trong vòng 3 ngày, vượt quá giới hạn 8 kg). Vui lòng kiểm tra lại số cân.`;
+  }
+  if (daysDiff <= 7.05 && weightDiff > 12) {
+    return `Chênh lệch cân nặng không hợp lý (biến động ${weightDiff.toFixed(1)} kg trong vòng 7 ngày, vượt quá giới hạn 12 kg). Vui lòng kiểm tra lại số cân.`;
+  }
+  return null;
+}
+
 function serializeWeightLog(log) {
+  const rawDate = log.loggedAt || log.updatedAt || log.createdAt || log.recordedDate;
+  const d = new Date(rawDate);
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  const timeStr = `${hours}:${minutes}:${seconds}`;
+
+  let editHistory = [];
+  if (Array.isArray(log.editHistory) && log.editHistory.length > 0) {
+    editHistory = log.editHistory.map((item, idx) => {
+      const itemDate = new Date(item.loggedAt);
+      const itemH = String(itemDate.getHours()).padStart(2, '0');
+      const itemM = String(itemDate.getMinutes()).padStart(2, '0');
+      const itemS = String(itemDate.getSeconds()).padStart(2, '0');
+      return {
+        version: idx + 1,
+        weightKg: item.weightKg,
+        loggedAt: itemDate.toISOString(),
+        timeStr: `${itemH}:${itemM}:${itemS}`,
+      };
+    });
+  } else {
+    editHistory = [
+      {
+        version: 1,
+        weightKg: log.weightKg,
+        loggedAt: d.toISOString(),
+        timeStr,
+      },
+    ];
+  }
+
   return {
     id: log._id,
     weightKg: log.weightKg,
     recordedDate: log.recordedDate.toISOString().slice(0, 10),
+    loggedAt: d.toISOString(),
+    timeStr,
+    updateCount: log.updateCount || 0,
+    editHistory,
     createdAt: log.createdAt,
     updatedAt: log.updatedAt,
   };
@@ -259,6 +326,31 @@ async function saveProfile(req, res) {
 
     const newWeightKg = Number(req.body.currentWeightKg);
     const prevWeightKg = existingProfile?.currentWeightKg;
+    const weightChanged = prevWeightKg == null || prevWeightKg !== newWeightKg;
+    const todayDate = getTodayDate();
+    let existingTodayLog = null;
+
+    if (weightChanged) {
+      existingTodayLog = await WeightLog.findOne({ user: req.user.id, recordedDate: todayDate });
+      const prevLog = await WeightLog.findOne({
+        user: req.user.id,
+        recordedDate: { $lt: todayDate },
+      }).sort({ recordedDate: -1 }).lean();
+
+      // Chặn cứng: Kiểm tra biến động cân nặng phi lý theo ngày
+      const jumpError = checkUnrealisticWeightJump(newWeightKg, todayDate, existingTodayLog || prevLog);
+      if (jumpError) {
+        return res.status(400).json({ code: 'UNREALISTIC_WEIGHT_CHANGE', message: jumpError });
+      }
+
+      // Giới hạn số lần sửa trong ngày
+      if (existingTodayLog && (existingTodayLog.updateCount || 0) >= MAX_DAILY_UPDATES) {
+        return res.status(429).json({
+          code: 'DAILY_UPDATE_LIMIT_EXCEEDED',
+          message: `Bạn đã đạt giới hạn tối đa ${MAX_DAILY_UPDATES} lần cập nhật cân nặng trong ngày hôm nay. Vui lòng quay lại vào ngày mai.`,
+        });
+      }
+    }
 
     const profile = await UserProfile.findOneAndUpdate(
       { user: req.user.id },
@@ -278,14 +370,23 @@ async function saveProfile(req, res) {
     ).lean();
 
     // Upsert bản ghi cân nặng hôm nay khi cân nặng thay đổi hoặc chưa có log nào
-    const weightChanged = prevWeightKg == null || prevWeightKg !== newWeightKg;
     if (weightChanged) {
-      const todayDate = getTodayDate();
-      const existingTodayLog = await WeightLog.findOne({ user: req.user.id, recordedDate: todayDate });
+      const now = new Date();
       if (existingTodayLog) {
-        // Cập nhật log hôm nay nếu đã có
-        await WeightLog.findByIdAndUpdate(existingTodayLog._id, { $set: { weightKg: newWeightKg } })
-          .catch((logErr) => console.warn('[saveProfile] Cập nhật bản ghi cân nặng hôm nay:', logErr.message));
+        // Cập nhật log hôm nay nếu đã có và lưu vết lịch sử
+        const history = Array.isArray(existingTodayLog.editHistory) && existingTodayLog.editHistory.length > 0
+          ? [...existingTodayLog.editHistory]
+          : [{ weightKg: existingTodayLog.weightKg, loggedAt: existingTodayLog.loggedAt || existingTodayLog.createdAt || now }];
+        history.push({ weightKg: newWeightKg, loggedAt: now });
+
+        await WeightLog.findByIdAndUpdate(existingTodayLog._id, {
+          $set: {
+            weightKg: newWeightKg,
+            loggedAt: now,
+            updateCount: (existingTodayLog.updateCount || 0) + 1,
+            editHistory: history,
+          },
+        }).catch((logErr) => console.warn('[saveProfile] Cập nhật bản ghi cân nặng hôm nay:', logErr.message));
       } else {
         // Tạo log mới nếu chưa có (chỉ khi đây là lần đầu hoặc weight thực sự đổi)
         const hasAnyLog = await WeightLog.exists({ user: req.user.id });
@@ -294,6 +395,9 @@ async function saveProfile(req, res) {
             user: req.user.id,
             weightKg: newWeightKg,
             recordedDate: todayDate,
+            loggedAt: now,
+            updateCount: 0,
+            editHistory: [{ weightKg: newWeightKg, loggedAt: now }],
           }).catch((logErr) => console.warn('[saveProfile] Khởi tạo bản ghi cân nặng:', logErr.message));
         }
       }
@@ -405,13 +509,89 @@ async function saveWeightLog(req, res) {
     if (!profile) return res.status(404).json({ message: 'Vui lòng hoàn tất hồ sơ sức khỏe trước khi ghi nhận cân nặng' });
 
     const existingLog = await WeightLog.findOne({ user: req.user.id, recordedDate });
-    if (existingLog && !req.body.overwrite) {
-      return res.status(409).json({ code: 'WEIGHT_LOG_EXISTS', message: 'Bạn đã ghi nhận cân nặng hôm nay, bạn có muốn cập nhật lại giá trị này?' });
+    if (existingLog) {
+      const curCount = existingLog.updateCount || 0;
+      if (curCount >= MAX_DAILY_UPDATES) {
+        return res.status(429).json({
+          code: 'DAILY_UPDATE_LIMIT_EXCEEDED',
+          message: `Bạn đã đạt giới hạn tối đa ${MAX_DAILY_UPDATES} lần cập nhật cân nặng trong ngày này. Vui lòng quay lại vào ngày mai để ghi nhận tiếp.`,
+          maxUpdates: MAX_DAILY_UPDATES,
+          currentUpdateCount: curCount,
+        });
+      }
+      if (!req.body.overwrite) {
+        return res.status(409).json({
+          code: 'WEIGHT_LOG_EXISTS',
+          message: `Bạn đã ghi nhận cân nặng cho ngày này (đã cập nhật ${curCount}/${MAX_DAILY_UPDATES} lần). Bạn có muốn cập nhật lại giá trị này?`,
+          currentUpdateCount: curCount,
+          remainingUpdates: Math.max(0, MAX_DAILY_UPDATES - curCount),
+          maxUpdates: MAX_DAILY_UPDATES,
+        });
+      }
     }
 
-    const log = existingLog
-      ? await WeightLog.findByIdAndUpdate(existingLog._id, { $set: { weightKg } }, { new: true, runValidators: true })
-      : await WeightLog.create({ user: req.user.id, weightKg, recordedDate });
+    // Chặn cứng: Kiểm tra biến động cân nặng so với các bản ghi lân cận
+    const prevLog = await WeightLog.findOne({
+      user: req.user.id,
+      recordedDate: { $lt: recordedDate },
+    }).sort({ recordedDate: -1 }).lean();
+
+    const nextLog = await WeightLog.findOne({
+      user: req.user.id,
+      recordedDate: { $gt: recordedDate },
+    }).sort({ recordedDate: 1 }).lean();
+
+    const jumpErrorPrev = checkUnrealisticWeightJump(weightKg, recordedDate, prevLog);
+    if (jumpErrorPrev) {
+      return res.status(400).json({ code: 'UNREALISTIC_WEIGHT_CHANGE', message: jumpErrorPrev });
+    }
+
+    const jumpErrorNext = checkUnrealisticWeightJump(weightKg, recordedDate, nextLog);
+    if (jumpErrorNext) {
+      return res.status(400).json({ code: 'UNREALISTIC_WEIGHT_CHANGE', message: jumpErrorNext });
+    }
+
+    if (!prevLog && !nextLog && profile.currentWeightKg) {
+      const profileUpdatedTime = profile.updatedAt ? new Date(profile.updatedAt).getTime() : 0;
+      const daysSinceProfile = Math.abs((recordedDate.getTime() - profileUpdatedTime) / (1000 * 60 * 60 * 24));
+      if (daysSinceProfile <= 1.05 && Math.abs(weightKg - profile.currentWeightKg) > 5) {
+        return res.status(400).json({
+          code: 'UNREALISTIC_WEIGHT_CHANGE',
+          message: `Chênh lệch cân nặng không hợp lý (biến động ${Math.abs(weightKg - profile.currentWeightKg).toFixed(1)} kg trong vòng 1 ngày so với hồ sơ). Vui lòng kiểm tra lại số cân.`,
+        });
+      }
+    }
+
+    const now = new Date();
+    let log;
+    if (existingLog) {
+      const history = Array.isArray(existingLog.editHistory) && existingLog.editHistory.length > 0
+        ? [...existingLog.editHistory]
+        : [{ weightKg: existingLog.weightKg, loggedAt: existingLog.loggedAt || existingLog.createdAt || now }];
+      history.push({ weightKg, loggedAt: now });
+
+      log = await WeightLog.findByIdAndUpdate(
+        existingLog._id,
+        {
+          $set: {
+            weightKg,
+            loggedAt: now,
+            updateCount: (existingLog.updateCount || 0) + 1,
+            editHistory: history,
+          },
+        },
+        { new: true, runValidators: true }
+      );
+    } else {
+      log = await WeightLog.create({
+        user: req.user.id,
+        weightKg,
+        recordedDate,
+        loggedAt: now,
+        updateCount: 0,
+        editHistory: [{ weightKg, loggedAt: now }],
+      });
+    }
 
     const latestLog = await WeightLog.findOne({ user: req.user.id }).sort({ recordedDate: -1 }).lean();
     let updatedProfile = profile.toObject();
@@ -435,13 +615,15 @@ async function saveWeightLog(req, res) {
     }
 
     return res.status(existingLog ? 200 : 201).json({
-      message: 'Đã ghi nhận cân nặng thành công',
+      message: existingLog ? 'Cập nhật bản ghi cân nặng thành công' : 'Đã ghi nhận cân nặng thành công',
       weightLog: serializeWeightLog(log),
       profile: updatedProfile,
+      remainingUpdates: Math.max(0, MAX_DAILY_UPDATES - (log.updateCount || 0)),
+      maxUpdates: MAX_DAILY_UPDATES,
     });
   } catch (err) {
     if (err?.code === 11000) {
-      return res.status(409).json({ code: 'WEIGHT_LOG_EXISTS', message: 'Bạn đã ghi nhận cân nặng hôm nay, bạn có muốn cập nhật lại giá trị này?' });
+      return res.status(409).json({ code: 'WEIGHT_LOG_EXISTS', message: 'Bạn đã ghi nhận cân nặng cho ngày này, bạn có muốn cập nhật lại giá trị này?' });
     }
     console.error('[saveWeightLog] Lỗi:', err.message);
     return res.status(500).json({ message: 'Ghi nhận cân nặng thất bại, vui lòng thử lại' });
@@ -467,4 +649,54 @@ async function updateAvatar(req, res) {
   }
 }
 
-module.exports = { getProfile, saveProfile, updateAvatar, getWeightLogs, saveWeightLog, getNutritionProposal, saveNutritionGoal };
+async function deleteWeightLog(req, res) {
+  try {
+    const log = await WeightLog.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+    if (!log) {
+      return res.status(404).json({ message: 'Không tìm thấy bản ghi cân nặng cần xóa' });
+    }
+
+    const latestLog = await WeightLog.findOne({ user: req.user.id }).sort({ recordedDate: -1 }).lean();
+    const profile = await UserProfile.findOne({ user: req.user.id });
+    let updatedProfile = profile ? profile.toObject() : null;
+
+    if (profile && latestLog) {
+      const user = await User.findById(req.user.id).select('dateOfBirth gender').lean();
+      const healthMetrics = {
+        ...calculateHealthMetrics({
+          heightCm: profile.heightCm,
+          weightKg: latestLog.weightKg,
+          dateOfBirth: user?.dateOfBirth,
+          gender: user?.gender,
+          activityLevel: profile.activityLevel,
+        }),
+        calculatedAt: new Date(),
+      };
+      updatedProfile = await UserProfile.findByIdAndUpdate(
+        profile._id,
+        { $set: { currentWeightKg: latestLog.weightKg, healthMetrics } },
+        { new: true, runValidators: true }
+      ).lean();
+    }
+
+    return res.status(200).json({
+      message: 'Đã xóa bản ghi cân nặng thành công',
+      deletedId: req.params.id,
+      profile: updatedProfile,
+    });
+  } catch (err) {
+    console.error('[deleteWeightLog] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể xóa bản ghi cân nặng' });
+  }
+}
+
+module.exports = {
+  getProfile,
+  saveProfile,
+  updateAvatar,
+  getWeightLogs,
+  saveWeightLog,
+  deleteWeightLog,
+  getNutritionProposal,
+  saveNutritionGoal,
+};

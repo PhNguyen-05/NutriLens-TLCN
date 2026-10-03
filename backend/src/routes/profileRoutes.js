@@ -3,7 +3,7 @@ const path = require('path');
 const multer = require('multer');
 
 const requireAuth = require('../middleware/auth');
-const { getProfile, saveProfile, updateAvatar, getWeightLogs, saveWeightLog, getNutritionProposal, saveNutritionGoal } = require('../controllers/profileController');
+const { getProfile, saveProfile, updateAvatar, getWeightLogs, saveWeightLog, deleteWeightLog, getNutritionProposal, saveNutritionGoal } = require('../controllers/profileController');
 
 const router = express.Router();
 
@@ -23,6 +23,7 @@ router.get('/', getProfile);
 router.put('/', saveProfile);
 router.get('/weight-logs', getWeightLogs);
 router.post('/weight-logs', saveWeightLog);
+router.delete('/weight-logs/:id', deleteWeightLog);
 router.get('/nutrition-goal/proposal', getNutritionProposal);
 router.put('/nutrition-goal', saveNutritionGoal);
 router.post('/avatar', upload.single('avatar'), updateAvatar);

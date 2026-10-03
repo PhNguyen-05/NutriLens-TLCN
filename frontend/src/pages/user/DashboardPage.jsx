@@ -19,7 +19,7 @@ function PanelHeading({ title, subtitle, action }) {
   return <div className="panel-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</div>
 }
 
-function HealthMetricsPanel({ profile, loading }) {
+function HealthMetricsPanel({ profile, loading, onQuickLog }) {
   const metrics = profile?.healthMetrics
   const hasMetrics = metrics?.bmi != null && metrics?.bmr != null && metrics?.tdee != null
 
@@ -62,6 +62,33 @@ function HealthMetricsPanel({ profile, loading }) {
           {profile.nutritionGoal?.calorieTarget ? 'Chỉnh sửa →' : 'Thiết lập ngay →'}
         </Link>
       </div>
+
+      <div style={{ marginTop: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <button
+          type="button"
+          onClick={onQuickLog}
+          style={{
+            flex: 1, padding: '8px 12px', borderRadius: '8px',
+            border: '1px solid #10b981', background: '#ecfdf5', color: '#065f46',
+            fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+          }}
+        >
+          <i className="bi bi-speedometer2" /> Cân hôm nay
+        </button>
+        <Link
+          to="/weight-tracker"
+          style={{
+            padding: '8px 12px', borderRadius: '8px',
+            border: '1px solid #cbd5e1', background: '#fff', color: '#334155',
+            fontWeight: 600, fontSize: '0.84rem', textDecoration: 'none',
+            display: 'inline-flex', alignItems: 'center', gap: '4px'
+          }}
+          title="Xem biểu đồ & lịch sử cân nặng"
+        >
+          Tiến trình <i className="bi bi-arrow-right" />
+        </Link>
+      </div>
     </article>
   )
 }
@@ -74,6 +101,13 @@ export default function DashboardPage() {
   const [metricsLoading, setMetricsLoading] = useState(true)
   const firstName = user?.fullName?.split(' ')[0] || 'bạn'
 
+  // Quick log weight state
+  const [quickLogOpen, setQuickLogOpen] = useState(false)
+  const [quickWeight, setQuickWeight] = useState('')
+  const [quickError, setQuickError] = useState('')
+  const [savingQuick, setSavingQuick] = useState(false)
+  const [quickSuccess, setQuickSuccess] = useState('')
+
   useEffect(() => {
     let isActive = true
     axiosInstance.get('/profile')
@@ -82,6 +116,48 @@ export default function DashboardPage() {
       .finally(() => { if (isActive) setMetricsLoading(false) })
     return () => { isActive = false }
   }, [])
+
+  function openQuickLog() {
+    setQuickWeight(healthProfile?.currentWeightKg ? String(healthProfile.currentWeightKg) : '')
+    setQuickError('')
+    setQuickLogOpen(true)
+  }
+
+  async function handleQuickLogSubmit(e) {
+    e.preventDefault()
+    const w = Number(quickWeight)
+    if (!quickWeight || !Number.isFinite(w) || w < 20 || w > 300) {
+      setQuickError('Vui lòng nhập cân nặng hợp lệ (20–300 kg)')
+      return
+    }
+
+    // Chặn cứng chênh lệch phi lý theo ngày (> 5 kg)
+    if (healthProfile?.currentWeightKg && Math.abs(w - healthProfile.currentWeightKg) > 5) {
+      setQuickError(`Chặn cứng: Chênh lệch ${Math.abs(w - healthProfile.currentWeightKg).toFixed(1)} kg trong ngày là không khả thi về mặt sinh học (> 5 kg). Vui lòng kiểm tra lại số cân!`)
+      return
+    }
+
+    setSavingQuick(true)
+    setQuickError('')
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data } = await axiosInstance.post('/profile/weight-logs', {
+        weightKg: w,
+        recordedDate: today,
+        overwrite: true,
+      })
+      if (data.profile) {
+        setHealthProfile(data.profile)
+      }
+      setQuickSuccess(`Đã ghi nhận ${w} kg thành công cho hôm nay!`)
+      setQuickLogOpen(false)
+      setTimeout(() => setQuickSuccess(''), 4000)
+    } catch (err) {
+      setQuickError(err.response?.data?.message || 'Không thể lưu cân nặng, vui lòng thử lại')
+    } finally {
+      setSavingQuick(false)
+    }
+  }
 
   // Gắn số liệu mục tiêu dinh dưỡng (UC09) động lên các thẻ hiển thị
   const targetCalo = healthProfile?.nutritionGoal?.calorieTarget || 1850
@@ -124,7 +200,7 @@ export default function DashboardPage() {
           <a className="active" href="/dashboard">Tổng quan</a>
           <a href="/dashboard">Nhận diện & Đồ ăn</a>
           <a href="/dashboard">Luyện tập</a>
-          <a href="/dashboard">Chỉ số & Xu hướng</a>
+          <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>
           <a href="/dashboard">Bài viết & Mẹo</a>
         </nav>
@@ -138,6 +214,9 @@ export default function DashboardPage() {
             {profileOpen && (
               <div className="profile-dropdown" role="menu">
                 <div className="profile-name">Xin chào, {firstName}</div>
+                <button className="profile-link" onClick={() => navigate('/weight-tracker')} role="menuitem">
+                  <i className="bi bi-speedometer2" /> Theo dõi cân nặng &amp; Tiến trình
+                </button>
                 <button className="profile-link" onClick={() => navigate('/profile')} role="menuitem">
                   <i className="bi bi-person-circle" /> Hồ sơ cá nhân & Sức khỏe
                 </button>
@@ -164,6 +243,21 @@ export default function DashboardPage() {
             <button><i className="bi bi-calendar-check" /> Chọn ngày</button>
           </div>
         </section>
+
+        {quickSuccess && (
+          <div style={{
+            margin: '0 0 16px 0', padding: '12px 18px',
+            background: '#ecfdf5', border: '1px solid #6ee7b7',
+            borderRadius: '12px', color: '#065f46', fontWeight: 600,
+            display: 'flex', alignItems: 'center', gap: '10px'
+          }}>
+            <i className="bi bi-check-circle-fill" style={{ fontSize: '18px', color: '#059669' }} />
+            <span>{quickSuccess}</span>
+            <Link to="/weight-tracker" style={{ marginLeft: 'auto', color: '#059669', fontSize: '13px', fontWeight: 700 }}>
+              Xem biểu đồ tiến trình →
+            </Link>
+          </div>
+        )}
 
         {!metricsLoading && (!healthProfile || !healthProfile.heightCm) && (
           <div style={{ margin: '12px 0', padding: '12px 18px', background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -238,7 +332,7 @@ export default function DashboardPage() {
           </article>
           
           <aside className="side-stack">
-            <HealthMetricsPanel profile={healthProfile} loading={metricsLoading} />
+            <HealthMetricsPanel profile={healthProfile} loading={metricsLoading} onQuickLog={openQuickLog} />
             <article className="content-panel suggestion-panel">
               <h2>✧ Gợi ý AI: Món tối chuẩn Macro</h2>
               <p>Đề xuất một bữa phù hợp hoàn hảo chỉ số đạm còn thiếu và tổng kcal của bạn:</p>
@@ -333,6 +427,84 @@ export default function DashboardPage() {
         <span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b> © 2026 NutriLens Health Inc. Đồng hành dinh dưỡng thông minh dựa trên AI.</span>
         <span className="footer-links">Điều khoản dịch vụ　 Chính sách bảo mật y tế　 Trung tâm hỗ trợ</span>
       </footer>
+
+      {/* ── Modal Ghi nhận cân nặng nhanh tại Dashboard ── */}
+      {quickLogOpen && (
+        <div className="hp-modal-backdrop" role="presentation" onMouseDown={() => setQuickLogOpen(false)}>
+          <section
+            className="hp-weight-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-log-title"
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ maxWidth: '400px' }}
+          >
+            <div className="hp-weight-modal__header">
+              <div>
+                <span>Cập nhật nhanh</span>
+                <h2 id="quick-log-title">Cân nặng hôm nay</h2>
+              </div>
+              <button
+                type="button"
+                className="hp-weight-modal__close"
+                onClick={() => setQuickLogOpen(false)}
+                title="Đóng"
+                aria-label="Đóng"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickLogSubmit} noValidate>
+              <div className={`hp-field ${quickError ? 'is-invalid' : ''}`} style={{ marginTop: '16px' }}>
+                <label htmlFor="quickWeightInput">Nhập cân nặng hiện tại (kg)</label>
+                <div className="hp-unit-input">
+                  <input
+                    id="quickWeightInput"
+                    type="number"
+                    min="20"
+                    max="300"
+                    step="0.1"
+                    inputMode="decimal"
+                    placeholder="ví dụ: 65.5"
+                    autoFocus
+                    value={quickWeight}
+                    onChange={(e) => {
+                      setQuickWeight(e.target.value)
+                      setQuickError('')
+                    }}
+                  />
+                  <span>kg</span>
+                </div>
+                {quickError && <span className="hp-field__error">{quickError}</span>}
+              </div>
+
+              <div style={{ marginTop: '14px', fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <i className="bi bi-info-circle" />
+                <span>Số liệu sẽ tự động tính toán lại BMI, BMR và TDEE của bạn.</span>
+              </div>
+
+              <div className="hp-weight-modal__actions" style={{ marginTop: '20px' }}>
+                <button
+                  type="button"
+                  className="hp-weight-modal__cancel"
+                  onClick={() => setQuickLogOpen(false)}
+                  disabled={savingQuick}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="hp-weight-modal__save"
+                  disabled={savingQuick}
+                >
+                  {savingQuick ? 'Đang lưu…' : 'Lưu kết quả'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   )
 }

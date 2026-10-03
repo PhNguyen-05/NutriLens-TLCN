@@ -13,11 +13,11 @@ const PHONE_RE = /^0\d{9}$/
 const CALORIE_FLOOR = { male: 1500, female: 1200 }
 
 const ACTIVITY_OPTIONS = [
-  { value: 'sedentary', label: 'Ít vận động', detail: 'Hầu như chỉ ngồi hoặc nằm', icon: 'bi-person-seated' },
-  { value: 'light', label: 'Vận động nhẹ', detail: 'Đi bộ hoặc tập nhẹ 1–3 ngày/tuần', icon: 'bi-person-walking' },
-  { value: 'moderate', label: 'Vận động vừa', detail: 'Tập luyện 3–5 ngày/tuần', icon: 'bi-bicycle' },
-  { value: 'active', label: 'Năng động', detail: 'Tập luyện 6–7 ngày/tuần', icon: 'bi-lightning-charge' },
-  { value: 'very_active', label: 'Rất năng động', detail: 'Lao động nặng hoặc tập cường độ cao', icon: 'bi-trophy' },
+  { value: 'sedentary', label: 'Ít vận động', detail: 'Hầu như chỉ ngồi hoặc nằm', multiplier: 1.2, icon: 'bi-person-seated' },
+  { value: 'light', label: 'Vận động nhẹ', detail: 'Đi bộ hoặc tập nhẹ 1–3 ngày/tuần', multiplier: 1.375, icon: 'bi-person-walking' },
+  { value: 'moderate', label: 'Vận động vừa', detail: 'Tập luyện 3–5 ngày/tuần', multiplier: 1.55, icon: 'bi-bicycle' },
+  { value: 'active', label: 'Năng động', detail: 'Tập luyện 6–7 ngày/tuần', multiplier: 1.725, icon: 'bi-lightning-charge' },
+  { value: 'very_active', label: 'Rất năng động', detail: 'Lao động nặng hoặc tập cường độ cao', multiplier: 1.9, icon: 'bi-trophy' },
 ]
 
 const NUTRITION_GOAL_OPTIONS = [
@@ -85,23 +85,129 @@ const EMPTY_FORM = {
   dietaryPreferences: [], allergies: '', medicalConditions: '', specialConditions: []
 }
 
+const BMI_REFERENCE_ROWS = [
+  {
+    key: 'underweight',
+    label: 'Cân nặng thấp (gầy)',
+    who: '< 18,5',
+    idiWpro: '< 18,5',
+    color: '#3b82f6',
+    bg: '#eff6ff',
+    matches: (b) => b < 18.5,
+  },
+  {
+    key: 'normal',
+    label: 'Bình thường',
+    who: '18,5 – 24,9',
+    idiWpro: '18,5 – 22,9',
+    color: '#10b981',
+    bg: '#ecfdf5',
+    matches: (b) => b >= 18.5 && b < 23.0,
+  },
+  {
+    key: 'overweight_general',
+    label: 'Thừa cân (chung)',
+    who: '≥ 25',
+    idiWpro: '≥ 23',
+    color: '#f59e0b',
+    bg: '#fffbeb',
+    isGroupHeader: true,
+  },
+  {
+    key: 'preobese',
+    label: '↳ Tiền béo phì',
+    who: '25 – 29,9',
+    idiWpro: '23 – 24,9',
+    color: '#f59e0b',
+    bg: '#fffbeb',
+    matches: (b) => b >= 23.0 && b < 25.0,
+  },
+  {
+    key: 'obese1',
+    label: '↳ Béo phì độ I',
+    who: '30 – 34,9',
+    idiWpro: '25 – 29,9',
+    color: '#ef4444',
+    bg: '#fef2f2',
+    matches: (b) => b >= 25.0 && b < 30.0,
+  },
+  {
+    key: 'obese2',
+    label: '↳ Béo phì độ II',
+    who: '35 – 39,9',
+    idiWpro: '≥ 30',
+    color: '#dc2626',
+    bg: '#fef2f2',
+    matches: (b) => b >= 30.0,
+  },
+  {
+    key: 'obese3',
+    label: '↳ Béo phì độ III',
+    who: '≥ 40',
+    idiWpro: '—',
+    color: '#991b1b',
+    bg: '#fee2e2',
+    matches: () => false,
+  },
+]
+
 // ---------------------------------------------------------------------------
 // Pure helper functions
 // ---------------------------------------------------------------------------
 
 /**
- * Phân loại BMI theo chuẩn WHO Châu Á.
- * Vị trí kim (pct) được tính liên tục từ BMI 14→35 → 0→100%
- * để kim phản ánh đúng giá trị thực, không bị nhảy cóc theo nhóm.
+ * Phân loại BMI theo chuẩn WHO Châu Á (IDI & WPRO).
+ * 4 phân đoạn trực quan bằng nhau (25% mỗi đoạn) để chữ và vạch chia khớp 100%:
+ * 1. Thiếu cân: < 18.5 (vùng 0% -> 25%, tâm 12.5%)
+ * 2. Bình thường: 18.5 -> 22.9 (vùng 25% -> 50%, tâm 37.5%)
+ * 3. Thừa cân: 23.0 -> 24.9 (vùng 50% -> 75%, tâm 62.5%)
+ * 4. Béo phì: >= 25.0 (vùng 75% -> 100%, tâm 87.5%)
  */
 function getBmiCategory(bmi) {
   const b = Number(bmi)
-  const pct = Math.max(0, Math.min(100, ((b - 14) / 21) * 100))
-  if (b < 18.5) return { label: 'Thiếu cân', color: '#3b82f6', bg: '#eff6ff', pct }
-  if (b < 23) return { label: 'Bình thường', color: '#10b981', bg: '#ecfdf5', pct }
-  if (b < 25) return { label: 'Thừa cân', color: '#f59e0b', bg: '#fffbeb', pct }
-  return { label: 'Béo phì', color: '#ef4444', bg: '#fef2f2', pct }
+  if (!b || b <= 0) return null
+
+  if (b < 18.5) {
+    const pct = ((Math.max(14, b) - 14) / (18.5 - 14)) * 25
+    return {
+      label: 'Thiếu cân',
+      color: '#3b82f6',
+      bg: '#eff6ff',
+      pct: Math.min(24, Math.max(3, pct)),
+      rowKey: 'underweight',
+    }
+  }
+  if (b < 23) {
+    const pct = 25 + ((b - 18.5) / (23 - 18.5)) * 25
+    return {
+      label: 'Bình thường',
+      color: '#10b981',
+      bg: '#ecfdf5',
+      pct: Math.min(49, Math.max(26, pct)),
+      rowKey: 'normal',
+    }
+  }
+  if (b < 25) {
+    const pct = 50 + ((b - 23) / (25 - 23)) * 25
+    return {
+      label: 'Thừa cân',
+      color: '#f59e0b',
+      bg: '#fffbeb',
+      pct: Math.min(74, Math.max(51, pct)),
+      rowKey: 'preobese',
+    }
+  }
+  // Béo phì (>= 25)
+  const pct = 75 + ((Math.min(35, b) - 25) / (35 - 25)) * 25
+  return {
+    label: 'Béo phì',
+    color: '#ef4444',
+    bg: '#fef2f2',
+    pct: Math.min(97, Math.max(76, pct)),
+    rowKey: b >= 30 ? 'obese2' : 'obese1',
+  }
 }
+
 
 /**
  * Gợi ý mục tiêu từ hệ thống dựa trên BMI.
@@ -183,6 +289,54 @@ function formatLogDate(date) {
   return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(
     new Date(`${dateStr}T00:00:00`)
   )
+}
+
+/** Chuyển ISO YYYY-MM-DD sang định dạng hiển thị dd/mm/yyyy */
+function isoToDisplayDate(iso) {
+  if (!iso || typeof iso !== 'string') return ''
+  const parts = iso.slice(0, 10).split('-')
+  if (parts.length !== 3) return ''
+  const [y, m, d] = parts
+  if (!y || !m || !d) return ''
+  return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`
+}
+
+/** Chuyển định dạng người dùng nhập dd/mm/yy hoặc dd/mm/yyyy sang ISO YYYY-MM-DD */
+function parseDobToIso(input) {
+  if (!input || typeof input !== 'string') return ''
+  const parts = input.trim().split('/')
+  if (parts.length !== 3) return ''
+  let [d, m, y] = parts.map((p) => p.trim())
+  if (!d || !m || !y) return ''
+
+  const day = parseInt(d, 10)
+  const month = parseInt(m, 10)
+  let year = parseInt(y, 10)
+
+  if (isNaN(day) || isNaN(month) || isNaN(year)) return ''
+
+  // Hỗ trợ cả 2 chữ số (yy) và 4 chữ số (yyyy)
+  if (y.length === 2) {
+    const curYear = new Date().getFullYear()
+    const curCentury = Math.floor(curYear / 100) * 100
+    const cutoff = curYear % 100
+    year = year <= cutoff ? curCentury + year : curCentury - 100 + year
+  } else if (y.length !== 4) {
+    return ''
+  }
+
+  if (month < 1 || month > 12) return ''
+  if (day < 1 || day > 31) return ''
+  if (year < 1900 || year > new Date().getFullYear()) return ''
+
+  // Kiểm tra số ngày thực tế trong tháng
+  const maxDays = new Date(year, month, 0).getDate()
+  if (day > maxDays) return ''
+
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  if (iso > getLocalDateValue()) return ''
+
+  return iso
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +459,12 @@ export default function HealthProfilePage() {
   const [customized, setCustomized] = useState(false)
   const [customForm, setCustomForm] = useState({ calorieTarget: '', protein: '', carbs: '', fat: '' })
 
+  // Chế độ xem bảng phân loại BMI: 'table' (bảng phân tích) hoặc 'image' (ảnh bảng gốc)
+  const [bmiTableView, setBmiTableView] = useState('table')
+
+  // Ngày sinh hiển thị theo chuẩn dd/mm/yy hoặc dd/mm/yyyy
+  const [dobDisplay, setDobDisplay] = useState('')
+
   // Cleanup navigate timeout on unmount
   useEffect(() => {
     return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current) }
@@ -371,10 +531,13 @@ export default function HealthProfilePage() {
         } = profile
         const initialGoal = nutritionGoal?.goal || healthGoal || 'maintain_weight'
 
+        const rawDob = data.user?.dateOfBirth ? data.user.dateOfBirth.slice(0, 10) : ''
+        setDobDisplay(isoToDisplayDate(rawDob))
+
         setForm({
           fullName: data.user?.fullName || '',
           phone: data.user?.phone || '',
-          dateOfBirth: data.user?.dateOfBirth ? data.user.dateOfBirth.slice(0, 10) : '',
+          dateOfBirth: rawDob,
           gender: data.user?.gender || '',
           avatarUrl: data.user?.avatarUrl || '',
           heightCm: String(heightCm ?? ''),
@@ -699,6 +862,45 @@ export default function HealthProfilePage() {
     setSuccess('')
   }
 
+  function handleDobChange(e) {
+    let val = e.target.value
+    // Chỉ cho phép gõ số và dấu /
+    val = val.replace(/[^0-9/]/g, '')
+
+    // Tự động thêm dấu / khi người dùng gõ chuỗi số liên tục
+    const digits = val.replace(/\D/g, '')
+    let formatted = val
+    if (!val.includes('/')) {
+      if (digits.length > 4) {
+        formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4, 8)}`
+      } else if (digits.length > 2) {
+        formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`
+      } else {
+        formatted = digits
+      }
+    }
+
+    setDobDisplay(formatted)
+    setError('')
+    setSuccess('')
+
+    const iso = parseDobToIso(formatted)
+    if (iso) {
+      setForm((c) => ({ ...c, dateOfBirth: iso }))
+    } else {
+      setForm((c) => ({ ...c, dateOfBirth: '' }))
+    }
+  }
+
+  function handleDobBlur() {
+    if (!dobDisplay.trim()) return
+    const iso = parseDobToIso(dobDisplay)
+    if (iso) {
+      setDobDisplay(isoToDisplayDate(iso))
+      setForm((c) => ({ ...c, dateOfBirth: iso }))
+    }
+  }
+
   function togglePreference(preference) {
     setForm((current) => ({
       ...current,
@@ -908,7 +1110,11 @@ export default function HealthProfilePage() {
       !form.fullName.trim() || !form.phone || !form.dateOfBirth ||
       !form.gender || !form.heightCm || !form.currentWeightKg || !form.activityLevel
     ) {
-      setError('Vui lòng hoàn tất các thông tin bắt buộc được đánh dấu.')
+      if (!form.dateOfBirth && dobDisplay.trim()) {
+        setError('Ngày sinh không hợp lệ. Vui lòng nhập đúng định dạng ngày/tháng/năm (dd/mm/yy hoặc dd/mm/yyyy).')
+      } else {
+        setError('Vui lòng hoàn tất các thông tin bắt buộc được đánh dấu.')
+      }
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
@@ -1220,24 +1426,53 @@ export default function HealthProfilePage() {
                 {isInvalid('gender') && <span className="hp-field__error">Vui lòng chọn giới tính</span>}
               </div>
 
-              <div className={`hp-field ${isInvalid('dateOfBirth') ? 'is-invalid' : ''}`}>
-                <label htmlFor="dateOfBirth">
+              <div className={`hp-field ${submitted && !form.dateOfBirth ? 'is-invalid' : isInvalid('dateOfBirth') ? 'is-invalid' : ''}`}>
+                <label htmlFor="dobDisplay">
                   Ngày sinh <span className="hp-required">*</span>
+                  <span className="hp-field__hint-inline">(dd/mm/yy)</span>
                   {age > 0 && (
                     <span style={{ marginLeft: '8px', color: '#10b981', fontWeight: 600, fontSize: '0.85rem' }}>
                       ({age} tuổi)
                     </span>
                   )}
                 </label>
-                <input
-                  id="dateOfBirth"
-                  name="dateOfBirth"
-                  type="date"
-                  max={getLocalDateValue()}
-                  value={form.dateOfBirth}
-                  onChange={updateField}
-                />
-                {isInvalid('dateOfBirth') && <span className="hp-field__error">Vui lòng chọn ngày sinh</span>}
+                <div className="hp-dob-input">
+                  <input
+                    id="dobDisplay"
+                    name="dobDisplay"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="dd/mm/yy (vd: 15/05/98 hoặc 15/05/1998)"
+                    maxLength="10"
+                    value={dobDisplay}
+                    onChange={handleDobChange}
+                    onBlur={handleDobBlur}
+                    autoComplete="bday"
+                  />
+                  <label className="hp-dob-input__picker-btn" title="Chọn ngày từ lịch">
+                    <i className="bi bi-calendar3" />
+                    <input
+                      type="date"
+                      tabIndex="-1"
+                      max={getLocalDateValue()}
+                      value={form.dateOfBirth}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setForm((c) => ({ ...c, dateOfBirth: val }))
+                        setDobDisplay(isoToDisplayDate(val))
+                        setError('')
+                        setSuccess('')
+                      }}
+                    />
+                  </label>
+                </div>
+                {(isInvalid('dateOfBirth') || (submitted && !form.dateOfBirth)) && (
+                  <span className="hp-field__error">
+                    {dobDisplay.trim()
+                      ? 'Ngày sinh không hợp lệ (vui lòng nhập dạng dd/mm/yy hoặc dd/mm/yyyy)'
+                      : 'Vui lòng nhập ngày sinh'}
+                  </span>
+                )}
                 {/* Cảnh báo dưới 18 tuổi */}
                 {age > 0 && age < 18 && (
                   <div className="hp-field__warning">
@@ -1249,15 +1484,14 @@ export default function HealthProfilePage() {
             </div>
           </section>
 
-          {/* ── Section 2: Chỉ số thể chất ── */}
+          {/* ── Section 2: Chỉ số thể chất & BMI ── */}
           <section className="hp-card" aria-labelledby="sec-body">
             <div className="hp-card__header">
               <div className="hp-card__badge">2</div>
               <div>
-                <h2 id="sec-body">Chỉ số thể chất &amp; Chuyển hóa</h2>
-                <p>NutriLens ứng dụng công thức Mifflin-St Jeor để ước tính BMR và TDEE. <em>Lưu ý: BMR/TDEE chỉ là ước tính (sai số khoảng ±10%) — nên điều chỉnh sau 2–4 tuần dựa trên xu hướng cân nặng thực tế.</em></p>
+                <h2 id="sec-body">Chỉ số thể chất &amp; Phân loại BMI</h2>
+                <p>NutriLens đánh giá thể trạng dựa trên chuẩn BMI dành riêng cho người Châu Á (WHO &amp; IDI/WPRO).</p>
               </div>
-
             </div>
 
             <div className="hp-grid hp-grid--2">
@@ -1294,51 +1528,156 @@ export default function HealthProfilePage() {
               </div>
             </div>
 
-            {/* BMI + BMR/TDEE display */}
-            {(bmi || bmr) && (
+            {/* BMI display & Bảng phân loại chi tiết */}
+            {bmi && bmiInfo && (
               <div className="hp-metrics">
-                {bmi && bmiInfo && (
-                  <div className="hp-bmi">
-                    <div className="hp-bmi__left">
-                      <span className="hp-bmi__label">Chỉ số khối cơ thể (BMI)</span>
-                      <strong className="hp-bmi__value" style={{ color: bmiInfo.color }}>{bmi}</strong>
-                      <span className="hp-bmi__cat" style={{ color: bmiInfo.color, backgroundColor: bmiInfo.bg }}>
-                        {bmiInfo.label} (WHO Châu Á)
-                      </span>
-                    </div>
-                    <div className="hp-bmi__right">
-                      <div className="hp-bmi__bar">
-                        <div className="hp-bmi__track" />
-                        <div className="hp-bmi__needle" style={{ left: `${bmiInfo.pct}%`, backgroundColor: bmiInfo.color }} />
-                      </div>
-                      <div className="hp-bmi__scale">
-                        <span>Thiếu cân</span><span>Bình thường</span><span>Thừa cân</span><span>Béo phì</span>
-                      </div>
-                    </div>
+                <div className="hp-bmi">
+                  <div className="hp-bmi__left">
+                    <span className="hp-bmi__label">Chỉ số khối cơ thể (BMI)</span>
+                    <strong className="hp-bmi__value" style={{ color: bmiInfo.color }}>{bmi}</strong>
+                    <span className="hp-bmi__cat" style={{ color: bmiInfo.color, backgroundColor: bmiInfo.bg }}>
+                      {bmiInfo.label} (WHO Châu Á)
+                    </span>
                   </div>
-                )}
-                {bmr && (
-                  <div className="hp-bmr-stats">
-                    <div className="hp-bmr-stat">
-                      <i className="bi bi-fire" />
-                      <div>
-                        <strong>{bmr.toLocaleString('vi-VN')} <span>kcal/ngày</span></strong>
-                        <p>BMR (Năng lượng chuyển hóa cơ bản)</p>
-                      </div>
-                    </div>
-                    {tdee && (
-                      <div className="hp-bmr-stat">
-                        <i className="bi bi-lightning-charge" />
-                        <div>
-                          <strong>{tdee.toLocaleString('vi-VN')} <span>kcal/ngày</span></strong>
-                          <p>TDEE (Tổng năng lượng tiêu hao cả ngày)</p>
+                  <div className="hp-bmi__right">
+                    <div className="hp-bmi__bar-wrap">
+                      {/* Thanh 4 phân đoạn chuẩn hóa bằng nhau (25% mỗi đoạn) */}
+                      <div className="hp-bmi__bar">
+                        <div className="hp-bmi__seg hp-bmi__seg--underweight" title="Thiếu cân (< 18.5)" />
+                        <div className="hp-bmi__seg hp-bmi__seg--normal" title="Bình thường (18.5 – 22.9)" />
+                        <div className="hp-bmi__seg hp-bmi__seg--overweight" title="Thừa cân (23.0 – 24.9)" />
+                        <div className="hp-bmi__seg hp-bmi__seg--obese" title="Béo phì (≥ 25.0)" />
+
+                        {/* Kim chỉ thị nội suy mượt mà trong từng phân đoạn */}
+                        <div
+                          className="hp-bmi__needle"
+                          style={{ left: `${bmiInfo.pct}%`, backgroundColor: bmiInfo.color }}
+                          title={`BMI của bạn: ${bmi} (${bmiInfo.label})`}
+                        >
+                          <span className="hp-bmi__needle-val">{bmi}</span>
                         </div>
                       </div>
-                    )}
+
+                      {/* 4 cột nhãn phân loại khớp chính xác 100% với 4 đoạn màu */}
+                      <div className="hp-bmi__scale-grid">
+                        <div className={`hp-bmi__scale-col ${bmiInfo.label === 'Thiếu cân' ? 'is-active' : ''}`}>
+                          <strong>Thiếu cân</strong>
+                          <small>&lt; 18,5</small>
+                        </div>
+                        <div className={`hp-bmi__scale-col ${bmiInfo.label === 'Bình thường' ? 'is-active' : ''}`}>
+                          <strong>Bình thường</strong>
+                          <small>18,5 – 22,9</small>
+                        </div>
+                        <div className={`hp-bmi__scale-col ${bmiInfo.label === 'Thừa cân' ? 'is-active' : ''}`}>
+                          <strong>Thừa cân</strong>
+                          <small>23 – 24,9</small>
+                        </div>
+                        <div className={`hp-bmi__scale-col ${bmiInfo.label === 'Béo phì' ? 'is-active' : ''}`}>
+                          <strong>Béo phì</strong>
+                          <small>≥ 25</small>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                )}
+                </div>
+
+                {/* Bảng & hình ảnh phân loại BMI chi tiết */}
+                <div className="hp-bmi-detail-card">
+                  <div className="hp-bmi-detail-card__header">
+                    <div className="hp-bmi-detail-card__title">
+                      <i className="bi bi-table" />
+                      <div>
+                        <h3>Bảng phân loại chỉ số BMI chi tiết</h3>
+                        <p>So sánh tiêu chuẩn WHO (Toàn cầu) và IDI &amp; WPRO (Khuyến nghị cho người Châu Á)</p>
+                      </div>
+                    </div>
+                    <div className="hp-bmi-detail-card__tabs">
+                      <button
+                        type="button"
+                        className={`hp-bmi-tab-btn ${bmiTableView === 'table' ? 'is-active' : ''}`}
+                        onClick={() => setBmiTableView('table')}
+                      >
+                        <i className="bi bi-grid-3x3" /> Bảng phân tích
+                      </button>
+                      <button
+                        type="button"
+                        className={`hp-bmi-tab-btn ${bmiTableView === 'image' ? 'is-active' : ''}`}
+                        onClick={() => setBmiTableView('image')}
+                      >
+                        <i className="bi bi-image" /> Xem hình ảnh gốc
+                      </button>
+                    </div>
+                  </div>
+
+                  {bmiTableView === 'table' ? (
+                    <div className="hp-bmi-table-responsive">
+                      <table className="hp-bmi-table">
+                        <thead>
+                          <tr>
+                            <th>Phân loại</th>
+                            <th>BMI (kg/m²) - WHO</th>
+                            <th>BMI (kg/m²) - IDI &amp; WPRO <em>(Châu Á) ✦</em></th>
+                            <th>Trạng thái của bạn</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {BMI_REFERENCE_ROWS.map((row) => {
+                            const isUserMatch = !row.isGroupHeader && row.matches && row.matches(Number(bmi))
+                            return (
+                              <tr
+                                key={row.key}
+                                className={`hp-bmi-table__row hp-bmi-table__row--${row.key} ${isUserMatch ? 'is-user-current' : ''} ${row.isGroupHeader ? 'is-group-header' : ''}`}
+                              >
+                                <td className="hp-bmi-table__cell-label">
+                                  <span className="hp-bmi-table__color-dot" style={{ backgroundColor: row.color }} />
+                                  {row.label}
+                                </td>
+                                <td className="hp-bmi-table__cell-val">{row.who}</td>
+                                <td className="hp-bmi-table__cell-val hp-bmi-table__cell-val--wpro">
+                                  {row.idiWpro}
+                                </td>
+                                <td className="hp-bmi-table__cell-status">
+                                  {isUserMatch ? (
+                                    <span className="hp-bmi-table__user-badge" style={{ color: bmiInfo.color, borderColor: bmiInfo.color, backgroundColor: bmiInfo.bg }}>
+                                      <i className="bi bi-check-circle-fill" /> Vị trí của bạn ({bmi})
+                                    </span>
+                                  ) : row.isGroupHeader ? (
+                                    <span className="hp-bmi-table__sub-note">—</span>
+                                  ) : (
+                                    <span className="hp-bmi-table__empty-dash">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                      <div className="hp-bmi-table__source">
+                        <i className="bi bi-info-circle-fill" />
+                        <span>
+                          <strong>✦ NutriLens áp dụng chuẩn IDI &amp; WPRO</strong>: Người Châu Á có nguy cơ bệnh lý chuyển hóa ở mức BMI thấp hơn (ngưỡng thừa cân ≥ 23, béo phì ≥ 25). Nguồn: WHO (1999); IDI &amp; WPRO (2000).
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hp-bmi-image-view">
+                      <div className="hp-bmi-image-frame">
+                        <img
+                          src="/bmi-reference-table.jpg"
+                          alt="Bảng chi tiết phân loại BMI - WHO và IDI & WPRO"
+                          className="hp-bmi-reference-img"
+                        />
+                      </div>
+                      <p className="hp-bmi-table__source">
+                        <i className="bi bi-info-circle-fill" />
+                        <span>Hình ảnh bảng phân loại chuẩn y khoa đối chiếu giữa WHO và IDI &amp; WPRO.</span>
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+
 
             {/* Gợi ý từ hệ thống — xuất hiện ngay khi có BMI hợp lệ */}
             {systemAdvice && bmiInfo && (
@@ -1360,30 +1699,56 @@ export default function HealthProfilePage() {
             )}
 
             {/* Biểu đồ cân nặng */}
+            {/* Biểu đồ cân nặng & Liên kết theo dõi tiến trình */}
             <div className="hp-weight-history">
               <div className="hp-weight-history__header">
                 <div>
                   <h3>Tiến triển cân nặng theo thời gian</h3>
                   <p>Theo dõi biểu đồ thay đổi cân nặng qua các lần ghi nhận thực tế.</p>
                 </div>
-                <button
-                  type="button" className="hp-weight-history__add"
-                  onClick={openWeightDialog} title="Ghi nhận cân nặng mới" aria-label="Ghi nhận cân nặng"
-                >
-                  <i className="bi bi-plus-lg" />
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <Link
+                    to="/weight-tracker"
+                    style={{
+                      padding: '6px 12px', borderRadius: '8px',
+                      background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46',
+                      fontSize: '12px', fontWeight: 700, textDecoration: 'none',
+                      display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    }}
+                    title="Mở trang Theo dõi cân nặng chi tiết & Lịch sử đầy đủ"
+                  >
+                    <i className="bi bi-graph-up-arrow" /> Mở trang Tiến trình
+                  </Link>
+                  <button
+                    type="button" className="hp-weight-history__add"
+                    onClick={openWeightDialog} title="Ghi nhận cân nặng mới" aria-label="Ghi nhận cân nặng"
+                  >
+                    <i className="bi bi-plus-lg" />
+                  </button>
+                </div>
               </div>
               <WeightChart weightLogs={weightLogs} />
+              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                <Link
+                  to="/weight-tracker"
+                  style={{
+                    fontSize: '12.5px', fontWeight: 600, color: '#059669',
+                    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px'
+                  }}
+                >
+                  Xem phân tích xu hướng, bộ lọc thời gian &amp; quản lý lịch sử →
+                </Link>
+              </div>
             </div>
           </section>
 
-          {/* ── Section 3: Mức độ vận động ── */}
+          {/* ── Section 3: Mức độ vận động & Tiêu hao năng lượng (TDEE) ── */}
           <section className="hp-card" aria-labelledby="sec-activity">
             <div className="hp-card__header">
               <div className="hp-card__badge">3</div>
               <div>
                 <h2 id="sec-activity">Mức độ vận động thể chất <span className="hp-required">*</span></h2>
-                <p>Chọn mức phù hợp nhất với thói quen sinh hoạt và tập luyện trong tuần.</p>
+                <p>Chọn mức độ vận động để NutriLens tính toán chính xác tổng năng lượng tiêu hao mỗi ngày (TDEE) từ năng lượng chuyển hóa cơ bản (BMR).</p>
               </div>
             </div>
             <div className="hp-activity-grid">
@@ -1395,7 +1760,10 @@ export default function HealthProfilePage() {
                     <input type="radio" name="activityLevel" value={opt.value} checked={isActive} onChange={updateField} />
                     <div className="hp-activity-card__icon"><i className={`bi ${opt.icon}`} /></div>
                     <div className="hp-activity-card__body">
-                      <strong>{opt.label}</strong>
+                      <div className="hp-activity-card__head">
+                        <strong>{opt.label}</strong>
+                        <span className="hp-activity-card__mult">×{opt.multiplier}</span>
+                      </div>
                       <small>{opt.detail}</small>
                     </div>
                     <i className="bi bi-check-circle-fill hp-activity-card__check" />
@@ -1406,6 +1774,62 @@ export default function HealthProfilePage() {
             {isInvalid('activityLevel') && (
               <div className="hp-section-error"><i className="bi bi-exclamation-triangle" /> Vui lòng chọn mức độ vận động</div>
             )}
+
+            {/* Hiển thị BMR & TDEE sau khi chọn mức độ vận động */}
+            {bmr && form.activityLevel && tdee ? (
+              <div className="hp-activity-results">
+                <div className="hp-activity-results__header">
+                  <div className="hp-activity-results__title">
+                    <i className="bi bi-fire" />
+                    <div>
+                      <h3>Chỉ số chuyển hóa &amp; Tiêu hao năng lượng (Mifflin-St Jeor)</h3>
+                      <p>Dựa trên chỉ số thể chất kết hợp với mức độ vận động bạn vừa chọn</p>
+                    </div>
+                  </div>
+                  <span className="hp-activity-results__tag">
+                    <i className="bi bi-check2-circle" /> Đã cập nhật theo mức vận động
+                  </span>
+                </div>
+
+                <div className="hp-bmr-stats">
+                  <div className="hp-bmr-stat">
+                    <i className="bi bi-heart-pulse-fill" />
+                    <div>
+                      <strong>{bmr.toLocaleString('vi-VN')} <span>kcal/ngày</span></strong>
+                      <p>BMR (Năng lượng chuyển hóa cơ bản)</p>
+                      <small className="hp-bmr-stat__detail">Lượng calo tối thiểu cơ thể cần ở trạng thái nghỉ ngơi hoàn toàn</small>
+                    </div>
+                  </div>
+                  <div className="hp-bmr-stat hp-bmr-stat--highlight">
+                    <i className="bi bi-lightning-charge-fill" />
+                    <div>
+                      <strong>{tdee.toLocaleString('vi-VN')} <span>kcal/ngày</span></strong>
+                      <p>TDEE (Tổng năng lượng tiêu hao cả ngày)</p>
+                      <small className="hp-bmr-stat__detail">
+                        = BMR ({bmr.toLocaleString('vi-VN')} kcal) × {ACTIVITY_OPTIONS.find((o) => o.value === form.activityLevel)?.multiplier || 1.2} ({ACTIVITY_OPTIONS.find((o) => o.value === form.activityLevel)?.label})
+                      </small>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hp-activity-results__footer">
+                  <i className="bi bi-info-circle-fill" />
+                  <span>
+                    Chỉ số <strong>TDEE ({tdee.toLocaleString('vi-VN')} kcal/ngày)</strong> phản ánh tổng lượng calo cơ thể bạn đốt cháy mỗi ngày và là căn cứ cốt lõi để xác định mục tiêu calo ở bước tiếp theo.
+                  </span>
+                </div>
+              </div>
+            ) : bmr && !form.activityLevel ? (
+              <div className="hp-activity-prompt">
+                <div className="hp-activity-prompt__icon">
+                  <i className="bi bi-arrow-up-circle-fill" />
+                </div>
+                <div>
+                  <strong>BMR của bạn là {bmr.toLocaleString('vi-VN')} kcal/ngày</strong>
+                  <p>Vui lòng chọn 1 mức độ vận động ở trên để hệ thống tính toán chính xác chỉ số <strong>TDEE</strong> (Tổng năng lượng tiêu hao hàng ngày).</p>
+                </div>
+              </div>
+            ) : null}
           </section>
 
           {/* ── Section 4: Mục tiêu dinh dưỡng ── */}
@@ -1504,13 +1928,19 @@ export default function HealthProfilePage() {
                     </small>
                   )}
                   {estimatedWeeks && (
-                    <div className="hp-advice-note hp-advice-note--info" style={{ marginTop: '8px' }}>
-                      <i className="bi bi-clock" />
-                      Ước tính đạt mục tiêu sau khoảng <strong>{estimatedWeeks} tuần</strong>
-                      {' '}({Math.round(estimatedWeeks / 4.3)} tháng) với chế độ hiện tại.
-                      <small style={{ display: 'block', marginTop: '4px', color: '#64748b' }}>
+                    <div className="hp-estimate-row">
+                      <div className="hp-estimate-row__main">
+                        <i className="bi bi-clock-history" />
+                        <span>Ước tính đạt mục tiêu sau khoảng</span>
+                        <strong className="hp-estimate-row__value">
+                          {estimatedWeeks} tuần
+                          <em>({Math.round(estimatedWeeks / 4.3)} tháng)</em>
+                        </strong>
+                      </div>
+                      <p className="hp-estimate-row__note">
+                        <i className="bi bi-info-circle" />
                         Chỉ mang tính tham khảo — kết quả thực tế phụ thuộc vào nhiều yếu tố.
-                      </small>
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1671,61 +2101,62 @@ export default function HealthProfilePage() {
               </div>
             </div>
 
-            {/* Tình trạng sức khỏe đặc biệt */}
-            <div className="hp-special-conditions" style={{ marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: '#374151', marginBottom: '8px' }}>
-                <i className="bi bi-heart-pulse me-1" style={{ color: '#ef4444' }} />
-                Tình trạng sức khỏe đặc biệt
-              </h3>
-              <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '10px' }}>
-                Chọn nếu áp dụng — giúp hệ thống đưa ra lời khuyên phù hợp hơn.
-                <strong> BMI không phản ánh chính xác với người tập thể hình (cơ nhiều) hoặc người cao tuổi.</strong>
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {SPECIAL_CONDITIONS.map(({ key, label, icon }) => (
-                  <label
-                    key={key}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
-                      padding: '8px 12px', borderRadius: '8px', border: '1.5px solid',
-                      borderColor: form.specialConditions?.includes(key) ? '#ef4444' : '#e2e8f0',
-                      backgroundColor: form.specialConditions?.includes(key) ? '#fff5f5' : '#fafafa',
-                      fontSize: '0.88rem', fontWeight: 500,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form.specialConditions?.includes(key) ?? false}
-                      onChange={() => toggleSpecialCondition(key)}
-                      style={{ accentColor: '#ef4444', width: '16px', height: '16px' }}
-                    />
-                    <span>{icon} {label}</span>
-                  </label>
-                ))}
-              </div>
-              {specialBlocksDeficit && form.healthGoal !== 'maintain_weight' && (
-                <div className="hp-advice-note hp-advice-note--danger" style={{ marginTop: '12px' }}>
-                  <i className="bi bi-exclamation-triangle-fill" />
-                  Với tình trạng sức khỏe đã chọn, mục tiêu thay đổi cân nặng không được khuyến nghị nếu chưa có tư vấn y tế.
+            <div className="hp-nutrition-grid">
+              {/* Cột trái: Tình trạng sức khỏe đặc biệt */}
+              <div className="hp-nutrition-col">
+                <div className="hp-nutrition-col__label">
+                  <i className="bi bi-heart-pulse" style={{ color: '#ef4444' }} />
+                  Tình trạng sức khỏe đặc biệt
                 </div>
-              )}
+                <div className="hp-special-list">
+                  {SPECIAL_CONDITIONS.map(({ key, label, icon }) => (
+                    <label
+                      key={key}
+                      className={`hp-special-item ${form.specialConditions?.includes(key) ? 'is-active' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.specialConditions?.includes(key) ?? false}
+                        onChange={() => toggleSpecialCondition(key)}
+                      />
+                      <span className="hp-special-item__icon">{icon}</span>
+                      <span className="hp-special-item__label">{label}</span>
+                      <i className="bi bi-check2 hp-special-item__check" />
+                    </label>
+                  ))}
+                </div>
+                {specialBlocksDeficit && form.healthGoal !== 'maintain_weight' && (
+                  <div className="hp-advice-note hp-advice-note--danger" style={{ marginTop: '10px' }}>
+                    <i className="bi bi-exclamation-triangle-fill" />
+                    Với tình trạng đã chọn, nên tham khảo bác sĩ trước khi thực hiện mục tiêu thay đổi cân nặng.
+                  </div>
+                )}
+              </div>
+
+              {/* Cột phải: Sở thích & Dị ứng */}
+              <div className="hp-nutrition-col">
+                <div className="hp-nutrition-col__label">
+                  <i className="bi bi-egg-fried" style={{ color: '#f59e0b' }} />
+                  Sở thích ăn uống
+                </div>
+                <div className="hp-tag-group">
+                  {DIETARY_OPTIONS.map(({ label, icon }) => (
+                    <button
+                      type="button" key={label}
+                      className={`hp-tag ${form.dietaryPreferences.includes(label) ? 'is-active' : ''}`}
+                      onClick={() => togglePreference(label)}
+                    >
+                      <span className="hp-tag__emoji">{icon}</span>
+                      {label}
+                      {form.dietaryPreferences.includes(label) && <i className="bi bi-x-circle-fill hp-tag__remove" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            <div className="hp-tag-group">
-              {DIETARY_OPTIONS.map(({ label, icon }) => (
-                <button
-                  type="button" key={label}
-                  className={`hp-tag ${form.dietaryPreferences.includes(label) ? 'is-active' : ''}`}
-                  onClick={() => togglePreference(label)}
-                >
-                  <span className="hp-tag__emoji">{icon}</span>
-                  {label}
-                  {form.dietaryPreferences.includes(label) && <i className="bi bi-x-circle-fill hp-tag__remove" />}
-                </button>
-              ))}
-            </div>
-
-            <div className="hp-grid hp-grid--2 mt-4">
+            {/* Dị ứng & Tình trạng cần lưu ý */}
+            <div className="hp-grid hp-grid--2" style={{ marginTop: '16px' }}>
               <div className="hp-field">
                 <label htmlFor="allergies">
                   <i className="bi bi-exclamation-triangle me-1" style={{ color: '#f59e0b' }} />
@@ -1735,26 +2166,25 @@ export default function HealthProfilePage() {
                   placeholder="Ví dụ: đậu phộng, hải sản, sữa bò..."
                   value={form.allergies} onChange={updateField}
                 />
-                <small className="hp-field__hint">Tối đa 500 ký tự. Thông tin được lưu riêng tư.</small>
+                <small className="hp-field__hint">Tối đa 500 ký tự · Thông tin được lưu riêng tư.</small>
               </div>
               <div className="hp-field">
                 <label htmlFor="medicalConditions">
-                  <i className="bi bi-heart-pulse me-1" style={{ color: '#ef4444' }} />
-                  Tình trạng sức khỏe cần lưu ý
+                  <i className="bi bi-clipboard2-pulse me-1" style={{ color: '#3b82f6' }} />
+                  Bệnh lý cần lưu ý
                 </label>
                 <textarea id="medicalConditions" name="medicalConditions" rows="3" maxLength="500"
                   placeholder="Ví dụ: tiểu đường, huyết áp cao, gút..."
                   value={form.medicalConditions} onChange={updateField}
                 />
-                <small className="hp-field__hint">Tối đa 500 ký tự. Thông tin được lưu riêng tư.</small>
+                <small className="hp-field__hint">Tối đa 500 ký tự · Thông tin được lưu riêng tư.</small>
               </div>
             </div>
 
-            {/* Nhắc nhở tham khảo bác sĩ khi có bệnh lý + mục tiêu thay đổi cân */}
             {form.medicalConditions.trim() && form.healthGoal !== 'maintain_weight' && (
               <div className="hp-advice-note hp-advice-note--warning" style={{ marginTop: '12px' }}>
-                <i className="bi bi-heart-pulse-fill" />
-                Bạn có tình trạng sức khỏe đặc biệt. Nên trao đổi với bác sĩ hoặc chuyên gia dinh dưỡng trước khi thực hiện mục tiêu thay đổi cân nặng.
+                <i className="bi bi-shield-exclamation" />
+                Bạn có bệnh lý cần lưu ý. Nên trao đổi với bác sĩ hoặc chuyên gia dinh dưỡng trước khi thực hiện mục tiêu thay đổi cân nặng.
               </div>
             )}
           </section>
