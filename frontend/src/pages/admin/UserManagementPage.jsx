@@ -73,6 +73,9 @@ export default function UserManagementPage() {
   const [lockReason, setLockReason] = useState('')
   const [lockDurationDays, setLockDurationDays] = useState(14)
   const [lockNote, setLockNote] = useState('')
+  const [unlockReason, setUnlockReason] = useState('')
+  const [unlockEvidence, setUnlockEvidence] = useState([])
+  const [draggingEvidence, setDraggingEvidence] = useState(false)
   const [actionError, setActionError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -124,6 +127,8 @@ export default function UserManagementPage() {
     setLockReason(lockReasons[0][0])
     setLockDurationDays(14)
     setLockNote('')
+    setUnlockReason('')
+    setUnlockEvidence([])
     if (user.status === 'locked') {
       setSelectedUser({ ...user, mode: 'unlock' })
       setLockTarget(null)
@@ -142,20 +147,39 @@ export default function UserManagementPage() {
       return
     }
 
+    if (!isLocking && !unlockReason.trim()) {
+      setActionError('Vui lòng nhập lý do yêu cầu mở khóa')
+      return
+    }
+    if (!isLocking && unlockEvidence.length === 0) {
+      setActionError('Vui lòng đính kèm ít nhất một minh chứng')
+      return
+    }
+
     setSaving(true)
     setActionError('')
     try {
-      await axiosInstance.patch(`/admin/users/${targetUser._id}/status`, {
-        status: isLocking ? 'locked' : 'active',
-        lockReason: isLocking ? lockReasons.find(([value]) => value === lockReason)?.[1] : undefined,
-        lockDurationDays: isLocking ? lockDurationDays : undefined,
-        lockNote: isLocking ? lockNote.trim() : undefined,
-      })
+      if (isLocking) {
+        await axiosInstance.patch(`/admin/users/${targetUser._id}/status`, {
+          status: 'locked',
+          lockReason: lockReasons.find(([value]) => value === lockReason)?.[1],
+          lockDurationDays,
+          lockNote: lockNote.trim(),
+        })
+      } else {
+        const formData = new FormData()
+        formData.append('status', 'active')
+        formData.append('unlockReason', unlockReason.trim())
+        unlockEvidence.forEach((file) => formData.append('evidence', file))
+        await axiosInstance.patch(`/admin/users/${targetUser._id}/status`, formData, { headers: { 'Content-Type': undefined } })
+      }
 
       setSelectedUser(null)
       setLockTarget(null)
       setLockReason('')
       setLockNote('')
+      setUnlockReason('')
+      setUnlockEvidence([])
 
       const { data } = await axiosInstance.get('/admin/users', { params: { search, status, authProvider, page, limit } })
       setUsers(data.data || [])
@@ -165,6 +189,33 @@ export default function UserManagementPage() {
       setActionError(requestError.response?.data?.message || 'Thao tác thất bại, vui lòng thử lại')
     } finally {
       setSaving(false)
+    }
+  }
+
+  function addUnlockEvidence(fileList) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf']
+    const selectedFiles = Array.from(fileList || [])
+    const validFiles = []
+
+    for (const file of selectedFiles) {
+      if (!allowedTypes.includes(file.type)) {
+        setActionError('Chỉ chấp nhận tệp JPG, PNG hoặc PDF')
+        continue
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setActionError(`Tệp ${file.name} vượt quá giới hạn 5 MB`)
+        continue
+      }
+      validFiles.push(file)
+    }
+
+    setUnlockEvidence((current) => [...current, ...validFiles].slice(0, 5))
+    if (unlockEvidence.length + validFiles.length > 5) {
+      setActionError('Bạn chỉ có thể tải lên tối đa 5 tệp')
+      return
+    }
+    if (validFiles.length && !selectedFiles.some((file) => !allowedTypes.includes(file.type) || file.size > 5 * 1024 * 1024)) {
+      setActionError('')
     }
   }
 
@@ -216,7 +267,7 @@ export default function UserManagementPage() {
 
       {selectedUser && (
         <div className="user-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedUser(null) }}>
-          <section className={selectedUser.mode === 'details' ? 'user-modal user-detail-modal' : 'user-modal'} role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+          <section className={selectedUser.mode === 'details' ? 'user-modal user-detail-modal' : 'user-modal user-unlock-modal'} role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
             {selectedUser.mode === 'details' ? (
               <div className="user-detail-panel">
                 <header className="user-detail-header">
@@ -282,14 +333,39 @@ export default function UserManagementPage() {
                 </div>
               </div>
             ) : (
-              <div className="user-modal-content">
-                <header>
-                  <h2 id="user-modal-title">Mở khóa tài khoản</h2>
+              <div className="unlock-modal-content">
+                <header className="unlock-modal-header">
+                  <span className="unlock-heading-icon"><i className="bi bi-unlock-fill" /></span>
+                  <div><h2 id="user-modal-title">Mở khóa tài khoản</h2><p>Xác nhận yêu cầu mở khóa tài khoản của người dùng. Tài khoản sẽ được mở khóa ngay sau khi xác nhận.</p></div>
                   <button aria-label="Đóng" onClick={() => setSelectedUser(null)}><i className="bi bi-x-lg" /></button>
                 </header>
-                <p>Bạn có chắc muốn mở khóa tài khoản {selectedUser.fullName}?</p>
-                {actionError && <p className="user-action-error" role="alert">{actionError}</p>}
-                <div className="user-modal-actions"><button onClick={() => { setSelectedUser(null); setActionError('') }}>Hủy bỏ</button><button className="user-modal-primary" disabled={saving} onClick={saveStatus}>{saving ? 'Đang xử lý...' : 'Xác nhận mở khóa'}</button></div>
+
+                <div className="unlock-user-banner">
+                  <span className="user-avatar large">{selectedUser.avatarUrl ? <img src={getAvatarUrl(selectedUser.avatarUrl)} alt="" /> : selectedUser.fullName?.charAt(0)?.toUpperCase()}</span>
+                  <div className="unlock-user-identity"><strong>{selectedUser.fullName || '—'}</strong><span className="unlock-user-id">#USR-{selectedUser._id?.slice(-4).toUpperCase()}</span><span className="unlock-user-email"><i className="bi bi-envelope" />{selectedUser.email}</span></div>
+                  <div className="unlock-user-fact"><i className="bi bi-calendar-date" /><span><small>Ngày sinh</small><strong>{selectedUser.dateOfBirth ? new Intl.DateTimeFormat('vi-VN').format(new Date(selectedUser.dateOfBirth)) : '—'}</strong></span></div>
+                  <div className="unlock-user-fact"><i className="bi bi-person" /><span><small>Giới tính</small><strong>{selectedUser.gender === 'female' ? 'Nữ' : selectedUser.gender === 'male' ? 'Nam' : '—'}</strong></span></div>
+                  <div className="unlock-current-status"><small>Trạng thái hiện tại</small><strong><i className="bi bi-lock-fill" />Đã khóa</strong></div>
+                </div>
+
+                <div className="unlock-form-panel">
+                  <label className="unlock-field-label" htmlFor="unlock-reason"><b>*</b>Lý do yêu cầu mở khóa</label>
+                  <div className="unlock-reason-wrap"><textarea id="unlock-reason" maxLength={500} value={unlockReason} onChange={(event) => setUnlockReason(event.target.value)} placeholder="Vui lòng nhập lý do người dùng yêu cầu mở khóa tài khoản..." rows="4" /><span>{unlockReason.length}/500</span></div>
+
+                  <div className="unlock-evidence-heading"><label className="unlock-field-label"><b>*</b>Minh chứng</label><p>Vui lòng cung cấp ảnh chụp màn hình, hình ảnh hoặc tài liệu chứng minh (ví dụ: ảnh CMND/CCCD, email xác nhận, ...).</p></div>
+                  <label className={`unlock-dropzone ${draggingEvidence ? 'dragging' : ''}`} onDragOver={(event) => { event.preventDefault(); setDraggingEvidence(true) }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setDraggingEvidence(false) }} onDrop={(event) => { event.preventDefault(); setDraggingEvidence(false); addUnlockEvidence(event.dataTransfer.files) }}>
+                    <input type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple onChange={(event) => { addUnlockEvidence(event.target.files); event.target.value = '' }} />
+                    <i className="bi bi-cloud-arrow-up-fill" />
+                    <strong>Kéo thả tệp vào đây hoặc nhấn để chọn</strong>
+                    <span>Hỗ trợ: JPG, PNG, PDF (tối đa 5 MB/tệp, tối đa 5 tệp)</span>
+                  </label>
+                  {unlockEvidence.length > 0 && <ul className="unlock-file-list">{unlockEvidence.map((file, index) => <li key={`${file.name}-${file.lastModified}-${index}`}><i className={`bi ${file.type === 'application/pdf' ? 'bi-file-earmark-pdf' : 'bi-file-earmark-image'}`} /><span>{file.name}<small>{(file.size / (1024 * 1024)).toFixed(2)} MB</small></span><button type="button" aria-label={`Gỡ ${file.name}`} onClick={() => { setUnlockEvidence((current) => current.filter((_, fileIndex) => fileIndex !== index)); setActionError('') }}><i className="bi bi-x-lg" /></button></li>)}</ul>}
+
+                  <div className="unlock-notice"><i className="bi bi-info-circle" /><div><strong>Lưu ý:</strong><span>• Lý do yêu cầu mở khóa là bắt buộc.</span><span>• Vui lòng cung cấp thông tin chính xác và đầy đủ để xác minh.</span><span>• Sau khi xác nhận, tài khoản sẽ được mở khóa ngay lập tức (nếu hợp lệ).</span></div></div>
+                  {actionError && <p className="user-action-error" role="alert">{actionError}</p>}
+                </div>
+
+                <div className="user-modal-actions unlock-modal-actions"><button onClick={() => { setSelectedUser(null); setActionError('') }}>Hủy</button><button className="unlock-confirm-button" disabled={saving} onClick={saveStatus}><i className="bi bi-unlock" />{saving ? 'Đang xử lý...' : 'Xác nhận mở khóa'}</button></div>
               </div>
             )}
           </section>
