@@ -109,13 +109,26 @@ async function getUserDetail(req, res) {
       return res.status(400).json({ message: 'Mã người dùng không hợp lệ' });
     }
 
-    const user = await User.findById(id).select(USER_LIST_FIELDS).lean();
+    const [user, profile] = await Promise.all([
+      User.findById(id).select(USER_LIST_FIELDS).lean(),
+      require('../models/UserProfile').findOne({ user: id }).lean(),
+    ]);
 
     if (!user) {
       return res.status(404).json({ message: 'Người dùng không còn tồn tại' });
     }
 
-    return res.status(200).json({ data: user });
+    const detail = {
+      ...user,
+      ...(profile || {}),
+      hasHealthProfile: Boolean(profile),
+      targetWeightKg: profile?.targetWeightKg ?? null,
+      bmi: profile?.healthMetrics?.bmi ?? null,
+      bmr: profile?.healthMetrics?.bmr ?? null,
+      tdee: profile?.healthMetrics?.tdee ?? null,
+    };
+
+    return res.status(200).json({ data: detail });
   } catch (err) {
     console.error('[getUserDetail] Lỗi:', err.message);
     return res.status(500).json({ message: 'Không thể tải thông tin chi tiết, vui lòng thử lại' });
