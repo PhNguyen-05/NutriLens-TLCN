@@ -7,6 +7,7 @@ const {
   listUsers,
   getUserDetail,
   updateUserStatus,
+  listActionLogs,
 } = require('../controllers/adminUserController');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
@@ -33,6 +34,7 @@ const evidenceUpload = multer({
 router.use(requireAuth, authorize('admin'));
 
 router.get('/', listUsers);
+router.get('/action-logs', listActionLogs);
 router.get('/:id', getUserDetail);
 router.patch('/:id/status', (req, res, next) => {
   evidenceUpload.array('evidence', 5)(req, res, (error) => {

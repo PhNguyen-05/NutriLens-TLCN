@@ -246,8 +246,76 @@ async function updateUserStatus(req, res) {
   }
 }
 
+async function listActionLogs(req, res) {
+  try {
+    const { from = '', to = '', action = 'all', adminId = 'all', search = '', page, limit } = req.query;
+    const pagination = normalizePagination(page, limit || 7);
+    const query = {};
+    const validActions = ['lock_user', 'unlock_user', 'approve_post', 'delete_food', 'hide_post', 'remove_post', 'reject_request'];
+
+    if (action !== 'all') {
+      if (!validActions.includes(action)) return res.status(400).json({ message: 'Loại hành động không hợp lệ' });
+      query.actionType = action;
+    }
+    if (adminId !== 'all') {
+      if (!mongoose.Types.ObjectId.isValid(adminId)) return res.status(400).json({ message: 'Người thực hiện không hợp lệ' });
+      query.adminId = adminId;
+    }
+    if (from || to) {
+      query.createdAt = {};
+      if (from) {
+        const start = new Date(`${from}T00:00:00.000Z`);
+        if (Number.isNaN(start.getTime())) return res.status(400).json({ message: 'Ngày bắt đầu không hợp lệ' });
+        query.createdAt.$gte = start;
+      }
+      if (to) {
+        const end = new Date(`${to}T23:59:59.999Z`);
+        if (Number.isNaN(end.getTime())) return res.status(400).json({ message: 'Ngày kết thúc không hợp lệ' });
+        query.createdAt.$lte = end;
+      }
+    }
+
+    const keyword = String(search).trim();
+    if (keyword) {
+      const pattern = { $regex: escapeRegex(keyword), $options: 'i' };
+      const matchingUsers = await User.find({ $or: [{ fullName: pattern }, { email: pattern }] }).select('_id').lean();
+      const matchingIds = matchingUsers.map((user) => user._id);
+      query.$or = [
+        { reason: pattern },
+        { note: pattern },
+        { adminId: { $in: matchingIds } },
+        { targetId: { $in: matchingIds } },
+      ];
+    }
+
+    const [logs, total, admins] = await Promise.all([
+      AdminActionLog.find(query).sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit).lean(),
+      AdminActionLog.countDocuments(query),
+      User.find({ role: 'admin' }).select('fullName email avatarUrl').sort({ fullName: 1 }).lean(),
+    ]);
+
+    const relatedIds = [...new Set(logs.flatMap((log) => [String(log.adminId), String(log.targetId)]))];
+    const relatedUsers = await User.find({ _id: { $in: relatedIds } }).select('fullName email avatarUrl role').lean();
+    const usersById = new Map(relatedUsers.map((user) => [String(user._id), user]));
+
+    return res.status(200).json({
+      data: logs.map((log) => ({
+        ...log,
+        admin: usersById.get(String(log.adminId)) || null,
+        target: log.targetType === 'User' ? usersById.get(String(log.targetId)) || null : null,
+      })),
+      admins,
+      pagination: { page: pagination.page, limit: pagination.limit, total, totalPages: Math.ceil(total / pagination.limit) },
+    });
+  } catch (err) {
+    console.error('[listActionLogs] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải lịch sử thao tác, vui lòng thử lại' });
+  }
+}
+
 module.exports = {
   listUsers,
   getUserDetail,
   updateUserStatus,
+  listActionLogs,
 };
