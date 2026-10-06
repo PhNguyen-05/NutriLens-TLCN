@@ -39,6 +39,7 @@ export default function AuthLayout({ children }) {
               </li>
             ))}
           </ul>
+
         </div>
 
         <img src={heroImg} alt="" className="brand-image" aria-hidden="true" />

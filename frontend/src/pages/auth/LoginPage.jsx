@@ -5,6 +5,7 @@ import AuthLayout from '../../components/auth/AuthLayout'
 import AuthNotice from '../../components/auth/AuthNotice'
 import PasswordInput from '../../components/auth/PasswordInput'
 import LoadingButton from '../../components/common/LoadingButton'
+import HealthDisclaimerModal from '../../components/auth/HealthDisclaimerModal'
 import { loginThunk, googleLoginThunk, clearError } from '../../store/slices/authSlice'
 import { INITIAL_LOGIN_FORM } from '../../constants/authConstants'
 
@@ -28,11 +29,46 @@ export default function LoginPage() {
   const [googleError, setGoogleError]     = useState('')
   const [successMsg, setSuccessMsg]       = useState(location.state?.successMsg || '')
 
+  // ── State Modal Xác nhận Y tế cho Google Sign-in lần đầu ────────────────
+  const [showGoogleModal, setShowGoogleModal] = useState(false)
+  const [pendingGoogleIdToken, setPendingGoogleIdToken] = useState('')
+  const [googleUserInfo, setGoogleUserInfo] = useState({ fullName: '', email: '' })
+  const [confirmingGoogle, setConfirmingGoogle] = useState(false)
+
   // Ref container để Google Identity Services render nút chính thức
   const googleBtnRef = useRef(null)
 
   function getHomeRoute(user) {
     return String(user?.role || '').toLowerCase() === 'admin' ? '/admin' : '/dashboard'
+  }
+
+  // ── Handlers xác nhận tiêu chuẩn sức khỏe cho Google ─────────────────────
+  async function handleConfirmGoogleDisclaimer() {
+    setConfirmingGoogle(true)
+    setGoogleError('')
+    const result = await dispatch(
+      googleLoginThunk({
+        idToken: pendingGoogleIdToken,
+        healthDisclaimerAccepted: true,
+      })
+    )
+    setConfirmingGoogle(false)
+    if (googleLoginThunk.fulfilled.match(result)) {
+      setShowGoogleModal(false)
+      setPendingGoogleIdToken('')
+      navigate(getHomeRoute(result.payload?.user), { replace: true })
+    } else {
+      setGoogleError(result.payload || 'Đăng nhập Google thất bại.')
+    }
+  }
+
+  function handleCancelGoogleDisclaimer() {
+    setShowGoogleModal(false)
+    setPendingGoogleIdToken('')
+    setGoogleUserInfo({ fullName: '', email: '' })
+    setGoogleError(
+      'NutriLens rất tiếc vì chưa thể phục vụ bạn do yêu cầu an toàn y tế (dành riêng cho người trưởng thành khỏe mạnh, không mang thai/cho con bú, không có bệnh nền). Tài khoản Google của bạn chưa được lưu vào hệ thống.'
+    )
   }
 
   // ── Khởi tạo Google Identity Services ─────────────────────────────────────
@@ -50,7 +86,17 @@ export default function LoginPage() {
         googleLoginThunk({ idToken: credentialResponse.credential })
       )
       if (googleLoginThunk.fulfilled.match(result)) {
-        navigate(getHomeRoute(result.payload?.user), { replace: true })
+        if (result.payload?.requiresHealthDisclaimer) {
+          // Người dùng mới qua Google -> Hiện Modal xác nhận điều kiện sức khỏe
+          setPendingGoogleIdToken(credentialResponse.credential)
+          setGoogleUserInfo({
+            fullName: result.payload.fullName,
+            email: result.payload.email,
+          })
+          setShowGoogleModal(true)
+        } else {
+          navigate(getHomeRoute(result.payload?.user), { replace: true })
+        }
       } else {
         setGoogleError(result.payload || 'Đăng nhập Google thất bại.')
       }
@@ -213,6 +259,15 @@ export default function LoginPage() {
         Chưa có tài khoản?{' '}
         <Link to="/register" className="link-brand">Đăng ký miễn phí</Link>
       </p>
+
+      {/* ── Modal Tiêu chuẩn Y tế cho Google Sign-in lần đầu ── */}
+      <HealthDisclaimerModal
+        isOpen={showGoogleModal}
+        userInfo={googleUserInfo}
+        loading={confirmingGoogle}
+        onConfirm={handleConfirmGoogleDisclaimer}
+        onCancel={handleCancelGoogleDisclaimer}
+      />
     </AuthLayout>
   )
 }

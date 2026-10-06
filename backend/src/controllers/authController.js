@@ -46,10 +46,15 @@ async function issueOtp(email, purpose) {
 // POST /api/auth/register
 async function register(req, res) {
   try {
-    const { fullName, email, password, confirmPassword, dateOfBirth, gender } = req.body;
+    const { fullName, email, password, confirmPassword, dateOfBirth, gender, healthDisclaimerAccepted } = req.body;
 
     if (!fullName || !email || !password) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin bắt buộc' });
+    }
+    if (healthDisclaimerAccepted === false) {
+      return res.status(400).json({
+        message: 'Bạn phải xác nhận đủ điều kiện sức khỏe (không mang thai, không cho con bú, không có bệnh nền) để đăng ký dịch vụ.',
+      });
     }
     if (confirmPassword && password !== confirmPassword) {
       return res.status(400).json({ message: 'Mat khau xac nhan khong khop' });
@@ -81,6 +86,7 @@ async function register(req, res) {
       gender: gender || null,
       authProvider: 'local',
       status: 'pending',
+      healthDisclaimerAccepted: Boolean(healthDisclaimerAccepted),
     });
 
     await issueOtp(normalizedEmail, 'register');
@@ -285,7 +291,7 @@ async function login(req, res) {
 // POST /api/auth/google
 async function googleLogin(req, res) {
   try {
-    const { idToken } = req.body;
+    const { idToken, healthDisclaimerAccepted } = req.body;
     if (!idToken) {
       return res.status(400).json({ message: 'Thiếu idToken Google' });
     }
@@ -306,12 +312,24 @@ async function googleLogin(req, res) {
     let user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
+      // Người dùng mới tạo tài khoản lần đầu qua Google:
+      // Bắt buộc phải xác nhận tiêu chuẩn đối tượng sử dụng (Y tế) trước khi lưu vào DB.
+      if (!healthDisclaimerAccepted) {
+        return res.status(200).json({
+          requiresHealthDisclaimer: true,
+          email: normalizedEmail,
+          fullName: payload.name || normalizedEmail,
+          avatarUrl: payload.picture || null,
+        });
+      }
+
       user = await User.create({
         email: normalizedEmail,
         fullName: payload.name || normalizedEmail,
         avatarUrl: payload.picture || null,
         authProvider: 'google',
         status: 'active',
+        healthDisclaimerAccepted: true,
       });
     } else {
       if (user.status === 'pending') {

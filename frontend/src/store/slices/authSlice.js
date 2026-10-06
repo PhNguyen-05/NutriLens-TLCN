@@ -119,9 +119,12 @@ export const resetPasswordThunk = createAsyncThunk(
 /** UC02: Đăng nhập bằng Google — gửi idToken từ Google Identity Services */
 export const googleLoginThunk = createAsyncThunk(
   'auth/googleLogin',
-  async ({ idToken }, { rejectWithValue }) => {
+  async ({ idToken, healthDisclaimerAccepted }, { rejectWithValue }) => {
     try {
-      const { data } = await axios.post(`${BASE_URL}/auth/google`, { idToken })
+      const { data } = await axios.post(`${BASE_URL}/auth/google`, {
+        idToken,
+        healthDisclaimerAccepted,
+      })
       return data
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Đăng nhập Google thất bại. Vui lòng thử lại.')
@@ -200,6 +203,9 @@ const authSlice = createSlice({
 
     // Google login — same state update as email login
     addAuthCases(googleLoginThunk, (state, action) => {
+      if (action.payload?.requiresHealthDisclaimer) {
+        return
+      }
       const { user, accessToken, refreshToken } = action.payload
       state.user = user
       state.accessToken = accessToken
