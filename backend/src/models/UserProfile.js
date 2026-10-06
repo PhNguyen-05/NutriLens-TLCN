@@ -13,6 +13,8 @@ const userProfileSchema = new Schema(
     },
     heightCm: { type: Number, required: true, min: 100, max: 250 },
     currentWeightKg: { type: Number, required: true, min: 20, max: 300 },
+    currentWeightRecordedDate: { type: Date, default: null },
+    baselineWeightUpdatedAt: { type: Date, default: null },
     targetWeightKg: { type: Number, min: 20, max: 300, default: null },
     activityLevel: {
       type: String,

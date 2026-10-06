@@ -36,6 +36,18 @@ async function connectDB() {
   });
 
   await mongoose.connect(uri);
+
+  // Dọn dẹp index cũ không còn dùng trong schema để tránh lỗi E11000 duplicate key
+  try {
+    const weightlogsCollection = mongoose.connection.db.collection('weightlogs');
+    const indexes = await weightlogsCollection.indexes();
+    if (indexes.some((idx) => idx.name === 'user_1_recordedOn_1')) {
+      await weightlogsCollection.dropIndex('user_1_recordedOn_1');
+      console.log('[MongoDB] Đã xóa index cũ user_1_recordedOn_1 khỏi collection weightlogs');
+    }
+  } catch (indexErr) {
+    // Bỏ qua nếu index không tồn tại
+  }
 }
 
 module.exports = connectDB;

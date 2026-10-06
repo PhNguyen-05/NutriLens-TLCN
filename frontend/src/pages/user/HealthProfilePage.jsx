@@ -63,22 +63,6 @@ const NUTRITION_GOAL_OPTIONS = [
 ]
 
 
-const DIETARY_OPTIONS = [
-  { label: 'Ăn chay', icon: '🥗' },
-  { label: 'Thuần chay', icon: '🌱' },
-  { label: 'Ít tinh bột', icon: '🍞' },
-  { label: 'Ít đường', icon: '🍬' },
-  { label: 'Không gluten', icon: '🌾' },
-  { label: 'Không lactose', icon: '🥛' },
-]
-
-const SPECIAL_CONDITIONS = [
-  { key: 'pregnant', label: 'Thai kỳ hoặc đang cho con bú', icon: '🤰', blockDeficit: true },
-  { key: 'diabetes', label: 'Tiểu đường (đang dùng thuốc)', icon: '💉', blockDeficit: false },
-  { key: 'kidney', label: 'Bệnh thận mạn tính', icon: '🫘', blockDeficit: true },
-  { key: 'eating_disorder', label: 'Tiền sử rối loạn ăn uống', icon: '⚠️', blockDeficit: true },
-]
-
 const EMPTY_FORM = {
   fullName: '', phone: '', dateOfBirth: '', gender: '', avatarUrl: '',
   heightCm: '', currentWeightKg: '', targetWeightKg: '', activityLevel: '', healthGoal: 'maintain_weight',
@@ -88,7 +72,7 @@ const EMPTY_FORM = {
 const BMI_REFERENCE_ROWS = [
   {
     key: 'underweight',
-    label: 'Cân nặng thấp (gầy)',
+    label: 'Thiếu cân (gầy)',
     who: '< 18,5',
     idiWpro: '< 18,5',
     color: '#3b82f6',
@@ -105,17 +89,8 @@ const BMI_REFERENCE_ROWS = [
     matches: (b) => b >= 18.5 && b < 23.0,
   },
   {
-    key: 'overweight_general',
-    label: 'Thừa cân (chung)',
-    who: '≥ 25',
-    idiWpro: '≥ 23',
-    color: '#f59e0b',
-    bg: '#fffbeb',
-    isGroupHeader: true,
-  },
-  {
-    key: 'preobese',
-    label: '↳ Tiền béo phì',
+    key: 'overweight',
+    label: 'Thừa cân',
     who: '25 – 29,9',
     idiWpro: '23 – 24,9',
     color: '#f59e0b',
@@ -124,7 +99,7 @@ const BMI_REFERENCE_ROWS = [
   },
   {
     key: 'obese1',
-    label: '↳ Béo phì độ I',
+    label: 'Béo phì độ I',
     who: '30 – 34,9',
     idiWpro: '25 – 29,9',
     color: '#ef4444',
@@ -133,7 +108,7 @@ const BMI_REFERENCE_ROWS = [
   },
   {
     key: 'obese2',
-    label: '↳ Béo phì độ II',
+    label: 'Béo phì độ II',
     who: '35 – 39,9',
     idiWpro: '≥ 30',
     color: '#dc2626',
@@ -142,7 +117,7 @@ const BMI_REFERENCE_ROWS = [
   },
   {
     key: 'obese3',
-    label: '↳ Béo phì độ III',
+    label: 'Béo phì độ III',
     who: '≥ 40',
     idiWpro: '—',
     color: '#991b1b',
@@ -194,7 +169,7 @@ function getBmiCategory(bmi) {
       color: '#f59e0b',
       bg: '#fffbeb',
       pct: Math.min(74, Math.max(51, pct)),
-      rowKey: 'preobese',
+      rowKey: 'overweight',
     }
   }
   // Béo phì (>= 25)
@@ -340,79 +315,6 @@ function parseDobToIso(input) {
 }
 
 // ---------------------------------------------------------------------------
-// WeightChart component
-// ---------------------------------------------------------------------------
-function WeightChart({ weightLogs }) {
-  if (!weightLogs.length) {
-    return (
-      <p className="hp-weight-chart__empty">
-        Chưa có bản ghi cân nặng. Hãy thêm bản ghi đầu tiên để theo dõi tiến triển.
-      </p>
-    )
-  }
-
-  const weights = weightLogs.map((log) => Number(log.weightKg))
-  const min = Math.min(...weights)
-  const max = Math.max(...weights)
-  const padding = Math.max((max - min) * 0.2, 1)
-  const lower = min - padding
-  const upper = max + padding
-  const points = (() => {
-    if (weightLogs.length === 1) {
-      const log = weightLogs[0]
-      const y = 154 - ((Number(log.weightKg) - lower) / (upper - lower)) * 118
-      return [{ x: 300, y, log }]
-    }
-    const dates = weightLogs.map((log) => new Date(log.recordedDate.slice(0, 10) + 'T00:00:00').getTime())
-    const minDate = Math.min(...dates)
-    const maxDate = Math.max(...dates)
-    const dateRange = maxDate - minDate || 1
-    return weightLogs.map((log, index) => {
-      const t = new Date(log.recordedDate.slice(0, 10) + 'T00:00:00').getTime()
-      const x = 24 + ((t - minDate) / dateRange) * 552
-      const y = 154 - ((Number(log.weightKg) - lower) / (upper - lower)) * 118
-      return { x, y, log }
-    })
-  })()
-
-  return (
-    <>
-      <svg className="hp-weight-chart" viewBox="0 0 600 180" role="img" aria-label="Biểu đồ tiến triển cân nặng">
-        <line x1="24" y1="154" x2="576" y2="154" className="hp-weight-chart__axis" />
-        <line x1="24" y1="95" x2="576" y2="95" className="hp-weight-chart__grid" />
-        <line x1="24" y1="36" x2="576" y2="36" className="hp-weight-chart__grid" />
-        <polyline points={points.map(({ x, y }) => `${x},${y}`).join(' ')} className="hp-weight-chart__line" />
-        {points.map(({ x, y, log }, index) => {
-          const showLabel = weightLogs.length <= 6 || index === 0 || index === weightLogs.length - 1
-          // Support both id and _id (MongoDB)
-          const key = log._id || log.id || index
-          return (
-            <g key={key}>
-              <title>{`${formatLogDate(log.recordedDate)}: ${log.weightKg} kg`}</title>
-              <circle cx={x} cy={y} r="5" className="hp-weight-chart__point" />
-              {showLabel && (
-                <text x={x} y={y - 12} textAnchor="middle" className="hp-weight-chart__value">
-                  {log.weightKg} kg
-                </text>
-              )}
-              {showLabel && (
-                <text x={x} y="174" textAnchor="middle" className="hp-weight-chart__date">
-                  {formatLogDate(log.recordedDate)}
-                </text>
-              )}
-            </g>
-          )
-        })}
-      </svg>
-      <div className="hp-weight-chart__range">
-        <span>{lower.toFixed(1)} kg</span>
-        <span>{upper.toFixed(1)} kg</span>
-      </div>
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 export default function HealthProfilePage() {
@@ -438,15 +340,13 @@ export default function HealthProfilePage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // Weight log state
+  // Weight log & Baseline lock state
   const [weightLogs, setWeightLogs] = useState([])
-  const [weightDialogOpen, setWeightDialogOpen] = useState(false)
-  const [weightForm, setWeightForm] = useState({ weightKg: '', recordedDate: getLocalDateValue() })
-  // weightError as { field: 'weight'|'date'|'', message: '' } to avoid keyword-matching hacks
-  const [weightError, setWeightError] = useState({ field: '', message: '' })
-  const [savingWeight, setSavingWeight] = useState(false)
-  const [confirmOverwrite, setConfirmOverwrite] = useState(false)
-  const [weightDiffWarning, setWeightDiffWarning] = useState(false)
+  const [baselineStatus, setBaselineStatus] = useState(null)
+  const [milestoneModalOpen, setMilestoneModalOpen] = useState(false)
+  const [milestoneForm, setMilestoneForm] = useState({ weightKg: '' })
+  const [applyingMilestone, setApplyingMilestone] = useState(false)
+  const [milestoneError, setMilestoneError] = useState('')
 
   // Goal conflict warning
   // { pendingGoal, risk: { level, msg }, fromSubmit: bool }
@@ -470,25 +370,17 @@ export default function HealthProfilePage() {
     return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current) }
   }, [])
 
-  // Esc + focus trap — weight modal
+  // Esc + focus trap — milestone modal
   useEffect(() => {
-    if (!weightDialogOpen) return
+    if (!milestoneModalOpen) return
     function onKeyDown(e) {
-      if (e.key === 'Escape') { closeWeightDialog(); return }
-      if (e.key === 'Tab') {
-        const modal = weightModalRef.current
-        if (!modal) return
-        const focusable = modal.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
-        const first = focusable[0]; const last = focusable[focusable.length - 1]
-        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last?.focus() } }
-        else { if (document.activeElement === last) { e.preventDefault(); first?.focus() } }
+      if (e.key === 'Escape' && !applyingMilestone) {
+        setMilestoneModalOpen(false)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [weightDialogOpen])
+  }, [milestoneModalOpen, applyingMilestone])
 
   // Esc + focus trap — goal warning modal
   useEffect(() => {
@@ -522,6 +414,10 @@ export default function HealthProfilePage() {
           axiosInstance.get('/profile/weight-logs'),
         ])
         if (!isActive) return
+
+        if (data.baselineStatus) {
+          setBaselineStatus(data.baselineStatus)
+        }
 
         const profile = data.profile || {}
         const {
@@ -901,28 +797,6 @@ export default function HealthProfilePage() {
     }
   }
 
-  function togglePreference(preference) {
-    setForm((current) => ({
-      ...current,
-      dietaryPreferences: current.dietaryPreferences.includes(preference)
-        ? current.dietaryPreferences.filter((item) => item !== preference)
-        : [...current.dietaryPreferences, preference],
-    }))
-  }
-
-  function toggleSpecialCondition(key) {
-    setForm((c) => ({
-      ...c,
-      specialConditions: c.specialConditions.includes(key)
-        ? c.specialConditions.filter((k) => k !== key)
-        : [...c.specialConditions, key],
-    }))
-  }
-
-  /** True nếu có tình trạng đặc biệt chặn mục tiêu thâm hụt calo */
-  const specialBlocksDeficit = form.specialConditions?.some(
-    (key) => SPECIAL_CONDITIONS.find((c) => c.key === key)?.blockDeficit
-  )
 
   function applyGoal(newGoal) {
     const opt = NUTRITION_GOAL_OPTIONS.find((g) => g.value === newGoal)
@@ -1000,71 +874,39 @@ export default function HealthProfilePage() {
     }
   }
 
-  function openWeightDialog() {
-    setWeightForm({ weightKg: form.currentWeightKg, recordedDate: getLocalDateValue() })
-    setWeightError({ field: '', message: '' })
-    setConfirmOverwrite(false)
-    setWeightDialogOpen(true)
+  function openMilestoneModal() {
+    const latestWeight = baselineStatus?.latestWeightLog?.weightKg
+      || (weightLogs.length ? weightLogs[weightLogs.length - 1].weightKg : form.currentWeightKg)
+    setMilestoneForm({ weightKg: String(latestWeight || '') })
+    setMilestoneError('')
+    setMilestoneModalOpen(true)
   }
 
-  function closeWeightDialog() {
-    if (savingWeight) return
-    setWeightDialogOpen(false)
-    setWeightError({ field: '', message: '' })
-    setConfirmOverwrite(false)
-    setWeightDiffWarning(false)
-  }
-
-  async function saveWeightLog(overwrite = false) {
-    const weightKg = Number(weightForm.weightKg)
-
-    if (!weightForm.weightKg || !Number.isFinite(weightKg) || weightKg < 20 || weightKg > 300) {
-      setWeightError({ field: 'weight', message: 'Vui lòng nhập cân nặng hợp lệ (20–300 kg)' })
+  async function handleApplyMilestone(e) {
+    e.preventDefault()
+    const w = Number(milestoneForm.weightKg)
+    if (!milestoneForm.weightKg || !Number.isFinite(w) || w < 20 || w > 300) {
+      setMilestoneError('Vui lòng nhập cân nặng hợp lệ từ 20 đến 300 kg')
       return
     }
-    if (!weightForm.recordedDate) {
-      setWeightError({ field: 'date', message: 'Vui lòng chọn ngày ghi nhận' })
-      return
-    }
-    if (weightForm.recordedDate > getLocalDateValue()) {
-      setWeightError({ field: 'date', message: 'Không thể ghi nhận cân nặng cho ngày trong tương lai' })
-      return
-    }
-
-    // Cảnh báo mềm khi chênh > 5 kg (tránh gõ nhầm)
-    if (!weightDiffWarning && !overwrite && weightLogs.length > 0) {
-      const sortedByDate = [...weightLogs].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))
-      const lastWeight = Number(sortedByDate[0].weightKg)
-      if (Math.abs(weightKg - lastWeight) > 5) {
-        setWeightDiffWarning(true)
-        return
-      }
-    }
-
-    setSavingWeight(true)
-    setWeightError({ field: '', message: '' })
+    setApplyingMilestone(true)
+    setMilestoneError('')
     try {
-      const { data } = await axiosInstance.post('/profile/weight-logs', { ...weightForm, overwrite })
-      setWeightLogs((current) =>
-        [...current.filter((log) => log.recordedDate !== data.weightLog.recordedDate), data.weightLog].sort(
-          (a, b) => a.recordedDate.localeCompare(b.recordedDate)
-        )
-      )
-      if (data.profile?.currentWeightKg != null) {
-        setForm((current) => ({ ...current, currentWeightKg: String(data.profile.currentWeightKg) }))
-      }
-      setSuccess('Đã ghi nhận cân nặng thành công')
-      setWeightDialogOpen(false)
-      setConfirmOverwrite(false)
-      setWeightDiffWarning(false)
+      const { data } = await axiosInstance.post('/profile/apply-milestone-weight', { weightKg: w })
+      setBaselineStatus(data.baselineStatus)
+      setForm((prev) => ({
+        ...prev,
+        currentWeightKg: String(w),
+      }))
+      setMilestoneModalOpen(false)
+      setSuccess('Cập nhật mốc cân nặng và thiết lập chu kỳ 14 ngày mới thành công!')
+      setTimeout(() => setSuccess(''), 4000)
+      const { data: logsData } = await axiosInstance.get('/profile/weight-logs')
+      setWeightLogs(logsData.weightLogs || [])
     } catch (err) {
-      if (err.response?.data?.code === 'WEIGHT_LOG_EXISTS') {
-        setConfirmOverwrite(true)
-      } else {
-        setWeightError({ field: 'weight', message: err.response?.data?.message || 'Ghi nhận cân nặng thất bại, vui lòng thử lại' })
-      }
+      setMilestoneError(err.response?.data?.message || 'Không thể cập nhật mốc cân nặng, vui lòng thử lại')
     } finally {
-      setSavingWeight(false)
+      setApplyingMilestone(false)
     }
   }
 
@@ -1192,13 +1034,6 @@ export default function HealthProfilePage() {
       return
     }
 
-    // ── Step 4b: Chặn deficit goal khi có tình trạng đặc biệt ──
-    if (specialBlocksDeficit && form.healthGoal !== 'maintain_weight') {
-      setError('Với tình trạng sức khỏe đặc biệt bạn đã chọn, hệ thống không thể tự đề xuất mục tiêu thay đổi cân nặng. Vui lòng tham khảo bác sĩ hoặc chuyên gia dinh dưỡng.')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
-
     // ── Step 5: Custom macro/calorie validation ──
     if (customized) {
       const cal = Number(customForm.calorieTarget)
@@ -1279,6 +1114,9 @@ export default function HealthProfilePage() {
       }
       const { data } = await axiosInstance.put('/profile', payload)
       dispatch(userUpdated(data.user))
+      if (data.baselineStatus) {
+        setBaselineStatus(data.baselineStatus)
+      }
       setSuccess('Lưu hồ sơ và mục tiêu dinh dưỡng thành công! Đang chuyển về Trang chủ...')
       timeoutRef.current = setTimeout(() => navigate('/dashboard'), 1200)
 
@@ -1512,12 +1350,25 @@ export default function HealthProfilePage() {
               </div>
 
               <div className={`hp-field ${submitted && (Number(form.currentWeightKg) < 20 || Number(form.currentWeightKg) > 300) ? 'is-invalid' : isInvalid('currentWeightKg') ? 'is-invalid' : ''}`}>
-                <label htmlFor="currentWeightKg">Cân nặng hiện tại <span className="hp-required">*</span></label>
+                <label htmlFor="currentWeightKg">
+                  Cân nặng mốc (Hồ sơ) <span className="hp-required">*</span>
+                  {baselineStatus?.isLocked && (
+                    <span className="hp-baseline-chip hp-baseline-chip--locked">
+                      <i className="bi bi-lock-fill" /> Đang khóa 14 ngày
+                    </span>
+                  )}
+                  {baselineStatus?.inGracePeriod && (
+                    <span className="hp-baseline-chip hp-baseline-chip--grace">
+                      <i className="bi bi-clock-history" /> Ân hạn sửa nhầm (Còn {baselineStatus.hoursRemainingInGrace}h)
+                    </span>
+                  )}
+                </label>
                 <div className="hp-unit-input">
                   <input
                     id="currentWeightKg" name="currentWeightKg" type="number"
                     min="20" max="300" step="0.1" placeholder="55"
                     value={form.currentWeightKg} onChange={updateField}
+                    disabled={Boolean(baselineStatus?.isLocked)}
                   />
                   <span>kg</span>
                 </div>
@@ -1527,6 +1378,59 @@ export default function HealthProfilePage() {
                 )}
               </div>
             </div>
+
+            {/* Thông báo chu kỳ dinh dưỡng 14 ngày & Ân hạn 24 giờ */}
+            {baselineStatus?.inGracePeriod && (
+              <div className="hp-baseline-notice hp-baseline-notice--grace">
+                <i className="bi bi-clock-history" />
+                <div>
+                  <strong>Khoảng ân hạn sửa nhầm (Còn {baselineStatus.hoursRemainingInGrace} giờ)</strong>
+                  <p>
+                    Bạn có thể chỉnh sửa lại cân nặng mốc nếu vừa nhập nhầm. Sau 24 giờ đầu, chỉ số mốc này sẽ được khóa trong 14 ngày để đánh giá kết quả dinh dưỡng.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {baselineStatus?.isLocked && (
+              <div className="hp-baseline-notice hp-baseline-notice--locked">
+                <div className="hp-baseline-notice__top">
+                  <div className="hp-baseline-notice__info">
+                    <span className="hp-baseline-notice__tag">
+                      <i className="bi bi-lock-fill" /> Bảo lưu chu kỳ 14 ngày (Ngày {baselineStatus.daysElapsed}/14)
+                    </span>
+                    <p>
+                      Cân nặng mốc được cố định trong 14 ngày để cơ thể thích nghi với mức Calo &amp; TDEE mục tiêu. Chỉ số này sẽ mở khóa vào ngày <strong>{formatLogDate(baselineStatus.unlockDate)}</strong> (còn <strong>{baselineStatus.daysRemaining} ngày</strong>).
+                    </p>
+                  </div>
+                  <Link to="/weight-tracker" className="hp-baseline-notice__btn">
+                    <i className="bi bi-speedometer2" /> Ghi cân nặng hàng ngày →
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {baselineStatus?.canReviewMilestone && (
+              <div className="hp-baseline-notice hp-baseline-notice--milestone">
+                <div className="hp-baseline-notice__top">
+                  <div className="hp-baseline-notice__info">
+                    <span className="hp-baseline-notice__tag hp-baseline-notice__tag--milestone">
+                      <i className="bi bi-trophy-fill" /> Đã hoàn thành chu kỳ 14 ngày!
+                    </span>
+                    <p>
+                      Đã hết chu kỳ 14 ngày! Bạn có muốn cập nhật lại chỉ số mốc và tính lại mục tiêu Calo cho chu kỳ tiếp theo không?
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="hp-baseline-notice__btn hp-baseline-notice__btn--milestone"
+                    onClick={openMilestoneModal}
+                  >
+                    <i className="bi bi-arrow-repeat" /> Đánh giá &amp; Cập nhật mốc mới
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* BMI display & Bảng phân loại chi tiết */}
             {bmi && bmiInfo && (
@@ -1612,37 +1516,71 @@ export default function HealthProfilePage() {
                   {bmiTableView === 'table' ? (
                     <div className="hp-bmi-table-responsive">
                       <table className="hp-bmi-table">
+                        <colgroup>
+                          <col className="hp-bmi-col--label" />
+                          <col className="hp-bmi-col--who" />
+                          <col className="hp-bmi-col--asian" />
+                          <col className="hp-bmi-col--status" />
+                        </colgroup>
                         <thead>
                           <tr>
-                            <th>Phân loại</th>
-                            <th>BMI (kg/m²) - WHO</th>
-                            <th>BMI (kg/m²) - IDI &amp; WPRO <em>(Châu Á) ✦</em></th>
-                            <th>Trạng thái của bạn</th>
+                            <th className="hp-bmi-th hp-bmi-th--label">Phân loại thể trạng</th>
+                            <th className="hp-bmi-th hp-bmi-th--who">
+                              <span className="hp-bmi-th__title">BMI (kg/m²) - WHO</span>
+                              <span className="hp-bmi-th__sub">Toàn cầu</span>
+                            </th>
+                            <th className="hp-bmi-th hp-bmi-th--asian">
+                              <span className="hp-bmi-th-asian__tag">
+                                <i className="bi bi-star-fill" /> Chuẩn áp dụng
+                              </span>
+                              <span className="hp-bmi-th-asian__title">
+                                BMI (kg/m²) - IDI &amp; WPRO <em>(Châu Á)</em>
+                              </span>
+                            </th>
+                            <th className="hp-bmi-th hp-bmi-th--status">Trạng thái của bạn</th>
                           </tr>
                         </thead>
                         <tbody>
                           {BMI_REFERENCE_ROWS.map((row) => {
-                            const isUserMatch = !row.isGroupHeader && row.matches && row.matches(Number(bmi))
+                            const isUserMatch = row.matches && row.matches(Number(bmi))
                             return (
                               <tr
                                 key={row.key}
-                                className={`hp-bmi-table__row hp-bmi-table__row--${row.key} ${isUserMatch ? 'is-user-current' : ''} ${row.isGroupHeader ? 'is-group-header' : ''}`}
+                                className={`hp-bmi-table__row hp-bmi-table__row--${row.key} ${isUserMatch ? 'is-user-current' : ''}`}
+                                style={isUserMatch ? { '--cat-color': row.color, '--cat-bg': row.bg } : undefined}
                               >
                                 <td className="hp-bmi-table__cell-label">
-                                  <span className="hp-bmi-table__color-dot" style={{ backgroundColor: row.color }} />
-                                  {row.label}
+                                  <div className="hp-bmi-table__label-flex">
+                                    <span
+                                      className={`hp-bmi-table__color-dot ${isUserMatch ? 'is-pulse' : ''}`}
+                                      style={{ backgroundColor: row.color }}
+                                    />
+                                    <span className="hp-bmi-table__label-main">{row.label}</span>
+                                    {row.subLabel && (
+                                      <span className="hp-bmi-table__label-sub">{row.subLabel}</span>
+                                    )}
+                                  </div>
                                 </td>
-                                <td className="hp-bmi-table__cell-val">{row.who}</td>
-                                <td className="hp-bmi-table__cell-val hp-bmi-table__cell-val--wpro">
-                                  {row.idiWpro}
+                                <td className="hp-bmi-table__cell-val hp-bmi-table__cell-val--who">
+                                  {row.who}
+                                </td>
+                                <td
+                                  className={`hp-bmi-table__cell-val hp-bmi-table__cell-val--asian ${isUserMatch ? 'is-user-target' : ''}`}
+                                >
+                                  {isUserMatch ? (
+                                    <span className="hp-bmi-asian-pill">{row.idiWpro}</span>
+                                  ) : (
+                                    <span className="hp-bmi-asian-val">{row.idiWpro}</span>
+                                  )}
                                 </td>
                                 <td className="hp-bmi-table__cell-status">
                                   {isUserMatch ? (
-                                    <span className="hp-bmi-table__user-badge" style={{ color: bmiInfo.color, borderColor: bmiInfo.color, backgroundColor: bmiInfo.bg }}>
-                                      <i className="bi bi-check-circle-fill" /> Vị trí của bạn ({bmi})
+                                    <span
+                                      className="hp-bmi-table__user-badge"
+                                      style={{ color: row.color, borderColor: row.color, backgroundColor: row.bg }}
+                                    >
+                                      <i className="bi bi-geo-alt-fill" /> Vị trí của bạn: <strong>{bmi}</strong>
                                     </span>
-                                  ) : row.isGroupHeader ? (
-                                    <span className="hp-bmi-table__sub-note">—</span>
                                   ) : (
                                     <span className="hp-bmi-table__empty-dash">—</span>
                                   )}
@@ -1654,9 +1592,12 @@ export default function HealthProfilePage() {
                       </table>
                       <div className="hp-bmi-table__source">
                         <i className="bi bi-info-circle-fill" />
-                        <span>
-                          <strong>✦ NutriLens áp dụng chuẩn IDI &amp; WPRO</strong>: Người Châu Á có nguy cơ bệnh lý chuyển hóa ở mức BMI thấp hơn (ngưỡng thừa cân ≥ 23, béo phì ≥ 25). Nguồn: WHO (1999); IDI &amp; WPRO (2000).
-                        </span>
+                        <div>
+                          <strong>✦ NutriLens áp dụng chuẩn IDI &amp; WPRO (Khuyến nghị cho người Châu Á):</strong>
+                          <span>
+                            {' '}Người Châu Á có nguy cơ bệnh lý tim mạch và đái tháo đường ở mức BMI thấp hơn (ngưỡng thừa cân từ <strong>23,0 kg/m²</strong> - y khoa gọi là Tiền béo phì; béo phì từ <strong>25,0 kg/m²</strong>). Nguồn: WHO (1999); IDI &amp; WPRO (2000); Bộ Y Tế.
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -1698,54 +1639,27 @@ export default function HealthProfilePage() {
               </div>
             )}
 
-            {/* Biểu đồ cân nặng */}
-            {/* Biểu đồ cân nặng & Liên kết theo dõi tiến trình */}
-            <div className="hp-weight-history">
-              <div className="hp-weight-history__header">
-                <div>
-                  <h3>Tiến triển cân nặng theo thời gian</h3>
-                  <p>Theo dõi biểu đồ thay đổi cân nặng qua các lần ghi nhận thực tế.</p>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <Link
-                    to="/weight-tracker"
-                    style={{
-                      padding: '6px 12px', borderRadius: '8px',
-                      background: '#ecfdf5', border: '1px solid #10b981', color: '#065f46',
-                      fontSize: '12px', fontWeight: 700, textDecoration: 'none',
-                      display: 'inline-flex', alignItems: 'center', gap: '5px',
-                    }}
-                    title="Mở trang Theo dõi cân nặng chi tiết & Lịch sử đầy đủ"
-                  >
-                    <i className="bi bi-graph-up-arrow" /> Mở trang Tiến trình
-                  </Link>
-                  <button
-                    type="button" className="hp-weight-history__add"
-                    onClick={openWeightDialog} title="Ghi nhận cân nặng mới" aria-label="Ghi nhận cân nặng"
-                  >
-                    <i className="bi bi-plus-lg" />
-                  </button>
-                </div>
+            {/* Callout hướng dẫn chuyển tiếp sang trang Theo dõi cân nặng */}
+            <div className="hp-weight-tracker-callout">
+              <div className="hp-weight-tracker-callout__icon">
+                <i className="bi bi-speedometer2" />
               </div>
-              <WeightChart weightLogs={weightLogs} />
-              <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
-                <Link
-                  to="/weight-tracker"
-                  style={{
-                    fontSize: '12.5px', fontWeight: 600, color: '#059669',
-                    textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px'
-                  }}
-                >
-                  Xem phân tích xu hướng, bộ lọc thời gian &amp; quản lý lịch sử →
-                </Link>
+              <div className="hp-weight-tracker-callout__content">
+                <strong>Theo dõi biến động cân nặng &amp; Biểu đồ xu hướng hàng ngày</strong>
+                <p>
+                  Cân nặng mốc trong hồ sơ này được cố định 14 ngày để làm căn cứ tính BMR và TDEE. Để ghi nhật ký cân nặng mỗi ngày, xem biểu đồ xu hướng sinh học và phân tích chi tiết, vui lòng mở trang Tiến trình.
+                </p>
               </div>
+              <Link to="/weight-tracker" className="hp-weight-tracker-callout__btn">
+                Mở trang Tiến trình <i className="bi bi-arrow-right" />
+              </Link>
             </div>
           </section>
 
-          {/* ── Section 3: Mức độ vận động & Tiêu hao năng lượng (TDEE) ── */}
+          {/* ── Section 2: Mức độ vận động & Tiêu hao năng lượng (TDEE) ── */}
           <section className="hp-card" aria-labelledby="sec-activity">
             <div className="hp-card__header">
-              <div className="hp-card__badge">3</div>
+              <div className="hp-card__badge">2</div>
               <div>
                 <h2 id="sec-activity">Mức độ vận động thể chất <span className="hp-required">*</span></h2>
                 <p>Chọn mức độ vận động để NutriLens tính toán chính xác tổng năng lượng tiêu hao mỗi ngày (TDEE) từ năng lượng chuyển hóa cơ bản (BMR).</p>
@@ -1832,10 +1746,10 @@ export default function HealthProfilePage() {
             ) : null}
           </section>
 
-          {/* ── Section 4: Mục tiêu dinh dưỡng ── */}
+          {/* ── Section 3: Mục tiêu dinh dưỡng ── */}
           <section className="hp-card" aria-labelledby="sec-goal">
             <div className="hp-card__header">
-              <div className="hp-card__badge">4</div>
+              <div className="hp-card__badge">3</div>
               <div>
                 <h2 id="sec-goal">Mục tiêu dinh dưỡng &amp; Phân bổ năng lượng</h2>
                 <p>Hệ thống tự động đề xuất mục tiêu calo và tỉ lệ macro dựa trên chỉ số trao đổi chất của bạn. Kết quả chỉ mang tính tham khảo.</p>
@@ -2091,103 +2005,6 @@ export default function HealthProfilePage() {
             </div>
           </section>
 
-          {/* ── Section 5: Lưu ý dinh dưỡng ── */}
-          <section className="hp-card" aria-labelledby="sec-nutrition">
-            <div className="hp-card__header">
-              <div className="hp-card__badge">5</div>
-              <div>
-                <h2 id="sec-nutrition">Lưu ý dinh dưỡng &amp; Sức khỏe</h2>
-                <p>Không bắt buộc — giúp NutriLens gợi ý thực đơn phù hợp và an toàn hơn cho bạn.</p>
-              </div>
-            </div>
-
-            <div className="hp-nutrition-grid">
-              {/* Cột trái: Tình trạng sức khỏe đặc biệt */}
-              <div className="hp-nutrition-col">
-                <div className="hp-nutrition-col__label">
-                  <i className="bi bi-heart-pulse" style={{ color: '#ef4444' }} />
-                  Tình trạng sức khỏe đặc biệt
-                </div>
-                <div className="hp-special-list">
-                  {SPECIAL_CONDITIONS.map(({ key, label, icon }) => (
-                    <label
-                      key={key}
-                      className={`hp-special-item ${form.specialConditions?.includes(key) ? 'is-active' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.specialConditions?.includes(key) ?? false}
-                        onChange={() => toggleSpecialCondition(key)}
-                      />
-                      <span className="hp-special-item__icon">{icon}</span>
-                      <span className="hp-special-item__label">{label}</span>
-                      <i className="bi bi-check2 hp-special-item__check" />
-                    </label>
-                  ))}
-                </div>
-                {specialBlocksDeficit && form.healthGoal !== 'maintain_weight' && (
-                  <div className="hp-advice-note hp-advice-note--danger" style={{ marginTop: '10px' }}>
-                    <i className="bi bi-exclamation-triangle-fill" />
-                    Với tình trạng đã chọn, nên tham khảo bác sĩ trước khi thực hiện mục tiêu thay đổi cân nặng.
-                  </div>
-                )}
-              </div>
-
-              {/* Cột phải: Sở thích & Dị ứng */}
-              <div className="hp-nutrition-col">
-                <div className="hp-nutrition-col__label">
-                  <i className="bi bi-egg-fried" style={{ color: '#f59e0b' }} />
-                  Sở thích ăn uống
-                </div>
-                <div className="hp-tag-group">
-                  {DIETARY_OPTIONS.map(({ label, icon }) => (
-                    <button
-                      type="button" key={label}
-                      className={`hp-tag ${form.dietaryPreferences.includes(label) ? 'is-active' : ''}`}
-                      onClick={() => togglePreference(label)}
-                    >
-                      <span className="hp-tag__emoji">{icon}</span>
-                      {label}
-                      {form.dietaryPreferences.includes(label) && <i className="bi bi-x-circle-fill hp-tag__remove" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Dị ứng & Tình trạng cần lưu ý */}
-            <div className="hp-grid hp-grid--2" style={{ marginTop: '16px' }}>
-              <div className="hp-field">
-                <label htmlFor="allergies">
-                  <i className="bi bi-exclamation-triangle me-1" style={{ color: '#f59e0b' }} />
-                  Thực phẩm dị ứng
-                </label>
-                <textarea id="allergies" name="allergies" rows="3" maxLength="500"
-                  placeholder="Ví dụ: đậu phộng, hải sản, sữa bò..."
-                  value={form.allergies} onChange={updateField}
-                />
-                <small className="hp-field__hint">Tối đa 500 ký tự · Thông tin được lưu riêng tư.</small>
-              </div>
-              <div className="hp-field">
-                <label htmlFor="medicalConditions">
-                  <i className="bi bi-clipboard2-pulse me-1" style={{ color: '#3b82f6' }} />
-                  Bệnh lý cần lưu ý
-                </label>
-                <textarea id="medicalConditions" name="medicalConditions" rows="3" maxLength="500"
-                  placeholder="Ví dụ: tiểu đường, huyết áp cao, gút..."
-                  value={form.medicalConditions} onChange={updateField}
-                />
-                <small className="hp-field__hint">Tối đa 500 ký tự · Thông tin được lưu riêng tư.</small>
-              </div>
-            </div>
-
-            {form.medicalConditions.trim() && form.healthGoal !== 'maintain_weight' && (
-              <div className="hp-advice-note hp-advice-note--warning" style={{ marginTop: '12px' }}>
-                <i className="bi bi-shield-exclamation" />
-                Bạn có bệnh lý cần lưu ý. Nên trao đổi với bác sĩ hoặc chuyên gia dinh dưỡng trước khi thực hiện mục tiêu thay đổi cân nặng.
-              </div>
-            )}
-          </section>
 
           {/* ── Footer actions ── */}
           <div className="hp-actions">
@@ -2205,79 +2022,101 @@ export default function HealthProfilePage() {
         </form>
       </main>
 
-      {/* ── Modal ghi nhận cân nặng ── */}
-      {weightDialogOpen && (
-        <div className="hp-modal-backdrop" role="presentation" onMouseDown={closeWeightDialog}>
+      {/* ── Modal xác nhận mốc cân nặng sau chu kỳ 14 ngày (Tùy chọn 2) ── */}
+      {milestoneModalOpen && (
+        <div className="hp-modal-backdrop" role="presentation" onMouseDown={() => setMilestoneModalOpen(false)}>
           <section
-            ref={weightModalRef}
-            className="hp-weight-modal" role="dialog" aria-modal="true" aria-labelledby="weight-dialog-title"
+            className="hp-milestone-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="milestone-dialog-title"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="hp-weight-modal__header">
-              <div>
-                <span>Theo dõi tiến trình</span>
-                <h2 id="weight-dialog-title">Ghi nhận cân nặng</h2>
+            <div className="hp-milestone-modal__header">
+              <div className="hp-milestone-modal__icon">
+                <i className="bi bi-trophy-fill" />
               </div>
-              <button type="button" className="hp-weight-modal__close" onClick={closeWeightDialog} title="Đóng" aria-label="Đóng">
+              <div className="hp-milestone-modal__title-box">
+                <h2 id="milestone-dialog-title">Cập nhật mốc cân nặng sau 14 ngày</h2>
+                <p>Đánh giá hiệu quả dinh dưỡng và thiết lập chu kỳ 14 ngày tiếp theo</p>
+              </div>
+              <button
+                type="button"
+                className="hp-milestone-modal__close"
+                onClick={() => setMilestoneModalOpen(false)}
+                title="Đóng"
+                aria-label="Đóng"
+              >
                 <i className="bi bi-x-lg" />
               </button>
             </div>
 
-            <form onSubmit={(e) => { e.preventDefault(); saveWeightLog(false) }} noValidate>
-              <div className={`hp-field ${weightError.field === 'weight' ? 'is-invalid' : ''}`}>
-                <label htmlFor="weightLogKg">Cân nặng</label>
-                <div className="hp-unit-input">
-                  <input
-                    id="weightLogKg" type="number" min="20" max="300" step="0.1"
-                    inputMode="decimal" autoFocus
-                    value={weightForm.weightKg}
-                    onChange={(e) => {
-                      setWeightForm((c) => ({ ...c, weightKg: e.target.value }))
-                      setWeightError({ field: '', message: '' })
-                      setConfirmOverwrite(false)
-                    }}
-                  />
-                  <span>kg</span>
-                </div>
-                {weightError.field === 'weight' && <span className="hp-field__error">{weightError.message}</span>}
-              </div>
-
-              <div className={`hp-field ${weightError.field === 'date' ? 'is-invalid' : ''}`}>
-                <label htmlFor="weightLogDate">Ngày ghi nhận</label>
-                <input
-                  id="weightLogDate" type="date" max={getLocalDateValue()}
-                  value={weightForm.recordedDate}
-                  onChange={(e) => {
-                    setWeightForm((c) => ({ ...c, recordedDate: e.target.value }))
-                    setWeightError({ field: '', message: '' })
-                    setConfirmOverwrite(false)
-                  }}
-                />
-                {weightError.field === 'date' && <span className="hp-field__error">{weightError.message}</span>}
-              </div>
-
-              {confirmOverwrite && (
-                <div className="hp-weight-modal__confirm" role="alert">
-                  <i className="bi bi-exclamation-circle" />
+            <form onSubmit={handleApplyMilestone} noValidate>
+              <div className="hp-milestone-modal__body">
+                <div className="hp-milestone-prompt-box">
                   <p>
-                    Bạn đã ghi nhận cân nặng ngày{' '}
-                    <strong>{formatLogDate(weightForm.recordedDate)}</strong>. Bạn có muốn cập nhật lại không?
+                    <strong>Đã hết chu kỳ 14 ngày!</strong> Bạn có muốn cập nhật lại chỉ số mốc và tính lại mục tiêu Calo không?
                   </p>
-                  <div>
-                    <button type="button" className="hp-weight-modal__cancel" onClick={() => setConfirmOverwrite(false)} disabled={savingWeight}>Hủy</button>
-                    <button type="button" className="hp-weight-modal__save" onClick={() => saveWeightLog(true)} disabled={savingWeight}>Cập nhật</button>
-                  </div>
+                  {baselineStatus?.latestWeightLog ? (
+                    <div className="hp-milestone-prompt-box__recent">
+                      <i className="bi bi-clock-history" />
+                      <span>
+                        Số cân cuối cùng đã nhập trong hệ thống: <strong>{baselineStatus.latestWeightLog.weightKg} kg</strong> (ngày {formatLogDate(baselineStatus.latestWeightLog.recordedDate)})
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
-              )}
 
-              {!confirmOverwrite && (
-                <div className="hp-weight-modal__actions">
-                  <button type="button" className="hp-weight-modal__cancel" onClick={closeWeightDialog} disabled={savingWeight}>Hủy</button>
-                  <button type="submit" className="hp-weight-modal__save" disabled={savingWeight}>
-                    {savingWeight ? 'Đang lưu...' : 'Lưu'}
-                  </button>
+                <div className="hp-field" style={{ marginTop: '14px' }}>
+                  <label htmlFor="milestoneWeightInput" style={{ fontWeight: 600 }}>
+                    Xác nhận số cân mốc cho chu kỳ mới (kg):
+                  </label>
+                  <div className="hp-unit-input">
+                    <input
+                      id="milestoneWeightInput"
+                      type="number"
+                      step="0.1"
+                      min="20"
+                      max="300"
+                      autoFocus
+                      value={milestoneForm.weightKg}
+                      onChange={(e) => setMilestoneForm({ weightKg: e.target.value })}
+                    />
+                    <span>kg</span>
+                  </div>
+                  <small style={{ color: '#64748b', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                    Hệ thống tự động điền số cân cuối cùng bạn đã ghi nhận. Bạn có thể xác nhận số cân này hoặc điều chỉnh nếu vừa đo lại trước khi lưu vào hồ sơ.
+                  </small>
                 </div>
-              )}
+
+                {milestoneError && (
+                  <div className="hp-milestone-modal__error" role="alert">
+                    <i className="bi bi-exclamation-circle-fill" /> {milestoneError}
+                  </div>
+                )}
+              </div>
+
+              <div className="hp-milestone-modal__actions">
+                <button
+                  type="button"
+                  className="hp-weight-modal__cancel"
+                  onClick={() => setMilestoneModalOpen(false)}
+                  disabled={applyingMilestone}
+                >
+                  Để sau
+                </button>
+                <button
+                  type="submit"
+                  className="hp-milestone-modal__submit"
+                  disabled={applyingMilestone}
+                >
+                  {applyingMilestone ? (
+                    <><div className="hp-spinner" /><span>Đang lưu…</span></>
+                  ) : (
+                    <><i className="bi bi-check2" /><span>Xác nhận &amp; Cập nhật hồ sơ</span></>
+                  )}
+                </button>
+              </div>
             </form>
           </section>
         </div>

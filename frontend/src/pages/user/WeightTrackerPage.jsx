@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import axiosInstance from '../../api/axiosInstance'
 import { userUpdated } from '../../store/slices/authSlice'
@@ -42,15 +42,40 @@ function getBmiInfo(weightKg, heightCm) {
   return { bmi, label: 'Béo phì', color: '#ef4444', bg: '#fef2f2' }
 }
 
+function getSmoothPath(points) {
+  if (!points || points.length === 0) return ''
+  if (points.length === 1) return `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`
+  if (points.length === 2) {
+    return `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)} L ${points[1].x.toFixed(1)},${points[1].y.toFixed(1)}`
+  }
+
+  let d = `M ${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[Math.min(points.length - 1, i + 2)]
+
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+
+    d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`
+  }
+  return d
+}
+
 export default function WeightTrackerPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const dispatch = useDispatch()
   const weightModalRef = useRef(null)
 
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [weightLogs, setWeightLogs] = useState([])
-  const [timeframe, setTimeframe] = useState('30d') // '7d' | '30d' | '90d' | 'all'
+  const [timeframe, setTimeframe] = useState('14d') // '7d' | '14d' | '30d' | 'all'
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -69,6 +94,13 @@ export default function WeightTrackerPage() {
   // Edit history modal state (Phuong an 2)
   const [historyModalLog, setHistoryModalLog] = useState(null)
 
+  // Baseline lock & Milestone modal state
+  const [baselineStatus, setBaselineStatus] = useState(null)
+  const [milestoneModalOpen, setMilestoneModalOpen] = useState(false)
+  const [milestoneForm, setMilestoneForm] = useState({ weightKg: '' })
+  const [applyingMilestone, setApplyingMilestone] = useState(false)
+  const [milestoneError, setMilestoneError] = useState('')
+
   // Tooltip hover in chart
   const [activePoint, setActivePoint] = useState(null)
 
@@ -83,6 +115,7 @@ export default function WeightTrackerPage() {
         ])
         if (!isActive) return
         setProfile(profileData.profile || {})
+        setBaselineStatus(profileData.baselineStatus || logsData.baselineStatus || null)
         const sorted = (logsData.weightLogs || []).slice().sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))
         setWeightLogs(sorted)
       } catch (err) {
@@ -97,17 +130,18 @@ export default function WeightTrackerPage() {
 
   // Esc / focus trap for modal
   useEffect(() => {
-    if (!dialogOpen && !deleteConfirmLog && !historyModalLog) return
+    if (!dialogOpen && !deleteConfirmLog && !historyModalLog && !milestoneModalOpen) return
     function onKeyDown(e) {
       if (e.key === 'Escape') {
         if (dialogOpen) closeDialog()
         if (deleteConfirmLog) setDeleteConfirmLog(null)
         if (historyModalLog) setHistoryModalLog(null)
+        if (milestoneModalOpen && !applyingMilestone) setMilestoneModalOpen(false)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [dialogOpen, deleteConfirmLog, historyModalLog])
+  }, [dialogOpen, deleteConfirmLog, historyModalLog, milestoneModalOpen, applyingMilestone])
 
   // Filter logs by timeframe
   const filteredLogs = useMemo(() => {
@@ -115,7 +149,7 @@ export default function WeightTrackerPage() {
     if (timeframe === 'all') return weightLogs
 
     const now = new Date()
-    const days = timeframe === '7d' ? 7 : timeframe === '30d' ? 30 : 90
+    const days = timeframe === '7d' ? 7 : timeframe === '14d' ? 14 : 30
     const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const result = weightLogs.filter((l) => l.recordedDate >= cutoff)
     // If filtered is empty but we have logs, show at least the latest few
@@ -124,7 +158,30 @@ export default function WeightTrackerPage() {
 
   // Stats summary calculations
   const stats = useMemo(() => {
-    if (!weightLogs.length) return null
+    if (!weightLogs.length) {
+      if (!profile?.currentWeightKg) return null
+      const currentWeight = Number(profile.currentWeightKg)
+      const targetWeight = profile?.targetWeightKg ? Number(profile.targetWeightKg) : null
+      const heightCm = profile?.heightCm ? Number(profile.heightCm) : null
+      const goal = profile?.healthGoal || profile?.nutritionGoal?.goal || 'maintain_weight'
+      const bmiInfo = getBmiInfo(currentWeight, heightCm)
+      const distanceToTarget = targetWeight ? Number(Math.abs(currentWeight - targetWeight).toFixed(1)) : null
+
+      return {
+        initialWeight: currentWeight,
+        currentWeight,
+        targetWeight,
+        totalDiff: 0,
+        distanceToTarget,
+        progressPct: distanceToTarget === 0 ? 100 : 0,
+        weeklyRate: null,
+        bmiInfo,
+        goal,
+        totalLogs: 0,
+        latestDate: profile?.currentWeightRecordedDate || null,
+        latestTime: '',
+      }
+    }
 
     const initialLog = weightLogs[0]
     const latestLog = weightLogs[weightLogs.length - 1]
@@ -196,7 +253,12 @@ export default function WeightTrackerPage() {
 
   // Dialog actions
   function openDialog(defaultDate = getLocalDateValue(), defaultWeight = '') {
-    const fallbackWeight = defaultWeight || profile?.currentWeightKg || (weightLogs.length ? weightLogs[weightLogs.length - 1].weightKg : '')
+    if (!profile?.heightCm) {
+      setError('Bạn cần thiết lập hồ sơ sức khỏe (chiều cao, cân nặng cơ sở) trước khi có thể ghi nhận nhật ký cân nặng.')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    const fallbackWeight = defaultWeight || (weightLogs.length ? weightLogs[weightLogs.length - 1].weightKg : profile?.currentWeightKg)
     setWeightForm({
       weightKg: String(fallbackWeight || ''),
       recordedDate: defaultDate,
@@ -214,6 +276,18 @@ export default function WeightTrackerPage() {
     setConfirmOverwrite(false)
     setWeightDiffWarning(false)
   }
+
+  // Tự động mở hộp thoại ghi cân nếu được điều hướng từ Dashboard hoặc Hồ sơ
+  useEffect(() => {
+    if (!loading && location.state?.openLog) {
+      openDialog(getLocalDateValue(), '')
+      try {
+        window.history.replaceState({}, document.title)
+      } catch {
+        // ignore
+      }
+    }
+  }, [loading, location.state])
 
   async function handleSaveWeight(overwrite = false) {
     const weightKg = Number(weightForm.weightKg)
@@ -254,6 +328,18 @@ export default function WeightTrackerPage() {
         minDayDiff = dayDiff
         nearestLog = l
       }
+    }
+
+    if (!nearestLog && profile?.currentWeightKg != null) {
+      const baselineDate = (profile.currentWeightRecordedDate || profile.createdAt || new Date().toISOString()).slice(0, 10)
+      const dayDiff = Math.abs(
+        (new Date(targetDateStr).getTime() - new Date(baselineDate).getTime()) / (1000 * 60 * 60 * 24)
+      )
+      nearestLog = {
+        weightKg: profile.currentWeightKg,
+        recordedDate: baselineDate,
+      }
+      minDayDiff = dayDiff
     }
 
     if (nearestLog) {
@@ -299,15 +385,16 @@ export default function WeightTrackerPage() {
         const filtered = curr.filter((l) => l.recordedDate !== newLog.recordedDate)
         return [...filtered, newLog].sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))
       })
-      if (data.profile) {
-        setProfile(data.profile)
-        if (data.profile.currentWeightKg) {
-          dispatch(userUpdated(data.profile))
-        }
+      if (data.baselineStatus) {
+        setBaselineStatus(data.baselineStatus)
       }
-      setSuccess(`Đã ghi nhận ${newLog.weightKg} kg cho ngày ${formatLogDate(newLog.recordedDate)}`)
+      if (data.canReviewMilestone) {
+        setSuccess(`Đã ghi nhận ${newLog.weightKg} kg. 🎉 Bạn đã hoàn thành chu kỳ 14 ngày! Hãy cập nhật mốc cân nặng để tính lại mục tiêu Calo.`)
+      } else {
+        setSuccess(`Đã ghi nhận ${newLog.weightKg} kg cho ngày ${formatLogDate(newLog.recordedDate)}.`)
+      }
       closeDialog()
-      setTimeout(() => setSuccess(''), 4000)
+      setTimeout(() => setSuccess(''), 5000)
     } catch (err) {
       if (err.response?.data?.code === 'WEIGHT_LOG_EXISTS') {
         setConfirmOverwrite({
@@ -338,8 +425,11 @@ export default function WeightTrackerPage() {
     try {
       const { data } = await axiosInstance.delete(`/profile/weight-logs/${logId}`)
       setWeightLogs((curr) => curr.filter((l) => (l._id || l.id) !== logId))
-      if (data.profile) {
+      if (data.weightProfileUpdated && data.profile) {
         setProfile(data.profile)
+      }
+      if (data.baselineStatus) {
+        setBaselineStatus(data.baselineStatus)
       }
       setSuccess('Đã xóa bản ghi cân nặng')
       setDeleteConfirmLog(null)
@@ -351,33 +441,121 @@ export default function WeightTrackerPage() {
     }
   }
 
+  function openMilestoneModal() {
+    const latestWeight = weightLogs.length ? weightLogs[weightLogs.length - 1].weightKg : (profile?.currentWeightKg || '')
+    setMilestoneForm({ weightKg: String(latestWeight || '') })
+    setMilestoneError('')
+    setMilestoneModalOpen(true)
+  }
+
+  async function handleApplyMilestone(e) {
+    e.preventDefault()
+    const w = Number(milestoneForm.weightKg)
+    if (!milestoneForm.weightKg || !Number.isFinite(w) || w < 20 || w > 300) {
+      setMilestoneError('Vui lòng nhập cân nặng hợp lệ từ 20 đến 300 kg')
+      return
+    }
+    setApplyingMilestone(true)
+    setMilestoneError('')
+    try {
+      const { data } = await axiosInstance.post('/profile/apply-milestone-weight', { weightKg: w })
+      setProfile(data.profile)
+      setBaselineStatus(data.baselineStatus)
+      dispatch(userUpdated(data.profile))
+      setMilestoneModalOpen(false)
+      setSuccess('Cập nhật mốc cân nặng và thiết lập chu kỳ 14 ngày mới thành công!')
+      setTimeout(() => setSuccess(''), 4000)
+      const { data: logsData } = await axiosInstance.get('/profile/weight-logs')
+      const sorted = (logsData.weightLogs || []).slice().sort((a, b) => a.recordedDate.localeCompare(b.recordedDate))
+      setWeightLogs(sorted)
+    } catch (err) {
+      setMilestoneError(err.response?.data?.message || 'Không thể cập nhật mốc cân nặng, vui lòng thử lại')
+    } finally {
+      setApplyingMilestone(false)
+    }
+  }
+
   // Render SVG Chart Points
   const chartData = useMemo(() => {
     if (!filteredLogs.length) return null
     const weights = filteredLogs.map((l) => Number(l.weightKg))
-    const minW = Math.min(...weights)
-    const maxW = Math.max(...weights)
-    const padding = Math.max((maxW - minW) * 0.25, 1.5)
-    const lower = Number((minW - padding).toFixed(1))
-    const upper = Number((maxW + padding).toFixed(1))
+    let minW = Math.min(...weights)
+    let maxW = Math.max(...weights)
+    const targetW = stats?.targetWeight ? Number(stats.targetWeight) : null
+
+    // Gộp mục tiêu vào dải đo nếu ở cự ly hợp lý để người dùng luôn thấy đường mốc mục tiêu
+    if (targetW && targetW >= minW - 15 && targetW <= maxW + 15) {
+      minW = Math.min(minW, targetW)
+      maxW = Math.max(maxW, targetW)
+    }
+
+    const rawSpan = maxW - minW
+    const padding = Math.max(rawSpan * 0.22, 1.2)
+    const step = rawSpan <= 3 ? 0.5 : 1
+    const lower = Number((Math.floor((minW - padding) / step) * step).toFixed(1))
+    const upper = Number((Math.ceil((maxW + padding) / step) * step).toFixed(1))
     const range = upper - lower || 1
 
-    const width = 760
-    const height = 260
-    const paddingLeft = 46
-    const paddingRight = 30
-    const paddingTop = 24
-    const paddingBottom = 40
+    const width = 800
+    const height = 280
+    const paddingLeft = 56
+    const paddingRight = 44
+    const paddingTop = 30
+    const paddingBottom = 42
     const plotWidth = width - paddingLeft - paddingRight
     const plotHeight = height - paddingTop - paddingBottom
 
+    const firstLog = filteredLogs[0]
+    const latestLog = filteredLogs[filteredLogs.length - 1]
+    const periodDiff = Number((Number(latestLog.weightKg) - Number(firstLog.weightKg)).toFixed(1))
+
+    let minLog = filteredLogs[0]
+    let maxLog = filteredLogs[0]
+    for (const l of filteredLogs) {
+      if (Number(l.weightKg) < Number(minLog.weightKg)) minLog = l
+      if (Number(l.weightKg) > Number(maxLog.weightKg)) maxLog = l
+    }
+
+    // 5 mốc lưới đều đặn
+    const gridSteps = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+      const val = Number((lower + range * (1 - ratio)).toFixed(1))
+      const y = paddingTop + plotHeight * ratio
+      return { val, y, isAxis: ratio === 1 }
+    })
+
+    // Đường mốc mục tiêu
+    let targetY = null
+    if (targetW && targetW >= lower && targetW <= upper) {
+      targetY = paddingTop + plotHeight - ((targetW - lower) / range) * plotHeight
+    }
+
+    // Trường hợp người dùng mới có 1 bản ghi
     if (filteredLogs.length === 1) {
       const log = filteredLogs[0]
+      const w = Number(log.weightKg)
       const y = paddingTop + plotHeight / 2
       const x = paddingLeft + plotWidth / 2
+      const bmiInfo = getBmiInfo(w, profile?.heightCm)
       return {
-        width, height, lower, upper, points: [{ x, y, log }],
-        pathD: '', targetY: null,
+        width,
+        height,
+        lower,
+        upper,
+        points: [{ x, y, log, isFirst: true, isLatest: true, isLowest: true, isHighest: true, bmiInfo, showDate: true, dateAnchor: 'middle', dateX: x }],
+        pathD: '',
+        areaD: '',
+        targetY,
+        paddingLeft,
+        paddingRight,
+        paddingTop,
+        paddingBottom,
+        plotHeight,
+        plotWidth,
+        isSinglePoint: true,
+        periodDiff: 0,
+        minLog: log,
+        maxLog: log,
+        gridSteps,
       }
     }
 
@@ -386,29 +564,117 @@ export default function WeightTrackerPage() {
     const maxDate = Math.max(...dates)
     const dateRange = maxDate - minDate || 1
 
-    const points = filteredLogs.map((log) => {
+    const points = filteredLogs.map((log, idx) => {
       const t = new Date(log.recordedDate.slice(0, 10) + 'T00:00:00').getTime()
       const x = paddingLeft + ((t - minDate) / dateRange) * plotWidth
-      const y = paddingTop + plotHeight - ((Number(log.weightKg) - lower) / range) * plotHeight
-      return { x, y, log }
+      const w = Number(log.weightKg)
+      const y = paddingTop + plotHeight - ((w - lower) / range) * plotHeight
+
+      const prevLog = idx > 0 ? filteredLogs[idx - 1] : null
+      const diffFromPrev = prevLog ? Number((w - Number(prevLog.weightKg)).toFixed(1)) : null
+      const diffFromBaseline = stats?.initialWeight != null ? Number((w - stats.initialWeight).toFixed(1)) : null
+      const bmiInfo = getBmiInfo(w, profile?.heightCm)
+
+      return {
+        x,
+        y,
+        log,
+        isFirst: idx === 0,
+        isLatest: idx === filteredLogs.length - 1,
+        isLowest: w === Number(minLog.weightKg),
+        isHighest: w === Number(maxLog.weightKg),
+        diffFromPrev,
+        diffFromBaseline,
+        bmiInfo,
+      }
     })
 
-    const pathD = points.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)},${pt.y.toFixed(1)}`, '')
+    // Thuật toán chống đè nhãn ngày trục X (Collision-free X-axis label positioning)
+    const LABEL_WIDTH = 64
+    const MIN_LABEL_GAP = 14
 
-    // Area path for gradient fill
-    const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)},${(paddingTop + plotHeight).toFixed(1)} L ${points[0].x.toFixed(1)},${(paddingTop + plotHeight).toFixed(1)} Z`
+    if (points.length === 1) {
+      points[0].showDate = true
+      points[0].dateAnchor = 'middle'
+      points[0].dateX = points[0].x
+    } else if (points.length > 1) {
+      const n = points.length
+      const firstPt = points[0]
+      const lastPt = points[n - 1]
 
-    // Target weight line
-    let targetY = null
-    if (stats?.targetWeight && stats.targetWeight >= lower && stats.targetWeight <= upper) {
-      targetY = paddingTop + plotHeight - ((stats.targetWeight - lower) / range) * plotHeight
+      // Nhãn cuối cùng (hôm nay / mới nhất) luôn được ưu tiên cao nhất
+      lastPt.showDate = true
+      lastPt.dateAnchor = 'end'
+      lastPt.dateX = Math.min(lastPt.x, width - paddingRight)
+      const lastInterval = [lastPt.dateX - LABEL_WIDTH, lastPt.dateX]
+
+      // Nhãn đầu tiên (ngày bắt đầu) được ưu tiên số 2
+      firstPt.dateAnchor = 'start'
+      firstPt.dateX = Math.max(firstPt.x, paddingLeft)
+      const firstInterval = [firstPt.dateX, firstPt.dateX + LABEL_WIDTH]
+
+      // Kiểm tra nếu nhãn đầu và nhãn cuối bị đè nhau
+      if (firstInterval[1] + MIN_LABEL_GAP > lastInterval[0]) {
+        firstPt.showDate = false
+      } else {
+        firstPt.showDate = true
+      }
+
+      const occupiedIntervals = []
+      if (firstPt.showDate) occupiedIntervals.push(firstInterval)
+      occupiedIntervals.push(lastInterval)
+
+      // Xử lý các điểm ở giữa (từ 1 đến n - 2)
+      const step = n > 12 ? Math.ceil(n / 6) : 1
+      for (let i = 1; i < n - 1; i += step) {
+        const pt = points[i]
+        pt.dateAnchor = 'middle'
+        pt.dateX = pt.x
+        const candidateInterval = [pt.dateX - LABEL_WIDTH / 2, pt.dateX + LABEL_WIDTH / 2]
+
+        const hasCollision = occupiedIntervals.some(
+          ([start, end]) => candidateInterval[0] < end + MIN_LABEL_GAP && candidateInterval[1] + MIN_LABEL_GAP > start
+        )
+
+        if (!hasCollision) {
+          pt.showDate = true
+          occupiedIntervals.push(candidateInterval)
+        } else {
+          pt.showDate = false
+        }
+      }
+
+      points.forEach((pt) => {
+        if (pt.showDate === undefined) pt.showDate = false
+      })
     }
+
+    const pathD = getSmoothPath(points)
+    const baselineY = paddingTop + plotHeight
+    const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)},${baselineY.toFixed(1)} L ${points[0].x.toFixed(1)},${baselineY.toFixed(1)} Z`
 
     return {
-      width, height, lower, upper, points, pathD, areaD, targetY,
-      paddingLeft, paddingRight, paddingTop, paddingBottom, plotHeight, plotWidth,
+      width,
+      height,
+      lower,
+      upper,
+      points,
+      pathD,
+      areaD,
+      targetY,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingBottom,
+      plotHeight,
+      plotWidth,
+      isSinglePoint: false,
+      periodDiff,
+      minLog,
+      maxLog,
+      gridSteps,
     }
-  }, [filteredLogs, stats?.targetWeight])
+  }, [filteredLogs, stats?.targetWeight, stats?.initialWeight, profile?.heightCm])
 
   if (loading) {
     return (
@@ -469,12 +735,74 @@ export default function WeightTrackerPage() {
           </div>
         )}
 
+        {/* ── Banner cảnh báo chưa hoàn tất hồ sơ cơ sở ── */}
+        {!profile?.heightCm && (
+          <div className="wt-profile-missing-banner" role="region" aria-label="Chưa thiết lập hồ sơ">
+            <div className="wt-profile-missing-banner__left">
+              <div className="wt-profile-missing-banner__icon">
+                <i className="bi bi-info-circle-fill" />
+              </div>
+              <div>
+                <strong>Chưa hoàn tất hồ sơ sức khỏe cơ sở</strong>
+                <p>
+                  Vui lòng cập nhật chiều cao, cân nặng mốc và mục tiêu dinh dưỡng để hệ thống tính toán chính xác BMI, TDEE và theo dõi tiến trình của bạn.
+                </p>
+              </div>
+            </div>
+            <Link to="/profile" className="wt-profile-missing-banner__btn">
+              <i className="bi bi-person-gear" /> Thiết lập ngay →
+            </Link>
+          </div>
+        )}
+
+        {/* ── Banner đánh giá chu kỳ 14 ngày (Tùy chọn 2) ── */}
+        {baselineStatus?.canReviewMilestone && (
+          <div className="wt-milestone-banner" role="region" aria-label="Đánh giá chu kỳ 14 ngày">
+            <div className="wt-milestone-banner__left">
+              <div className="wt-milestone-banner__icon">
+                <i className="bi bi-trophy-fill" />
+              </div>
+              <div>
+                <strong>Đã hoàn thành chu kỳ 14 ngày!</strong>
+                <p>
+                  Đã hết chu kỳ 14 ngày! Bạn có muốn cập nhật lại chỉ số mốc và tính lại mục tiêu Calo không?
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="wt-milestone-banner__btn"
+              onClick={openMilestoneModal}
+            >
+              <i className="bi bi-arrow-repeat" /> Cập nhật mốc mới
+            </button>
+          </div>
+        )}
+
+        {baselineStatus?.isLocked && (
+          <div className="wt-cycle-status-strip">
+            <i className="bi bi-lock-fill" />
+            <span>
+              Cân nặng mốc trong hồ sơ ({profile?.currentWeightKg} kg) đang được bảo lưu chu kỳ 14 ngày (<strong>Ngày {baselineStatus.daysElapsed}/14</strong>, còn {baselineStatus.daysRemaining} ngày để cơ thể thích nghi trước khi đánh giá lại).
+            </span>
+          </div>
+        )}
+
+        {baselineStatus?.inGracePeriod && (
+          <div className="wt-cycle-status-strip wt-cycle-status-strip--grace">
+            <i className="bi bi-clock-history" />
+            <span>
+              Khoảng ân hạn sửa nhầm số cân mốc trong hồ sơ: còn <strong>{baselineStatus.hoursRemainingInGrace} giờ</strong>.
+            </span>
+          </div>
+        )}
+
         {/* ── KPI Cards ── */}
         <section className="wt-kpi-grid">
-          {/* Card 1: Cân nặng hiện tại */}
+          {/* Card 1: Cân nặng mới nhất trong nhật ký */}
           <article className="wt-kpi-card wt-kpi-card--current">
             <div className="wt-kpi-card__header">
-              <span>Cân nặng hiện tại</span>
+              <span>Cân nặng mới nhất</span>
               <i className="bi bi-speedometer2" />
             </div>
             <div className="wt-kpi-card__val">
@@ -491,7 +819,7 @@ export default function WeightTrackerPage() {
               )}
               {stats?.latestDate && (
                 <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
-                  <i className="bi bi-clock" /> Cập nhật: {formatLogDate(stats.latestDate)} {stats.latestTime ? `lúc ${stats.latestTime}` : ''}
+                  <i className="bi bi-clock" /> Ghi nhận: {formatLogDate(stats.latestDate)} {stats.latestTime ? `lúc ${stats.latestTime}` : ''}
                 </div>
               )}
             </div>
@@ -510,7 +838,7 @@ export default function WeightTrackerPage() {
               <small>kg</small>
             </div>
             <div className="wt-kpi-card__sub">
-              <span>Bắt đầu: <b>{stats?.initialWeight ?? '—'} kg</b> ({formatLogDate(weightLogs[0]?.recordedDate) || '—'})</span>
+              <span>Bắt đầu: <b>{stats?.initialWeight ?? '—'} kg</b> ({formatLogDate(weightLogs[0]?.recordedDate || profile?.currentWeightRecordedDate || profile?.createdAt) || '—'})</span>
             </div>
           </article>
 
@@ -576,17 +904,17 @@ export default function WeightTrackerPage() {
               </button>
               <button
                 type="button"
+                className={`wt-tf-btn ${timeframe === '14d' ? 'is-active' : ''}`}
+                onClick={() => setTimeframe('14d')}
+              >
+                14 ngày
+              </button>
+              <button
+                type="button"
                 className={`wt-tf-btn ${timeframe === '30d' ? 'is-active' : ''}`}
                 onClick={() => setTimeframe('30d')}
               >
                 30 ngày
-              </button>
-              <button
-                type="button"
-                className={`wt-tf-btn ${timeframe === '90d' ? 'is-active' : ''}`}
-                onClick={() => setTimeframe('90d')}
-              >
-                90 ngày
               </button>
               <button
                 type="button"
@@ -598,9 +926,66 @@ export default function WeightTrackerPage() {
             </div>
           </div>
 
+          {/* Quick Insights Strip */}
+          {chartData && (
+            <div className="wt-chart-stat-strip">
+              <div className="wt-stat-chip">
+                <span className="wt-stat-chip__label">Thay đổi kỳ này</span>
+                <span className={`wt-stat-chip__val ${chartData.periodDiff < 0 ? 'is-down' : chartData.periodDiff > 0 ? 'is-up' : ''}`}>
+                  {chartData.periodDiff > 0 ? `+${chartData.periodDiff}` : chartData.periodDiff} kg
+                  {chartData.periodDiff < 0 ? (
+                    <i className="bi bi-arrow-down-right" />
+                  ) : chartData.periodDiff > 0 ? (
+                    <i className="bi bi-arrow-up-right" />
+                  ) : (
+                    <i className="bi bi-dash" />
+                  )}
+                </span>
+              </div>
+
+              <div className="wt-stat-chip">
+                <span className="wt-stat-chip__label">Thấp nhất kỳ</span>
+                <span className="wt-stat-chip__val is-min">
+                  {chartData.minLog.weightKg} kg
+                  <small>({formatLogDate(chartData.minLog.recordedDate)})</small>
+                </span>
+              </div>
+
+              <div className="wt-stat-chip">
+                <span className="wt-stat-chip__label">Cao nhất kỳ</span>
+                <span className="wt-stat-chip__val is-max">
+                  {chartData.maxLog.weightKg} kg
+                  <small>({formatLogDate(chartData.maxLog.recordedDate)})</small>
+                </span>
+              </div>
+
+              {stats?.targetWeight ? (
+                <div className="wt-stat-chip">
+                  <span className="wt-stat-chip__label">Mục tiêu</span>
+                  <span className="wt-stat-chip__val is-target">
+                    {stats.targetWeight} kg
+                    {stats.distanceToTarget != null && (
+                      <small>
+                        ({stats.distanceToTarget === 0 ? 'Đã đạt! 🎉' : `còn ${stats.distanceToTarget} kg`})
+                      </small>
+                    )}
+                  </span>
+                </div>
+              ) : (
+                <div className="wt-stat-chip">
+                  <span className="wt-stat-chip__label">Mốc ban đầu</span>
+                  <span className="wt-stat-chip__val">
+                    {stats?.initialWeight ?? '-'} kg
+                    <small>({formatLogDate(weightLogs[0]?.recordedDate) || '-'})</small>
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Chart Display */}
           {chartData ? (
-            <div className="wt-chart-container">
+            <div className="wt-chart-container" onMouseLeave={() => setActivePoint(null)}>
               <svg
                 className="wt-svg-chart"
                 viewBox={`0 0 ${chartData.width} ${chartData.height}`}
@@ -610,22 +995,39 @@ export default function WeightTrackerPage() {
               >
                 <defs>
                   <linearGradient id="wtChartGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
+                    <stop offset="0%" stopColor="#10b981" stopOpacity="0.28" />
                     <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
                   </linearGradient>
+                  <filter id="wtPointGlow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#10b981" floodOpacity="0.45" />
+                  </filter>
+                  <filter id="wtActiveGlow" x="-50%" y="-50%" width="200%" height="200%">
+                    <feDropShadow dx="0" dy="3" stdDeviation="5" floodColor="#059669" floodOpacity="0.65" />
+                  </filter>
                 </defs>
 
-                {/* Gridlines */}
-                <line x1={chartData.paddingLeft} y1={chartData.paddingTop} x2={chartData.width - chartData.paddingRight} y2={chartData.paddingTop} className="wt-chart-grid" />
-                <line x1={chartData.paddingLeft} y1={chartData.paddingTop + chartData.plotHeight * 0.5} x2={chartData.width - chartData.paddingRight} y2={chartData.paddingTop + chartData.plotHeight * 0.5} className="wt-chart-grid" />
-                <line x1={chartData.paddingLeft} y1={chartData.paddingTop + chartData.plotHeight} x2={chartData.width - chartData.paddingRight} y2={chartData.paddingTop + chartData.plotHeight} className="wt-chart-axis" />
+                {/* Gridlines & Y-axis Labels */}
+                {chartData.gridSteps.map((step, idx) => (
+                  <g key={`grid-${idx}`}>
+                    <line
+                      x1={chartData.paddingLeft}
+                      y1={step.y}
+                      x2={chartData.width - chartData.paddingRight}
+                      y2={step.y}
+                      className={step.isAxis ? 'wt-chart-axis' : 'wt-chart-grid'}
+                    />
+                    <text
+                      x={chartData.paddingLeft - 10}
+                      y={step.y + 4}
+                      textAnchor="end"
+                      className="wt-chart-tick"
+                    >
+                      {step.val} kg
+                    </text>
+                  </g>
+                ))}
 
-                {/* Y-axis Labels */}
-                <text x={chartData.paddingLeft - 8} y={chartData.paddingTop + 4} textAnchor="end" className="wt-chart-tick">{chartData.upper} kg</text>
-                <text x={chartData.paddingLeft - 8} y={chartData.paddingTop + chartData.plotHeight * 0.5 + 4} textAnchor="end" className="wt-chart-tick">{((chartData.upper + chartData.lower) / 2).toFixed(1)} kg</text>
-                <text x={chartData.paddingLeft - 8} y={chartData.paddingTop + chartData.plotHeight + 4} textAnchor="end" className="wt-chart-tick">{chartData.lower} kg</text>
-
-                {/* Target Weight Reference Line */}
+                {/* Target Weight Reference Line & Pill Badge */}
                 {chartData.targetY != null && (
                   <g className="wt-target-line-group">
                     <line
@@ -635,13 +1037,21 @@ export default function WeightTrackerPage() {
                       y2={chartData.targetY}
                       className="wt-target-line"
                     />
+                    <rect
+                      x={chartData.width - chartData.paddingRight - 138}
+                      y={chartData.targetY - 12}
+                      width="138"
+                      height="22"
+                      rx="11"
+                      className="wt-target-pill-bg"
+                    />
                     <text
-                      x={chartData.width - chartData.paddingRight}
-                      y={chartData.targetY - 5}
-                      textAnchor="end"
-                      className="wt-target-label"
+                      x={chartData.width - chartData.paddingRight - 69}
+                      y={chartData.targetY + 3}
+                      textAnchor="middle"
+                      className="wt-target-pill-text"
                     >
-                      Mục tiêu: {stats.targetWeight} kg
+                      🎯 Mục tiêu: {stats.targetWeight} kg
                     </text>
                   </g>
                 )}
@@ -651,27 +1061,107 @@ export default function WeightTrackerPage() {
                   <path d={chartData.areaD} fill="url(#wtChartGrad)" />
                 )}
 
-                {/* Main Polyline */}
+                {/* Smooth Curve Polyline */}
                 {chartData.pathD && (
                   <path d={chartData.pathD} className="wt-chart-line" />
                 )}
 
+                {/* Single Point Guideline and Hint */}
+                {chartData.isSinglePoint && (
+                  <g>
+                    <line
+                      x1={chartData.paddingLeft}
+                      y1={chartData.points[0].y}
+                      x2={chartData.width - chartData.paddingRight}
+                      y2={chartData.points[0].y}
+                      className="wt-single-guideline"
+                    />
+                    <text
+                      x={chartData.width / 2}
+                      y={chartData.points[0].y + 42}
+                      textAnchor="middle"
+                      className="wt-single-point-hint"
+                    >
+                      ✨ Ghi nhận thêm các ngày tiếp theo để NutriLens tự động vẽ đường xu hướng sinh học!
+                    </text>
+                  </g>
+                )}
+
+                {/* Interactive Crosshair Line */}
+                {activePoint && (
+                  <line
+                    x1={activePoint.x}
+                    y1={chartData.paddingTop}
+                    x2={activePoint.x}
+                    y2={chartData.paddingTop + chartData.plotHeight}
+                    className="wt-chart-crosshair"
+                  />
+                )}
+
+                {/* Latest Point Floating Callout Pill */}
+                {!chartData.isSinglePoint && chartData.points.length > 1 && (() => {
+                  const latestPt = chartData.points[chartData.points.length - 1]
+                  const isNearRight = latestPt.x > chartData.width - chartData.paddingRight - 50
+                  const shiftX = isNearRight ? -28 : 0
+                  const badgeY = Math.max(chartData.paddingTop + 14, latestPt.y - 18)
+                  return (
+                    <g className="wt-latest-callout-group" transform={`translate(${latestPt.x + shiftX}, ${badgeY})`}>
+                      <rect
+                        x="-36"
+                        y="-12"
+                        width="72"
+                        height="20"
+                        rx="10"
+                        className="wt-latest-callout-bg"
+                      />
+                      <text
+                        x="0"
+                        y="2"
+                        textAnchor="middle"
+                        className="wt-latest-callout-text"
+                      >
+                        {latestPt.log.weightKg} kg
+                      </text>
+                    </g>
+                  )
+                })()}
+
                 {/* Data Points */}
-                {chartData.points.map(({ x, y, log }, idx) => {
+                {chartData.points.map((pt, idx) => {
+                  const { x, y, log, isLatest, showDate, dateAnchor, dateX } = pt
                   const isHovered = activePoint?.log?._id === log._id || activePoint?.log?.recordedDate === log.recordedDate
-                  const showDate = chartData.points.length <= 10 || idx === 0 || idx === chartData.points.length - 1 || idx % Math.ceil(chartData.points.length / 6) === 0
+
                   return (
                     <g key={log._id || log.id || idx}>
+                      {/* Pulse halo on latest point */}
+                      {isLatest && (
+                        <circle
+                          cx={x}
+                          cy={y}
+                          r={isHovered ? 14 : 10}
+                          className="wt-latest-halo"
+                        />
+                      )}
+
+                      {/* Main point circle */}
                       <circle
                         cx={x}
                         cy={y}
-                        r={isHovered ? 7 : 4.5}
-                        className={`wt-chart-point ${isHovered ? 'is-active' : ''}`}
-                        onMouseEnter={() => setActivePoint({ x, y, log })}
+                        r={isHovered ? 7.5 : isLatest ? 5.5 : 4.5}
+                        className={`wt-chart-point ${isHovered ? 'is-active' : ''} ${isLatest ? 'is-latest' : ''}`}
+                        filter={isHovered ? 'url(#wtActiveGlow)' : 'url(#wtPointGlow)'}
+                        onMouseEnter={() => setActivePoint(pt)}
                         onClick={() => openDialog(log.recordedDate.slice(0, 10), log.weightKg)}
                       />
+
+                      {/* X-axis Date Label */}
                       {showDate && (
-                        <text x={x} y={chartData.height - 12} textAnchor="middle" className="wt-chart-datelabel">
+                        <text
+                          x={dateX ?? x}
+                          y={chartData.height - 12}
+                          textAnchor={dateAnchor || (idx === 0 ? 'start' : idx === chartData.points.length - 1 ? 'end' : 'middle')}
+                          className={`wt-chart-datelabel ${isLatest ? 'is-latest' : ''}`}
+                        >
                           {formatLogDate(log.recordedDate)}
                         </text>
                       )}
@@ -680,24 +1170,80 @@ export default function WeightTrackerPage() {
                 })}
               </svg>
 
-              {/* Tooltip Overlay */}
+              {/* Enhanced Floating Tooltip Card */}
               {activePoint && (
                 <div
                   className="wt-chart-tooltip"
                   style={{
-                    left: `${(activePoint.x / chartData.width) * 100}%`,
+                    left: `${Math.min(88, Math.max(12, (activePoint.x / chartData.width) * 100))}%`,
                     top: `${(activePoint.y / chartData.height) * 100}%`,
                   }}
                 >
-                  <strong>{activePoint.log.weightKg} kg</strong>
-                  <span>
-                    {formatLogDate(activePoint.log.recordedDate)}
-                    {formatLogTime(activePoint.log.loggedAt || activePoint.log.updatedAt || activePoint.log.createdAt) || activePoint.log.timeStr
-                      ? ` lúc ${formatLogTime(activePoint.log.loggedAt || activePoint.log.updatedAt || activePoint.log.createdAt) || activePoint.log.timeStr}`
-                      : ''}
-                  </span>
+                  <div className="wt-tooltip__header">
+                    <span className="wt-tooltip__date">
+                      <i className="bi bi-calendar3" /> {formatLogDate(activePoint.log.recordedDate)}
+                    </span>
+                    {formatLogTime(activePoint.log.loggedAt || activePoint.log.updatedAt || activePoint.log.createdAt) || activePoint.log.timeStr ? (
+                      <span className="wt-tooltip__time">
+                        <i className="bi bi-clock" /> {formatLogTime(activePoint.log.loggedAt || activePoint.log.updatedAt || activePoint.log.createdAt) || activePoint.log.timeStr}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="wt-tooltip__body">
+                    <div className="wt-tooltip__weight">
+                      <strong>{activePoint.log.weightKg}</strong>
+                      <span>kg</span>
+                    </div>
+                    {activePoint.bmiInfo && (
+                      <span
+                        className="wt-tooltip__bmi"
+                        style={{ color: activePoint.bmiInfo.color, backgroundColor: activePoint.bmiInfo.bg }}
+                      >
+                        {activePoint.bmiInfo.label}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="wt-tooltip__comparisons">
+                    {activePoint.diffFromPrev != null && (
+                      <div className="wt-tooltip__row">
+                        <span>Lần trước:</span>
+                        <span className={activePoint.diffFromPrev > 0 ? 'wt-diff--up' : activePoint.diffFromPrev < 0 ? 'wt-diff--down' : 'wt-diff--neutral'}>
+                          {activePoint.diffFromPrev > 0 ? `+${activePoint.diffFromPrev}` : activePoint.diffFromPrev} kg
+                        </span>
+                      </div>
+                    )}
+                    {activePoint.diffFromBaseline != null && (
+                      <div className="wt-tooltip__row">
+                        <span>Mốc ban đầu:</span>
+                        <span className={activePoint.diffFromBaseline > 0 ? 'wt-diff--up' : activePoint.diffFromBaseline < 0 ? 'wt-diff--down' : 'wt-diff--neutral'}>
+                          {activePoint.diffFromBaseline > 0 ? `+${activePoint.diffFromBaseline}` : activePoint.diffFromBaseline} kg
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="wt-tooltip__footer">
+                    <i className="bi bi-pencil-square" /> Nhấp để chỉnh sửa hoặc xem chi tiết
+                  </div>
                 </div>
               )}
+
+              {/* Chart Legend & Tips */}
+              <div className="wt-chart-legend">
+                <span className="wt-chart-legend__item">
+                  <span className="wt-chart-legend__dot wt-chart-legend__dot--actual" /> Đường xu hướng cân nặng
+                </span>
+                {stats?.targetWeight && (
+                  <span className="wt-chart-legend__item">
+                    <span className="wt-chart-legend__line wt-chart-legend__line--target" /> Mốc mục tiêu ({stats.targetWeight} kg)
+                  </span>
+                )}
+                <span className="wt-chart-legend__item wt-chart-legend__hint">
+                  <i className="bi bi-cursor-fill" /> Rê chuột hoặc chạm điểm để xem chi tiết
+                </span>
+              </div>
             </div>
           ) : (
             <div className="wt-empty-chart">
@@ -1086,7 +1632,7 @@ export default function WeightTrackerPage() {
               <div className="wt-hist-modal-intro">
                 <i className="bi bi-info-circle-fill" />
                 <span>
-                  Đã cập nhật <b>{historyModalLog.updateCount || (historyModalLog.editHistory?.length ? historyModalLog.editHistory.length - 1 : 0)}/5</b> lần. Số cân ở lần ghi nhận mới nhất được dùng làm số liệu chính thức để vẽ biểu đồ và tính chỉ số BMI/TDEE.
+                  Đã cập nhật <b>{historyModalLog.updateCount || (historyModalLog.editHistory?.length ? historyModalLog.editHistory.length - 1 : 0)}/5</b> lần. Số cân ở lần ghi nhận mới nhất được dùng để vẽ biểu đồ theo dõi; hồ sơ sức khỏe chỉ nhận cân nặng khi đến mốc chu kỳ 2 tuần.
                 </span>
               </div>
 
@@ -1154,6 +1700,106 @@ export default function WeightTrackerPage() {
                 Đóng
               </button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {/* ── Modal xác nhận mốc cân nặng sau chu kỳ 14 ngày (Tùy chọn 2) ── */}
+      {milestoneModalOpen && (
+        <div className="hp-modal-backdrop" role="presentation" onMouseDown={() => setMilestoneModalOpen(false)}>
+          <section
+            className="hp-milestone-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wt-milestone-dialog-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="hp-milestone-modal__header">
+              <div className="hp-milestone-modal__icon">
+                <i className="bi bi-trophy-fill" />
+              </div>
+              <div className="hp-milestone-modal__title-box">
+                <h2 id="wt-milestone-dialog-title">Cập nhật mốc cân nặng sau 14 ngày</h2>
+                <p>Đánh giá hiệu quả dinh dưỡng và thiết lập chu kỳ 14 ngày tiếp theo</p>
+              </div>
+              <button
+                type="button"
+                className="hp-milestone-modal__close"
+                onClick={() => setMilestoneModalOpen(false)}
+                title="Đóng"
+                aria-label="Đóng"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyMilestone} noValidate>
+              <div className="hp-milestone-modal__body">
+                <div className="hp-milestone-prompt-box">
+                  <p>
+                    <strong>Đã hết chu kỳ 14 ngày!</strong> Bạn có muốn cập nhật lại chỉ số mốc và tính lại mục tiêu Calo không?
+                  </p>
+                  {weightLogs.length > 0 && (
+                    <div className="hp-milestone-prompt-box__recent">
+                      <i className="bi bi-clock-history" />
+                      <span>
+                        Số cân cuối cùng đã nhập trong hệ thống: <strong>{weightLogs[weightLogs.length - 1].weightKg} kg</strong> (ngày {formatLogDate(weightLogs[weightLogs.length - 1].recordedDate)})
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="hp-field" style={{ marginTop: '14px' }}>
+                  <label htmlFor="wtMilestoneWeightInput" style={{ fontWeight: 600 }}>
+                    Xác nhận số cân mốc cho chu kỳ mới (kg):
+                  </label>
+                  <div className="hp-unit-input">
+                    <input
+                      id="wtMilestoneWeightInput"
+                      type="number"
+                      step="0.1"
+                      min="20"
+                      max="300"
+                      autoFocus
+                      value={milestoneForm.weightKg}
+                      onChange={(e) => setMilestoneForm({ weightKg: e.target.value })}
+                    />
+                    <span>kg</span>
+                  </div>
+                  <small style={{ color: '#64748b', fontSize: '12px', marginTop: '5px', display: 'block' }}>
+                    Hệ thống tự động điền số cân cuối cùng bạn đã ghi nhận. Bạn có thể xác nhận số cân này hoặc điều chỉnh nếu vừa đo lại trước khi lưu vào hồ sơ.
+                  </small>
+                </div>
+
+                {milestoneError && (
+                  <div className="hp-milestone-modal__error" role="alert">
+                    <i className="bi bi-exclamation-circle-fill" /> {milestoneError}
+                  </div>
+                )}
+              </div>
+
+              <div className="hp-milestone-modal__actions">
+                <button
+                  type="button"
+                  className="hp-weight-modal__cancel"
+                  onClick={() => setMilestoneModalOpen(false)}
+                  disabled={applyingMilestone}
+                >
+                  Để sau
+                </button>
+                <button
+                  type="submit"
+                  className="hp-milestone-modal__submit"
+                  disabled={applyingMilestone}
+                >
+                  {applyingMilestone ? (
+                    <><div className="hp-spinner" /><span>Đang lưu…</span></>
+                  ) : (
+                    <><i className="bi bi-check2" /><span>Xác nhận &amp; Cập nhật hồ sơ</span></>
+                  )}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       )}
