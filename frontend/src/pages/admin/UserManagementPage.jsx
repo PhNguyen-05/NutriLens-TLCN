@@ -57,10 +57,10 @@ function getGoalLabel(goal) {
 
 function getGoalDescription(goal) {
   return ({
-    lose_weight: 'Theo dõi lượng calo và duy trì thói quen vận động để hướng tới cân nặng mục tiêu.',
-    maintain_weight: 'Duy trì cân nặng và thói quen ăn uống lành mạnh theo mục tiêu cá nhân.',
-    gain_weight: 'Theo dõi dinh dưỡng và duy trì chế độ ăn phù hợp để hướng tới cân nặng mục tiêu.',
-    eat_healthier: 'Xây dựng thói quen ăn uống cân bằng và phù hợp với tình trạng sức khỏe.',
+    lose_weight: 'Duy trì cân nặng hợp lý, cải thiện sức khoẻ và thói quen ăn uống lành mạnh.',
+    maintain_weight: 'Duy trì cân nặng hợp lý, cải thiện sức khoẻ và thói quen ăn uống lành mạnh.',
+    gain_weight: 'Duy trì cân nặng hợp lý, cải thiện sức khoẻ và thói quen ăn uống lành mạnh.',
+    eat_healthier: 'Duy trì cân nặng hợp lý, cải thiện sức khoẻ và thói quen ăn uống lành mạnh.',
   })[goal] || 'Người dùng chưa thiết lập mục tiêu dinh dưỡng.'
 }
 
@@ -366,21 +366,9 @@ export default function UserManagementPage() {
 
                   <section className="goal-card">
                     <div className="detail-card-header"><span className="detail-card-icon goal-icon"><i className="bi bi-bullseye" /></span><h3>Mục tiêu dinh dưỡng</h3></div>
-                    <div className="goal-card-content"><div><small>Mục tiêu hiện tại</small><strong>{getGoalLabel(selectedUser.nutritionGoal?.goal || selectedUser.healthGoal)}</strong></div><p>{getGoalDescription(selectedUser.nutritionGoal?.goal || selectedUser.healthGoal)}{selectedUser.nutritionGoal?.calorieTarget ? ` Mục tiêu năng lượng: ${formatMetric(selectedUser.nutritionGoal.calorieTarget)} kcal/ngày.` : ''}</p></div>
+                    <div className="goal-card-content"><div><small>Mục tiêu hiện tại</small><strong>{getGoalLabel(selectedUser.nutritionGoal?.goal || selectedUser.healthGoal)}</strong></div><p>{getGoalDescription(selectedUser.nutritionGoal?.goal || selectedUser.healthGoal)}</p></div>
                   </section>
 
-                  <section className="history-card">
-                    <div className="history-card-header"><span className="detail-card-icon history"><i className="bi bi-calendar-week-fill" /></span><h3>Lịch sử hoạt động gần đây (7 ngày)</h3></div>
-                    <div className="activity-summary-grid">
-                      <article><span className="activity-icon meals"><i className="bi bi-fork-knife" /></span><div><small>Số bữa ăn đã ghi nhận</small><strong>{selectedUser.activitySummary?.mealCount ?? '—'}</strong><span>Trong 7 ngày qua</span></div></article>
-                      <article><span className="activity-icon workouts"><i className="bi bi-person-walking" /></span><div><small>Số buổi tập đã ghi nhận</small><strong>{selectedUser.activitySummary?.workoutCount ?? '—'}</strong><span>Trong 7 ngày qua</span></div></article>
-                      <article><span className="activity-icon recent"><i className="bi bi-clock-history" /></span><div><small>Hoạt động gần nhất</small><strong>{selectedUser.activitySummary?.lastActivity || 'Chưa ghi nhận'}</strong><span>{selectedUser.activitySummary?.lastActivityAt ? formatDate(selectedUser.activitySummary.lastActivityAt) : '—'}</span></div></article>
-                    </div>
-                    <div className="activity-details-grid">
-                      <div className="activity-log-panel"><h4><i className="bi bi-list-check" />Chi tiết theo từng ngày (7 ngày gần nhất)</h4><div className="activity-log-head"><span>Ngày</span><span>Bữa ăn</span><span>Bài tập</span></div>{(selectedUser.activitySummary?.days || []).length ? selectedUser.activitySummary.days.map((day) => <div className="activity-log-row" key={day.date}><span>{formatDate(day.date)}</span><span>{day.meals ?? '—'}</span><span>{day.workouts ?? '—'}</span></div>) : <p className="activity-empty">Chưa có dữ liệu bữa ăn hoặc bài tập trong 7 ngày gần nhất.</p>}</div>
-                      <div className="activity-note-panel"><h4><i className="bi bi-journal-text" />Ghi chú thêm</h4><p>{selectedUser.medicalConditions || selectedUser.allergies || 'Không có ghi chú đặc biệt.'}</p></div>
-                    </div>
-                  </section>
                 </div>
               </div>
             ) : (
