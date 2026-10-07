@@ -282,10 +282,6 @@ export default function UserManagementPage() {
                       <span className="detail-profile-contact"><i className="bi bi-envelope" />{selectedUser.email || '—'}<i className={`bi ${selectedUser.authProvider === 'google' ? 'bi-google google-icon' : 'bi-shield-lock'}`} />{selectedUser.authProvider === 'google' ? 'Google' : 'Email'}</span>
                       <span className={`detail-profile-status ${selectedUser.status === 'locked' ? 'locked' : ''}`}><i />{selectedUser.status === 'locked' ? 'Đã khóa' : selectedUser.status === 'pending' ? 'Chờ xác thực' : 'Đang hoạt động'}</span>
                     </div>
-                    <div className="detail-profile-facts">
-                      <div><i className="bi bi-calendar-date" /><span><small>Ngày sinh</small><strong>{selectedUser.dateOfBirth ? new Intl.DateTimeFormat('vi-VN').format(new Date(selectedUser.dateOfBirth)) : '—'}</strong></span></div>
-                      <div><i className="bi bi-person" /><span><small>Giới tính</small><strong>{selectedUser.gender === 'female' ? 'Nữ' : selectedUser.gender === 'male' ? 'Nam' : '—'}</strong></span></div>
-                    </div>
                   </section>
 
                   <div className="user-detail-sections">
