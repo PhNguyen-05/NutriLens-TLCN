@@ -1,0 +1,25 @@
+
+> frontend@0.0.0 build
+> vite build
+
+[36mvite v8.2.2 [32mbuilding client environment for production...[36m[39m
+transforming...
+✓ 111 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                               0.63 kB │ gzip:   0.41 kB
+dist/assets/hero-CLDdwZDr.png                13.05 kB
+dist/assets/bootstrap-icons-mSm7cUeB.woff2  134.04 kB
+dist/assets/bootstrap-icons-BeopsB42.woff   180.28 kB
+dist/assets/index-JvrqGA4a.css              395.45 kB │ gzip:  62.88 kB
+dist/assets/index-C5sfnbAa.js               451.05 kB │ gzip: 140.32 kB
+
+[32m✓ built in 5.70s[39m
+[33m[33m[PLUGIN_TIMINGS] [0mPlugin hooks ran for 5.2s of this 5.7s build (92%).
+The slowest hooks, timed inside each callback (the wait before a callback starts is excluded, the time it awaits is included):
+  - @rolldown/plugin-babel transform (73%, 4.1s, 23 calls)
+Additional hook time came from the hooks below and from hooks under 1s.
+1 hook is listed without a time. Its calls overlapped, so the time inside one call includes work from other calls. To find its cost, profile the build with `node --cpu-prof`:
+  - vite:css transform (3 calls)
+See https://rolldown.rs/reference/InputOptions.checks#plugintimings for more details.
+[39m

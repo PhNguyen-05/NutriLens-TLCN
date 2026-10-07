@@ -1,122 +1,97 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { useSelector } from 'react-redux'
+import LoginPage from './pages/auth/LoginPage'
+import RegisterPage from './pages/auth/RegisterPage'
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
+import DashboardPage from './pages/user/DashboardPage'
+import HealthProfilePage from './pages/user/HealthProfilePage'
+import WeightTrackerPage from './pages/user/WeightTrackerPage'
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import { useIdleTimer } from './hooks/useIdleTimer'
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function isAdminUser(user) {
+  return String(user?.role || '').toLowerCase() === 'admin'
 }
 
-export default App
+// ---------------------------------------------------------------------------
+// Route Guards
+// ---------------------------------------------------------------------------
+
+/**
+ * Route chỉ dành cho user ĐÃ đăng nhập.
+ * Redirect về /login nếu chưa xác thực.
+ */
+function PrivateRoute({ children }) {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  if (!user || !accessToken) return <Navigate to="/login" replace />
+  return isAdminUser(user) ? <Navigate to="/admin" replace /> : children
+}
+
+function AdminRoute({ children }) {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  return user && accessToken && isAdminUser(user) ? children : <Navigate to="/dashboard" replace />
+}
+
+/**
+ * Route chỉ dành cho user CHƯA đăng nhập (login, register, forgot-password).
+ * Redirect về /dashboard nếu đã xác thực, tránh truy cập lại form login khi đang có session.
+ */
+function PublicRoute({ children }) {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  return user && accessToken ? <Navigate to={isAdminUser(user) ? '/admin' : '/dashboard'} replace /> : children
+}
+
+// ---------------------------------------------------------------------------
+// App Routes
+// ---------------------------------------------------------------------------
+export default function App() {
+  // Tự động logout sau 30 phút không hoạt động.
+  // Thay đổi giá trị nếu muốn chỉnh thời gian, ví dụ: 15 * 60 * 1000 = 15 phút.
+  useIdleTimer(30 * 60 * 1000)
+
+  return (
+    <Routes>
+      {/* Mặc định redirect về trang đăng nhập */}
+      <Route path="/" element={<Navigate to="/login" replace />} />
+
+      {/* Auth (Public) */}
+      <Route
+        path="/login"
+        element={<PublicRoute><LoginPage /></PublicRoute>}
+      />
+      <Route
+        path="/register"
+        element={<PublicRoute><RegisterPage /></PublicRoute>}
+      />
+      <Route
+        path="/forgot-password"
+        element={<PublicRoute><ForgotPasswordPage /></PublicRoute>}
+      />
+
+      {/* Protected */}
+      <Route
+        path="/dashboard"
+        element={<PrivateRoute><DashboardPage /></PrivateRoute>}
+      />
+      <Route
+        path="/profile"
+        element={<PrivateRoute><HealthProfilePage /></PrivateRoute>}
+      />
+      <Route
+        path="/weight-tracker"
+        element={<PrivateRoute><WeightTrackerPage /></PrivateRoute>}
+      />
+      <Route
+        path="/nutrition-goal"
+        element={<Navigate to="/profile" replace />}
+      />
+      <Route
+        path="/admin"
+        element={<AdminRoute><AdminDashboardPage /></AdminRoute>}
+      />
+
+      {/* Catch-all */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  )
+}
