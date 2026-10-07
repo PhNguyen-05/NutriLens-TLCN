@@ -66,6 +66,49 @@ function getSmoothPath(points) {
   return d
 }
 
+function getNiceYAxis(minW, maxW) {
+  let span = maxW - minW
+  const minSpan = 3
+  let paddedMin = minW
+  let paddedMax = maxW
+
+  if (span < minSpan) {
+    const center = (minW + maxW) / 2
+    paddedMin = center - minSpan / 2
+    paddedMax = center + minSpan / 2
+  } else {
+    const pad = Math.max(span * 0.1, 1)
+    paddedMin = minW - pad
+    paddedMax = maxW + pad
+  }
+
+  const effectiveSpan = paddedMax - paddedMin
+  let tickStep = 1
+  if (effectiveSpan <= 4) {
+    tickStep = 1
+  } else if (effectiveSpan <= 14) {
+    tickStep = 2
+  } else if (effectiveSpan <= 30) {
+    tickStep = 5
+  } else {
+    tickStep = 10
+  }
+
+  let lower = Math.floor(paddedMin / tickStep) * tickStep
+  let upper = Math.ceil(paddedMax / tickStep) * tickStep
+
+  if (minW - lower < 0.2 * tickStep) lower -= tickStep
+  if (upper - maxW < 0.2 * tickStep) upper += tickStep
+
+  const range = upper - lower || 1
+  const ticks = []
+  for (let v = upper; v >= lower - 0.0001; v -= tickStep) {
+    ticks.push(Number(v.toFixed(1)))
+  }
+
+  return { lower, upper, range, ticks, tickStep }
+}
+
 export default function WeightTrackerPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -489,12 +532,7 @@ export default function WeightTrackerPage() {
       maxW = Math.max(maxW, targetW)
     }
 
-    const rawSpan = maxW - minW
-    const padding = Math.max(rawSpan * 0.22, 1.2)
-    const step = rawSpan <= 3 ? 0.5 : 1
-    const lower = Number((Math.floor((minW - padding) / step) * step).toFixed(1))
-    const upper = Number((Math.ceil((maxW + padding) / step) * step).toFixed(1))
-    const range = upper - lower || 1
+    const { lower, upper, range, ticks } = getNiceYAxis(minW, maxW)
 
     const width = 800
     const height = 280
@@ -516,11 +554,10 @@ export default function WeightTrackerPage() {
       if (Number(l.weightKg) > Number(maxLog.weightKg)) maxLog = l
     }
 
-    // 5 mốc lưới đều đặn
-    const gridSteps = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
-      const val = Number((lower + range * (1 - ratio)).toFixed(1))
-      const y = paddingTop + plotHeight * ratio
-      return { val, y, isAxis: ratio === 1 }
+    // Các mốc lưới số tròn đều đặn (từ trên xuống dưới)
+    const gridSteps = ticks.map((val, idx) => {
+      const y = paddingTop + plotHeight - ((val - lower) / range) * plotHeight
+      return { val, y, isAxis: idx === ticks.length - 1 }
     })
 
     // Đường mốc mục tiêu
@@ -533,7 +570,7 @@ export default function WeightTrackerPage() {
     if (filteredLogs.length === 1) {
       const log = filteredLogs[0]
       const w = Number(log.weightKg)
-      const y = paddingTop + plotHeight / 2
+      const y = paddingTop + plotHeight - ((w - lower) / range) * plotHeight
       const x = paddingLeft + plotWidth / 2
       const bmiInfo = getBmiInfo(w, profile?.heightCm)
       return {
@@ -541,7 +578,21 @@ export default function WeightTrackerPage() {
         height,
         lower,
         upper,
-        points: [{ x, y, log, isFirst: true, isLatest: true, isLowest: true, isHighest: true, bmiInfo, showDate: true, dateAnchor: 'middle', dateX: x }],
+        points: [{
+          x,
+          y,
+          log,
+          isFirst: true,
+          isLatest: true,
+          isLowest: true,
+          isHighest: true,
+          bmiInfo,
+          showDate: true,
+          dateAnchor: 'middle',
+          dateX: x,
+          diffFromPrev: null,
+          diffFromBaseline: null,
+        }],
         pathD: '',
         areaD: '',
         targetY,
@@ -1078,7 +1129,11 @@ export default function WeightTrackerPage() {
                     />
                     <text
                       x={chartData.width / 2}
-                      y={chartData.points[0].y + 42}
+                      y={
+                        chartData.points[0].y > chartData.paddingTop + chartData.plotHeight * 0.65
+                          ? chartData.points[0].y - 20
+                          : chartData.points[0].y + 36
+                      }
                       textAnchor="middle"
                       className="wt-single-point-hint"
                     >

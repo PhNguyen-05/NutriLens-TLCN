@@ -77,7 +77,7 @@ function HealthMetricsPanel({ profile, loading, onQuickLog, baselineStatus }) {
       {baselineStatus?.inGracePeriod && (
         <div style={{ marginTop: '10px', fontSize: '0.78rem', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <i className="bi bi-clock-history" style={{ color: '#2563eb' }} />
-          <span>Khoảng ân hạn sửa nhầm mốc: <b>còn {baselineStatus.hoursRemainingInGrace} giờ</b></span>
+          <span>Điều chỉnh cân nặng hiện tại: <b>còn {baselineStatus.hoursRemainingInGrace} giờ</b></span>
         </div>
       )}
 
