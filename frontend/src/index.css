@@ -724,8 +724,12 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .action-log-date > i, .action-log-select > i, .action-log-search > i { flex: 0 0 auto; color: #52769b; font-size: 13px; }
 .action-log-date input, .action-log-select select, .action-log-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: #4e6983; font: inherit; font-size: 11px; }
 .action-log-date input { flex: 1 1 0; width: 1%; color-scheme: light; }
-.action-log-date input::-webkit-calendar-picker-indicator { width: 0; margin: 0; opacity: 0; }
+.action-log-date input::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
+.action-log-date-field { position: relative; display: flex; flex: 1 1 0; align-items: center; min-width: 0; color: #4e6983; font-size: 13px; }
+.action-log-date-field > span { pointer-events: none; white-space: nowrap; }
+.action-log-date-field input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
 .action-log-date > span { flex: 0 0 auto; color: #55789c; font-size: 13px; }
+.action-log-date > .action-log-date-field { flex: 1 1 0; color: #4e6983; }
 .action-log-date .action-log-date-chevron { color: #718aa2; font-size: 10px; }
 .action-log-search input::placeholder { color: #8da1b5; }
 .action-log-table-wrap { min-height: 0; flex: 1 1 auto; overflow: auto; margin: 0 12px; border: 1px solid #deebf4; border-radius: 7px; }

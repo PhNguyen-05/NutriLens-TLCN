@@ -17,6 +17,11 @@ function getAvatarUrl(avatarUrl) {
   return `${axiosInstance.defaults.baseURL.replace(/\/api\/?$/, '')}${avatarUrl}`
 }
 
+function formatDateDisplay(dateValue) {
+  const [year, month, day] = dateValue.split('-')
+  return year && month && day ? `${day}/${month}/${year}` : ''
+}
+
 export default function AdminActionLogsModal({ isOpen, onClose, embedded = false }) {
   const [logFrom, setLogFrom] = useState(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
   const [logTo, setLogTo] = useState(() => new Date().toISOString().slice(0, 10))
@@ -66,7 +71,7 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
       <div className="admin-action-log-page">
         <section className="admin-action-log-panel" aria-label="Lịch sử thao tác của Admin">
           <div className="action-log-filters">
-            <label className="action-log-date"><i className="bi bi-calendar3" /><input type="date" value={logFrom} max={logTo} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /><span>→</span><input type="date" value={logTo} min={logFrom} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /><i className="bi bi-chevron-down action-log-date-chevron" /></label>
+            <label className="action-log-date"><i className="bi bi-calendar3" /><span className="action-log-date-field"><span>{formatDateDisplay(logFrom)}</span><input type="date" value={logFrom} max={logTo} aria-label="Ngày bắt đầu" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /></span><span>→</span><span className="action-log-date-field"><span>{formatDateDisplay(logTo)}</span><input type="date" value={logTo} min={logFrom} aria-label="Ngày kết thúc" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /></span><i className="bi bi-chevron-down action-log-date-chevron" /></label>
             <label className="action-log-select"><i className="bi bi-person-gear" /><select value={logAction} onChange={(event) => { setLogAction(event.target.value); setLogPage(1) }} aria-label="Lọc hành động"><option value="all">Tất cả hành động</option>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             <label className="action-log-select"><i className="bi bi-shield-check" /><select value={logAdmin} onChange={(event) => { setLogAdmin(event.target.value); setLogPage(1) }} aria-label="Lọc người thực hiện"><option value="all">Tất cả người thực hiện</option>{logAdmins.map((logAdminUser) => <option key={logAdminUser._id} value={logAdminUser._id}>{logAdminUser.fullName}</option>)}</select></label>
             <label className="action-log-search"><i className="bi bi-search" /><input value={logSearch} onChange={(event) => { setLogSearch(event.target.value); setLogPage(1) }} placeholder="Tìm kiếm theo tên người dùng, email..." aria-label="Tìm kiếm trong lịch sử thao tác" /></label>
@@ -107,7 +112,7 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
         </header>
 
         <div className="action-log-filters">
-          <label className="action-log-date"><i className="bi bi-calendar3" /><input type="date" value={logFrom} max={logTo} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /><span>→</span><input type="date" value={logTo} min={logFrom} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /><i className="bi bi-chevron-down action-log-date-chevron" /></label>
+          <label className="action-log-date"><i className="bi bi-calendar3" /><span className="action-log-date-field"><span>{formatDateDisplay(logFrom)}</span><input type="date" value={logFrom} max={logTo} aria-label="Ngày bắt đầu" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /></span><span>→</span><span className="action-log-date-field"><span>{formatDateDisplay(logTo)}</span><input type="date" value={logTo} min={logFrom} aria-label="Ngày kết thúc" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /></span><i className="bi bi-chevron-down action-log-date-chevron" /></label>
           <label className="action-log-select"><i className="bi bi-person-gear" /><select value={logAction} onChange={(event) => { setLogAction(event.target.value); setLogPage(1) }} aria-label="Lọc hành động"><option value="all">Tất cả hành động</option>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="action-log-select"><i className="bi bi-shield-check" /><select value={logAdmin} onChange={(event) => { setLogAdmin(event.target.value); setLogPage(1) }} aria-label="Lọc người thực hiện"><option value="all">Tất cả người thực hiện</option>{logAdmins.map((logAdminUser) => <option key={logAdminUser._id} value={logAdminUser._id}>{logAdminUser.fullName}</option>)}</select></label>
           <label className="action-log-search"><i className="bi bi-search" /><input value={logSearch} onChange={(event) => { setLogSearch(event.target.value); setLogPage(1) }} placeholder="Tìm kiếm theo tên người dùng, email..." aria-label="Tìm kiếm trong lịch sử thao tác" /></label>
