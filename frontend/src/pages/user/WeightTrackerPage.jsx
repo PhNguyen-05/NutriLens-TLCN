@@ -783,7 +783,7 @@ export default function WeightTrackerPage() {
           <div className="wt-cycle-status-strip">
             <i className="bi bi-lock-fill" />
             <span>
-              Cân nặng mốc trong hồ sơ ({profile?.currentWeightKg} kg) đang được bảo lưu chu kỳ 14 ngày (<strong>Ngày {baselineStatus.daysElapsed}/14</strong>, còn {baselineStatus.daysRemaining} ngày để cơ thể thích nghi trước khi đánh giá lại).
+              Cân nặng mốc trong hồ sơ ({profile?.currentWeightKg} kg) đang được bảo lưu chu kỳ 14 ngày (còn {baselineStatus.daysRemaining} ngày để cơ thể thích nghi trước khi đánh giá lại).
             </span>
           </div>
         )}

@@ -1397,7 +1397,7 @@ export default function HealthProfilePage() {
                 <div className="hp-baseline-notice__top">
                   <div className="hp-baseline-notice__info">
                     <span className="hp-baseline-notice__tag">
-                      <i className="bi bi-lock-fill" /> Bảo lưu chu kỳ 14 ngày (Ngày {baselineStatus.daysElapsed}/14)
+                      <i className="bi bi-lock-fill" /> Bảo lưu chu kỳ 14 ngày 
                     </span>
                     <p>
                       Cân nặng mốc được cố định trong 14 ngày để cơ thể thích nghi với mức Calo &amp; TDEE mục tiêu. Chỉ số này sẽ mở khóa vào ngày <strong>{formatLogDate(baselineStatus.unlockDate)}</strong> (còn <strong>{baselineStatus.daysRemaining} ngày</strong>).
