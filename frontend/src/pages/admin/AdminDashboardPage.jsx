@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
+import AdminActionLogsModal from './AdminActionLogsModal'
 import UserManagementPage from './UserManagementPage'
 
 const reviewItems = [
@@ -18,13 +19,15 @@ const alerts = [
 export default function AdminDashboardPage() {
   const { user, handleLogout } = useAuth()
   const [activeItem, setActiveItem] = useState('Dashboard')
+  const [showActionLogs, setShowActionLogs] = useState(false)
 
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
         <div className="admin-brand"><span><i className="bi bi-activity" /></span> NutriLes</div>
         <div className="admin-section-label">TỔNG QUAN</div>
-        <button className={activeItem === 'Dashboard' ? 'active' : ''} onClick={() => setActiveItem('Dashboard')}><i className="bi bi-grid-1x2" /> Dashboard</button>
+        <button className={activeItem === 'Dashboard' ? 'active' : ''} onClick={() => { setActiveItem('Dashboard'); setShowActionLogs(false) }}><i className="bi bi-grid-1x2" /> Dashboard</button>
+        <button className={activeItem === 'Lịch sử thao tác' ? 'active' : ''} onClick={() => { setActiveItem('Lịch sử thao tác'); setShowActionLogs(true) }}><i className="bi bi-clock-history" /> Lịch sử thao tác</button>
         <button onClick={() => setActiveItem('Báo cáo')}><i className="bi bi-bar-chart-line" /> Thống kê & Báo cáo</button>
         <div className="admin-section-label">NGƯỜI DÙNG</div>
         <button className={activeItem === 'Người dùng' ? 'active' : ''} onClick={() => setActiveItem('Người dùng')}><i className="bi bi-people" /> Quản lý người dùng</button>
@@ -40,9 +43,9 @@ export default function AdminDashboardPage() {
       </aside>
 
       <main className="admin-content">
-        <header className="admin-topbar"><div><h1>{activeItem === 'Người dùng' ? 'Quản lý người dùng' : 'Bảng điều khiển Vận hành NutriLes'}</h1><p>{activeItem === 'Người dùng' ? 'Xem và quản lý thông tin người dùng, theo dõi trạng thái tài khoản.' : 'Giám sát thời gian thực hoạt động các microservices, hàng đợi phê duyệt AI Lens và chỉ số an toàn sức khỏe người dùng trong ngày.'}</p></div><div className="admin-user"><button title="Thông báo"><i className="bi bi-bell" /></button><strong>{user?.fullName || 'Admin'}</strong><span>{(user?.fullName || 'A').charAt(0)}</span></div></header>
-        <div className="admin-body">
-          {activeItem === 'Người dùng' ? <UserManagementPage /> : <>
+        <header className={`admin-topbar ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-topbar' : ''}`}><div className={`admin-topbar-title ${activeItem === 'Lịch sử thao tác' ? 'action-log-topbar-title' : ''}`}>{activeItem === 'Lịch sử thao tác' && <span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span>}<div><h1>{activeItem === 'Người dùng' ? 'Quản lý người dùng' : activeItem === 'Lịch sử thao tác' ? 'Lịch sử thao tác của Admin' : 'Bảng điều khiển Vận hành NutriLes'}</h1><p>{activeItem === 'Người dùng' ? 'Xem và quản lý thông tin người dùng, theo dõi trạng thái tài khoản.' : activeItem === 'Lịch sử thao tác' ? 'Xem chi tiết các thao tác quản lý tài khoản, bao gồm khóa, mở khóa, cập nhật thông tin và các hành động khác.' : 'Giám sát thời gian thực hoạt động các microservices, hàng đợi phê duyệt AI Lens và chỉ số an toàn sức khỏe người dùng trong ngày.'}</p></div></div><div className="admin-user"><button title="Thông báo"><i className="bi bi-bell" /></button><strong>{user?.fullName || 'Admin'}</strong><span>{(user?.fullName || 'A').charAt(0)}</span></div></header>
+        <div className={`admin-body ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-body' : ''}`}>
+          {activeItem === 'Người dùng' ? <UserManagementPage /> : activeItem === 'Lịch sử thao tác' ? <AdminActionLogsModal embedded isOpen={showActionLogs} onClose={() => { setShowActionLogs(false); setActiveItem('Dashboard') }} /> : <>
           <section className="admin-kpis"><article><span>LƯỢT QUÉT AI LENS HÔM NAY <i className="bi bi-phone" /></span><strong>2.840 <em>+18.4%</em></strong><small>Độ trễ: 1.38s　 Độ chính xác: <b>96.8% mAP</b></small></article><article><span>YÊU CẦU MÓN ĂN CHỜ DUYỆT <i className="bi bi-card-text" /></span><strong>18 <small>món</small></strong><small className="danger-dot">● 3 ca chuyên gia gửi <b>Cần xử lý &lt; 2h</b></small></article><article><span>CẢNH BÁO SỨC KHỎE KHẨN CẤP <i className="bi bi-shield-exclamation" /></span><strong className="critical-number">04 <small>CRITICAL</small></strong><small>Vượt 140% TDEE &amp; T <b>Can thiệp ngay</b></small></article><article><span>TÌNH TRẠNG CỤM AI VISION <i className="bi bi-cpu" /></span><strong className="healthy-number">100% <small>Sẵn sàng</small></strong><small>NVIDIA T4 (Lại: 42%) <b>142ms API</b></small></article></section>
 
           <section className="admin-columns"><article className="admin-panel review-panel"><div className="admin-panel-heading"><div><h2>Yêu cầu bổ sung món ăn &amp; Gắn nhãn AI mới <b>18 chờ duyệt</b></h2><p></p></div><div><button>Lọc độ tin cậy</button><button className="approve-all">✓ Duyệt hàng loạt</button></div></div>{reviewItems.map(([icon, title, confidence, id, sender, calories, tone], index) => <div className="review-row" key={title}><span className="food-thumb">{icon}</span><div className="review-info"><h3>{title} <b className={tone}>{confidence}</b></h3><small>{id}</small><p>{sender}</p><span className={`calorie-line ${tone}`}>•　{calories}</span></div><div className="review-actions">{index === 2 ? <><button className="edit-high">⚑ Hiệu chỉnh cao</button><button>Từ chối</button></> : <><button>▤ Hiệu chỉnh</button><button className="approve">✓ Duyệt{index === 0 ? ' ngay' : ''}</button></>}</div></div>)}</article>

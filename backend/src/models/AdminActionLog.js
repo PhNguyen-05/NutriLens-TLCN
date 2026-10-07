@@ -41,6 +41,12 @@ const adminActionLogSchema = new Schema(
       default: null,
       trim: true,
     },
+    evidence: [{
+      url: { type: String, trim: true },
+      originalName: { type: String, trim: true },
+      mimeType: { type: String, trim: true },
+      size: { type: Number, min: 0 },
+    }],
   },
   { timestamps: true }
 );
