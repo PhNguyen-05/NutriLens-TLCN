@@ -1,0 +1,25 @@
+# ── Node.js ───────────────────────────────────────────────────
+node_modules/
+dist/
+.env
+.env.local
+.env.production
+
+# ── Python / AI Service ───────────────────────────────────────
+ai_service/__pycache__/
+ai_service/*.pyc
+ai_service/.venv/
+ai_service/venv/
+
+# Model nặng 42MB — commit thẳng vào repo (dưới 100MB GitHub limit)
+# Nếu muốn dùng Git LFS: bỏ comment dòng dưới và chạy: git lfs track "*.pt"
+# ai_service/*.pt
+
+# ── Uploads ───────────────────────────────────────────────────
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ── Misc ──────────────────────────────────────────────────────
+*.log
+.DS_Store
+Thumbs.db
