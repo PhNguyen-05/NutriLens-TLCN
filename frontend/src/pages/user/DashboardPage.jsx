@@ -184,7 +184,7 @@ export default function DashboardPage() {
         <a className="dashboard-logo" href="/dashboard"><span><i className="bi bi-leaf-fill" /></span> NutriLens</a>
         <nav className="dashboard-nav">
           <a className="active" href="/dashboard">Tổng quan</a>
-          <a href="/dashboard">Nhận diện & Đồ ăn</a>
+          <Link to="/food-scan">Nhận diện & Đồ ăn</Link>
           <a href="/dashboard">Luyện tập</a>
           <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>

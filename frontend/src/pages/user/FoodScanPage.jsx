@@ -3,8 +3,10 @@
  * UC13 — Nhận diện món ăn qua ảnh và thêm vào nhật ký bữa ăn.
  */
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
+import { useAuth } from '../../hooks/useAuth'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,13 +30,11 @@ const MEAL_LABELS = {
 /** Thanh confidence với màu động */
 function ConfidenceBar({ value }) {
   const pct = Math.min(100, Math.max(0, value))
-  const color = pct >= 70 ? '#22c55e' : pct >= 40 ? '#f59e0b' : '#ef4444'
+  const tone = pct >= 70 ? 'high' : pct >= 40 ? 'medium' : 'low'
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ flex: 1, height: 8, background: '#e5e7eb', borderRadius: 4, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.4s' }} />
-      </div>
-      <span style={{ fontSize: 13, color, fontWeight: 600, minWidth: 40 }}>{pct}%</span>
+    <div className={`fs-confidence ${tone}`}>
+      <span className="fs-confidence-track"><i style={{ width: `${pct}%` }} /></span>
+      <strong>{pct}%</strong>
     </div>
   )
 }
@@ -44,40 +44,32 @@ function NutritionTable({ nutrition, servings }) {
   if (!nutrition) return null
   const s = servings || 1
   const rows = [
-    { label: 'Năng lượng',    value: roundN(nutrition.calories * s), unit: 'kcal' },
-    { label: 'Chất đạm',     value: roundN(nutrition.protein  * s), unit: 'g' },
-    { label: 'Chất béo',     value: roundN(nutrition.fat      * s), unit: 'g' },
-    { label: 'Carbohydrate', value: roundN(nutrition.carbs    * s), unit: 'g' },
-    { label: 'Chất xơ',      value: roundN(nutrition.fiber    * s), unit: 'g' },
+    { label: 'Calories', value: roundN(nutrition.calories * s), unit: 'kcal', tone: 'calories', icon: 'bi-fire' },
+    { label: 'Carbohydrate', value: roundN(nutrition.carbs * s), unit: 'g', tone: 'carbs', icon: 'bi-flower1' },
+    { label: 'Protein', value: roundN(nutrition.protein * s), unit: 'g', tone: 'protein', icon: 'bi-circle-fill' },
+    { label: 'Fat', value: roundN(nutrition.fat * s), unit: 'g', tone: 'fat', icon: 'bi-droplet-fill' },
   ]
   return (
-    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-      <thead>
-        <tr style={{ background: '#f3f4f6' }}>
-          <th style={th}>Chất dinh dưỡng</th>
-          <th style={{ ...th, textAlign: 'right' }}>Lượng ({s} khẩu phần)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.label} style={{ borderBottom: '1px solid #e5e7eb' }}>
-            <td style={td}>{r.label}</td>
-            <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>
-              {r.value} {r.unit}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className="fs-macro-grid">
+      {rows.map((row) => (
+        <article className={`fs-macro-card ${row.tone}`} key={row.label}>
+          <span><i className={`bi ${row.icon}`} />{row.label}</span>
+          <strong>{row.value}<small> {row.unit}</small></strong>
+          <small>{row.tone === 'calories' ? 'Năng lượng' : row.label === 'Protein' ? 'Chất đạm' : row.label === 'Fat' ? 'Chất béo' : 'Tinh bột'}</small>
+        </article>
+      ))}
+    </div>
   )
 }
-const th = { padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#374151' }
-const td = { padding: '8px 12px', color: '#4b5563' }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FoodScanPage() {
   const fileInputRef = useRef(null)
+  const cameraInputRef = useRef(null)
+  const { user, handleLogout } = useAuth()
+  const navigate = useNavigate()
+  const [profileOpen, setProfileOpen] = useState(false)
 
   // Ảnh preview
   const [preview, setPreview]     = useState(null)   // data URL
@@ -97,6 +89,40 @@ export default function FoodScanPage() {
   // Trạng thái lưu nhật ký
   const [saving, setSaving]     = useState(false)
   const [saveMsg, setSaveMsg]   = useState(null)  // { type:'success'|'error', text }
+  const [mealLogs, setMealLogs] = useState([])
+  const [dailyTotals, setDailyTotals] = useState(null)
+  const [logsLoading, setLogsLoading] = useState(true)
+  const [profile, setProfile] = useState(null)
+
+  const firstName = user?.fullName?.split(' ')[0] || 'bạn'
+  const selectedPrediction = result?.predictions?.[selectedPred]
+  const targetCalories = Number(profile?.nutritionGoal?.calorieTarget || 2000)
+
+  const loadMealLogs = useCallback(async () => {
+    setLogsLoading(true)
+    try {
+      const { data } = await axiosInstance.get('/food/meal-logs', { params: { date } })
+      setMealLogs(data.logs || [])
+      setDailyTotals(data.totals || null)
+    } catch {
+      setMealLogs([])
+      setDailyTotals(null)
+    } finally {
+      setLogsLoading(false)
+    }
+  }, [date])
+
+  useEffect(() => {
+    let isActive = true
+    axiosInstance.get('/profile')
+      .then(({ data }) => { if (isActive) setProfile(data.profile || null) })
+      .catch(() => { if (isActive) setProfile(null) })
+    return () => { isActive = false }
+  }, [])
+
+  useEffect(() => {
+    loadMealLogs()
+  }, [loadMealLogs])
 
   // ── Handlers ──
 
@@ -149,6 +175,7 @@ export default function FoodScanPage() {
         mealType,
       })
       setSaveMsg({ type: 'success', text: `Đã thêm "${pred.name}" vào nhật ký ${MEAL_LABELS[mealType]} ngày ${date}!` })
+      await loadMealLogs()
     } catch (err) {
       setSaveMsg({ type: 'error', text: err.response?.data?.message || 'Lưu thất bại, vui lòng thử lại.' })
     } finally {
@@ -160,217 +187,183 @@ export default function FoodScanPage() {
     setPreview(null); setFileObj(null); setResult(null)
     setScanError(null); setSaveMsg(null); setSelectedPred(0)
     if (fileInputRef.current) fileInputRef.current.value = ''
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
 
   // ── Render ──
+  const dailyCalories = Number(dailyTotals?.calories || 0)
+  const calorieProgress = Math.min(100, Math.round((dailyCalories / targetCalories) * 100))
+  const recentMeals = [...mealLogs].reverse().slice(0, 3)
+
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '24px 16px', fontFamily: 'system-ui, sans-serif' }}>
-      <h2 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4, color: '#111827' }}>
-        🍽️ Nhận diện món ăn
-      </h2>
-      <p style={{ color: '#6b7280', marginBottom: 24, fontSize: 14 }}>
-        Chụp hoặc tải ảnh món ăn để nhận diện tự động bằng AI và tra cứu dinh dưỡng.
-      </p>
-
-      {/* ── Upload zone ── */}
-      <div
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-        onClick={() => !preview && fileInputRef.current?.click()}
-        style={{
-          border: '2px dashed #d1d5db',
-          borderRadius: 12,
-          padding: preview ? 0 : '40px 24px',
-          textAlign: 'center',
-          cursor: preview ? 'default' : 'pointer',
-          background: preview ? 'transparent' : '#f9fafb',
-          overflow: 'hidden',
-          marginBottom: 16,
-          transition: 'border-color 0.2s',
-        }}
-      >
-        {preview ? (
-          <img
-            src={preview}
-            alt="Preview"
-            style={{ width: '100%', maxHeight: 360, objectFit: 'contain', borderRadius: 10, display: 'block' }}
-          />
-        ) : (
-          <>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>📷</div>
-            <p style={{ color: '#6b7280', fontSize: 14 }}>Kéo thả hoặc <strong>bấm vào đây</strong> để chọn ảnh</p>
-            <p style={{ color: '#9ca3af', fontSize: 12 }}>Hỗ trợ: JPG, PNG · Tối đa 5MB</p>
-          </>
-        )}
-      </div>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png"
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-      />
-
-      {/* ── Buttons ── */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
-        {preview && (
-          <button onClick={() => fileInputRef.current?.click()} style={btnSecondary}>
-            🔄 Đổi ảnh
-          </button>
-        )}
-        <button
-          onClick={handleScan}
-          disabled={!fileObj || scanning}
-          style={{ ...btnPrimary, opacity: (!fileObj || scanning) ? 0.6 : 1, flex: 1 }}
-        >
-          {scanning ? '⏳ Đang nhận diện...' : '🔍 Nhận diện món ăn'}
-        </button>
-        {preview && (
-          <button onClick={reset} style={btnDanger}>✕</button>
-        )}
-      </div>
-
-      {/* ── Lỗi scan ── */}
-      {scanError && (
-        <div style={{ ...alertBox, background: '#fef2f2', borderColor: '#fca5a5', color: '#b91c1c' }}>
-          ⚠️ {scanError}
-        </div>
-      )}
-
-      {/* ── Kết quả AI ── */}
-      {result && (
-        <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
-          {/* Header */}
-          <div style={{
-            background: result.recognized ? '#f0fdf4' : '#fef9c3',
-            borderBottom: '1px solid #e5e7eb',
-            padding: '12px 16px',
-            display: 'flex', alignItems: 'center', gap: 8
-          }}>
-            <span style={{ fontSize: 20 }}>{result.recognized ? '✅' : '⚠️'}</span>
-            <span style={{ fontWeight: 600, color: result.recognized ? '#15803d' : '#92400e' }}>
-              {result.recognized ? 'Nhận diện thành công!' : (result.message || 'Không nhận diện được')}
-            </span>
+    <div className="dashboard-shell foodscan-shell">
+      <header className="dashboard-header">
+        <Link className="dashboard-logo" to="/dashboard"><span><i className="bi bi-leaf-fill" /></span>NutriLens</Link>
+        <nav className="dashboard-nav" aria-label="Điều hướng chính">
+          <Link to="/dashboard">Tổng quan</Link>
+          <Link className="active" to="/food-scan">Nhận diện &amp; Đồ ăn</Link>
+          <Link to="/dashboard">Luyện tập</Link>
+          <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
+          <Link to="/dashboard">Cộng đồng</Link>
+          <Link to="/dashboard">Bài viết &amp; Mẹo</Link>
+        </nav>
+        <div className="dashboard-actions">
+          <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
+          <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
+          <div className="profile-menu">
+            <button className="dashboard-avatar" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">
+              {user?.avatarUrl ? <img src={user.avatarUrl} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
+            </button>
+            {profileOpen && <div className="profile-dropdown" role="menu">
+              <div className="profile-name">Xin chào, {firstName}</div>
+              <button className="profile-link" onClick={() => navigate('/profile')} role="menuitem"><i className="bi bi-person-circle" /> Hồ sơ cá nhân</button>
+              <button className="profile-link" onClick={() => navigate('/weight-tracker')} role="menuitem"><i className="bi bi-activity" /> Tiến trình cân nặng</button>
+              <button onClick={handleLogout} role="menuitem"><i className="bi bi-box-arrow-right" /> Đăng xuất</button>
+            </div>}
           </div>
+        </div>
+      </header>
 
-          <div style={{ padding: 16 }}>
-            {/* Danh sách dự đoán */}
-            {result.predictions?.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 8, fontWeight: 600 }}>
-                  {result.recognized ? 'Chọn món để thêm vào nhật ký:' : 'Gợi ý (độ tin cậy thấp):'}
-                </p>
-                {result.predictions.map((p, i) => (
-                  <div
-                    key={p.slug}
-                    onClick={() => result.recognized && setSelectedPred(i)}
-                    style={{
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      marginBottom: 6,
-                      border: `2px solid ${selectedPred === i && result.recognized ? '#16a34a' : '#e5e7eb'}`,
-                      background: selectedPred === i && result.recognized ? '#f0fdf4' : '#fafafa',
-                      cursor: result.recognized ? 'pointer' : 'default',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, color: '#111827' }}>
-                        {i === 0 && result.recognized && '🥇 '}{p.name}
-                      </span>
-                      <span style={{ fontSize: 12, color: '#6b7280' }}>{p.slug}</span>
-                    </div>
-                    <ConfidenceBar value={p.confidence} />
-                  </div>
-                ))}
+      <main className="dashboard-main foodscan-main">
+        <section className="fs-page-heading">
+          <span className="fs-page-icon"><i className="bi bi-camera-fill" /></span>
+          <div>
+            <h1>Nhận Diện &amp; Phân Tích Món Ăn</h1>
+            <p>Tải lên hoặc chụp ảnh món ăn, hệ thống AI sẽ tự động nhận diện tên món và cung cấp thông tin dinh dưỡng chi tiết.</p>
+          </div>
+          <span className="fs-system-status"><i className="bi bi-cpu-fill" /><span><strong>CÔNG NGHỆ AI (CNN)</strong><small>Nhận diện chính xác · Nhanh chóng · Đáng tin cậy</small></span></span>
+        </section>
+
+        {(scanError || saveMsg?.type === 'error') && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{scanError || saveMsg?.text}</div>}
+        {saveMsg?.type === 'success' && <div className="fs-alert success" role="status"><i className="bi bi-check-circle-fill" />{saveMsg.text}</div>}
+
+        <section className="fs-workspace">
+          <article className="fs-panel fs-upload-panel">
+            <div className="fs-upload-tabs">
+              <button type="button" className="active" onClick={() => fileInputRef.current?.click()}><i className="bi bi-upload" />Tải ảnh lên</button>
+              <button type="button" onClick={() => cameraInputRef.current?.click()}><i className="bi bi-camera" />Chụp ảnh</button>
+              {preview && <button type="button" className="fs-reset-button" onClick={reset} aria-label="Xóa ảnh"><i className="bi bi-trash3" /></button>}
+            </div>
+            <div className="fs-upload-grid">
+              <div
+                className={`fs-dropzone ${preview ? 'has-file' : ''}`}
+                onDrop={handleDrop}
+                onDragOver={(event) => event.preventDefault()}
+                onClick={() => !preview && fileInputRef.current?.click()}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => { if (!preview && (event.key === 'Enter' || event.key === ' ')) fileInputRef.current?.click() }}
+              >
+                {preview ? <><i className="bi bi-check-circle-fill" /><strong>Ảnh đã sẵn sàng</strong><span>Kéo ảnh khác vào đây hoặc chọn lại</span></> : <>
+                  <span className="fs-upload-cloud"><i className="bi bi-cloud-arrow-up" /></span>
+                  <strong>Kéo và thả ảnh vào đây</strong><span>hoặc</span>
+                  <span className="fs-choose-file">Chọn ảnh từ máy</span>
+                  <small>Hỗ trợ định dạng JPG, PNG tối đa 5MB</small>
+                </>}
               </div>
-            )}
-
-            {/* Dinh dưỡng top-1 */}
-            {result.recognized && result.nutrition && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 13, color: '#6b7280', fontWeight: 600, marginBottom: 8 }}>
-                  📊 Dinh dưỡng — {result.nutrition.foodName} ({result.nutrition.servingSize}g / khẩu phần)
-                </p>
-                <NutritionTable nutrition={result.nutrition} servings={servings} />
+              <div className={`fs-photo-preview ${preview ? 'has-photo' : ''}`}>
+                {preview ? <><img src={preview} alt="Ảnh món ăn đã chọn" />{scanning && <div className="fs-scanning-overlay"><span className="fs-scan-ring" /><strong>AI đang phân tích ảnh...</strong></div>}</> : <div className="fs-photo-placeholder"><i className="bi bi-image" /><span>Ảnh món ăn sẽ hiển thị tại đây</span></div>}
               </div>
-            )}
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileChange} hidden />
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} hidden />
+            <div className="fs-upload-actions">
+              {preview && <button type="button" className="fs-button secondary" onClick={() => fileInputRef.current?.click()}><i className="bi bi-arrow-repeat" />Đổi ảnh</button>}
+              <button type="button" className="fs-button primary" onClick={handleScan} disabled={!fileObj || scanning}>
+                <i className={`bi ${scanning ? 'bi-hourglass-split' : 'bi-search'}`} />{scanning ? 'Đang nhận diện...' : 'Nhận diện món ăn'}
+              </button>
+            </div>
+          </article>
 
-            {result.recognized && !result.nutrition && (
-              <p style={{ color: '#d97706', fontSize: 13, marginBottom: 12 }}>
-                ℹ️ Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.
-              </p>
-            )}
+          <article className="fs-panel fs-top-results">
+            <div className="fs-panel-heading"><h2><i className="bi bi-patch-check-fill" />Top 3 kết quả đáng tin cậy nhất</h2><span>AI đề xuất</span></div>
+            {result?.predictions?.length ? <div className="fs-prediction-list">
+              {result.predictions.slice(0, 3).map((prediction, index) => <button type="button" className={`fs-prediction ${selectedPred === index && result.recognized ? 'selected' : ''}`} key={prediction.slug || prediction.name} onClick={() => result.recognized && setSelectedPred(index)} disabled={!result.recognized}>
+                <span className="fs-prediction-rank">{index + 1}</span>
+                <span className="fs-prediction-info"><strong>{prediction.name}</strong><ConfidenceBar value={prediction.confidence} /></span>
+                {selectedPred === index && result.recognized && <i className="bi bi-check-circle-fill fs-prediction-check" />}
+              </button>)}
+            </div> : <div className="fs-empty-ranking"><span><i className="bi bi-stars" /></span><strong>Chưa có kết quả nhận diện</strong><p>Tải ảnh món ăn để AI phân tích và xếp hạng các gợi ý phù hợp.</p></div>}
+            <div className="fs-top-results-foot"><i className="bi bi-info-circle" />Độ tin cậy được tính theo mức độ phù hợp của hình ảnh.</div>
+          </article>
+        </section>
 
-            {/* Form thêm nhật ký */}
-            {result.recognized && (
-              <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>
-                  📝 Thêm vào nhật ký bữa ăn
-                </p>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
-                  <label style={formGroup}>
-                    <span style={labelStyle}>Ngày</span>
-                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
-                  </label>
-                  <label style={formGroup}>
-                    <span style={labelStyle}>Bữa</span>
-                    <select value={mealType} onChange={(e) => setMealType(e.target.value)} style={inputStyle}>
-                      {Object.entries(MEAL_LABELS).map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={formGroup}>
-                    <span style={labelStyle}>Số khẩu phần</span>
-                    <input
-                      type="number" min="0.5" max="10" step="0.5"
-                      value={servings}
-                      onChange={(e) => setServings(Math.max(0.5, Math.min(10, Number(e.target.value))))}
-                      style={{ ...inputStyle, width: 80 }}
-                    />
-                  </label>
+        <section className="fs-content-grid">
+          <div className="fs-main-column">
+            <article className="fs-panel fs-recognition-panel">
+              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">Đã xác nhận AI</span>}</div>
+              {result?.recognized && selectedPrediction ? <div className="fs-recognition-result">
+                {preview && <img className="fs-result-image" src={preview} alt={selectedPrediction.name} />}
+                <div className="fs-result-copy">
+                  <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">Món ăn Việt Nam</span></div>
+                  <p>{result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.'}</p>
+                  <ConfidenceBar value={selectedPrediction.confidence} />
+                  <button type="button" className="fs-text-button" onClick={() => document.getElementById('fs-nutrition')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Xem chi tiết <i className="bi bi-arrow-right" /></button>
                 </div>
+              </div> : result ? <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-exclamation-circle" /></span><div><strong>{result.message || 'Chưa nhận diện được món ăn'}</strong><p>{result.predictions?.length ? 'Hãy chọn lại ảnh rõ hơn hoặc kiểm tra các gợi ý bên cạnh.' : 'Hãy thử ảnh có ánh sáng tốt, nhìn rõ toàn bộ món ăn.'}</p></div></div> : <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-stars" /></span><div><strong>Kết quả phân tích sẽ xuất hiện ở đây</strong><p>Chọn ảnh món ăn và bắt đầu nhận diện để xem tên món cùng độ tin cậy của AI.</p></div></div>}
+            </article>
 
-                <button
-                  onClick={handleAddLog}
-                  disabled={saving}
-                  style={{ ...btnPrimary, width: '100%', opacity: saving ? 0.6 : 1 }}
-                >
-                  {saving ? '⏳ Đang lưu...' : '➕ Thêm vào nhật ký'}
-                </button>
-
-                {saveMsg && (
-                  <div style={{
-                    ...alertBox,
-                    marginTop: 10,
-                    background: saveMsg.type === 'success' ? '#f0fdf4' : '#fef2f2',
-                    borderColor: saveMsg.type === 'success' ? '#86efac' : '#fca5a5',
-                    color:       saveMsg.type === 'success' ? '#15803d' : '#b91c1c',
-                  }}>
-                    {saveMsg.type === 'success' ? '✅ ' : '❌ '}{saveMsg.text}
-                  </div>
-                )}
+            <article className="fs-panel fs-nutrition-panel" id="fs-nutrition">
+              <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div>
+                {result?.nutrition && <label className="fs-serving-select"><select value={servings} onChange={(event) => setServings(Number(event.target.value))} aria-label="Số khẩu phần">{[0.5, 1, 1.5, 2, 3].map((value) => <option key={value} value={value}>{value} khẩu phần ({Math.round((result.nutrition.servingSize || 0) * value)}g)</option>)}</select><i className="bi bi-chevron-down" /></label>}
               </div>
-            )}
+              {result?.recognized && result.nutrition ? <>
+                <NutritionTable nutrition={result.nutrition} servings={servings} />
+                {result.nutrition.fiber != null && <div className="fs-nutrition-note"><i className="bi bi-lightbulb-fill" /><span><strong>Đánh giá dinh dưỡng</strong>Món ăn cung cấp năng lượng và các nhóm chất theo khẩu phần đã chọn.</span></div>}
+                <div className="fs-food-tags"><strong><i className="bi bi-diagram-3-fill" />Thành phần chính</strong><div><span>{selectedPrediction?.name || result.nutrition.foodName}</span><span>Ước tính theo khẩu phần</span><span>Dữ liệu NutriLens</span></div></div>
+              </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
+            </article>
+
+            {result?.recognized && selectedPrediction && <article className="fs-panel fs-add-log-panel">
+              <div className="fs-panel-heading"><h2><i className="bi bi-journal-plus" />Thêm vào nhật ký bữa ăn</h2></div>
+              <div className="fs-log-form">
+                <label><span>Ngày ghi nhận</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+                <label><span>Bữa ăn</span><select value={mealType} onChange={(event) => setMealType(event.target.value)}>{Object.entries(MEAL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label><span>Số khẩu phần</span><input type="number" min="0.5" max="10" step="0.5" value={servings} onChange={(event) => setServings(Math.max(0.5, Math.min(10, Number(event.target.value))))} /></label>
+                <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-plus-lg'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký'}</button>
+              </div>
+            </article>}
+
+            <article className="fs-panel fs-recent-meals">
+              <div className="fs-panel-heading"><div><h2><i className="bi bi-clock-history" />Nhật ký bữa ăn gần đây</h2><p>Các món bạn đã ghi nhận trong ngày {date.split('-').reverse().join('/')}</p></div><Link to="/dashboard">Xem tất cả <i className="bi bi-arrow-right" /></Link></div>
+              {logsLoading ? <div className="fs-log-empty"><span className="fs-mini-spinner" />Đang tải nhật ký...</div> : recentMeals.length ? <div className="fs-recent-list">
+                {recentMeals.map((log) => <div className="fs-recent-item" key={log._id}>
+                  <span className="fs-recent-thumb">{log.imageUrl ? <img src={log.imageUrl} alt="" /> : <i className="bi bi-egg-fried" />}</span>
+                  <div><strong>{log.foodName}</strong><small>{MEAL_LABELS[log.mealType] || 'Bữa ăn'} · {log.servings || 1} khẩu phần</small></div>
+                  <span className="fs-recent-kcal">{roundN((log.nutrition?.calories || 0) * (log.servings || 1))} kcal</span>
+                </div>)}
+              </div> : <div className="fs-log-empty"><i className="bi bi-journal-check" />Chưa có món ăn nào được ghi nhận trong ngày này.</div>}
+            </article>
           </div>
-        </div>
-      )}
+
+          <aside className="fs-side-column">
+            <article className="fs-panel fs-detail-panel">
+              <div className="fs-panel-heading"><h2><i className="bi bi-info-square-fill" />Thông tin chi tiết</h2></div>
+              <dl>
+                <div><dt>Tên món ăn</dt><dd>{selectedPrediction?.name || result?.nutrition?.foodName || 'Chưa nhận diện'}</dd></div>
+                <div><dt>Độ tin cậy AI</dt><dd>{selectedPrediction ? `${roundN(selectedPrediction.confidence, 0)}%` : '—'}</dd></div>
+                <div><dt>Khẩu phần cơ sở</dt><dd>{result?.nutrition?.servingSize ? `${result.nutrition.servingSize}g` : '—'}</dd></div>
+                <div><dt>Loại bữa ăn</dt><dd>{result?.recognized ? MEAL_LABELS[mealType] || '—' : '—'}</dd></div>
+              </dl>
+              <div className="fs-data-source"><i className="bi bi-shield-check" />Thông tin được đối chiếu với cơ sở dữ liệu dinh dưỡng NutriLens.</div>
+            </article>
+
+            <article className="fs-panel fs-calorie-panel">
+              <div className="fs-panel-heading"><h2><i className="bi bi-speedometer2" />Giá trị dinh dưỡng theo ngày</h2><span>ước tính</span></div>
+              <div className="fs-calorie-summary">
+                <div className="fs-calorie-ring" style={{ '--food-progress': `${calorieProgress}%` }}><span><strong>{roundN(dailyCalories, 0)}</strong><small>kcal</small><em>{calorieProgress}%</em></span></div>
+                <p>Đã nạp trong ngày<strong>{roundN(dailyCalories, 0)} / {targetCalories.toLocaleString('vi-VN')} kcal</strong><small>{profile?.nutritionGoal?.calorieTarget ? 'Theo mục tiêu dinh dưỡng cá nhân' : 'Mục tiêu tham chiếu 2.000 kcal'}</small></p>
+              </div>
+              <div className="fs-calorie-progress"><i style={{ width: `${calorieProgress}%` }} /></div>
+              <Link to="/profile" className="fs-text-button">Xem chi tiết mục tiêu <i className="bi bi-arrow-right" /></Link>
+            </article>
+
+            <div className="fs-encouragement"><span><i className="bi bi-heart-fill" /></span><p><strong>Bạn đang lựa chọn rất tốt!</strong>Hãy duy trì thói quen ghi nhận để theo dõi dinh dưỡng chính xác hơn.</p></div>
+          </aside>
+        </section>
+      </main>
+      <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ　 Chính sách bảo mật　 Trung tâm hỗ trợ</span></footer>
     </div>
   )
 }
 
-// ── Inline styles ──────────────────────────────────────────────────────────────
-const base = {
-  border: 'none', borderRadius: 8, padding: '10px 18px',
-  fontWeight: 600, fontSize: 14, cursor: 'pointer', transition: 'opacity 0.2s',
-}
-const btnPrimary   = { ...base, background: '#16a34a', color: '#fff' }
-const btnSecondary = { ...base, background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }
-const btnDanger    = { ...base, background: '#fee2e2', color: '#b91c1c', padding: '10px 14px' }
-const alertBox     = { padding: '10px 14px', borderRadius: 8, border: '1px solid', fontSize: 14 }
-const formGroup    = { display: 'flex', flexDirection: 'column', gap: 4 }
-const labelStyle   = { fontSize: 12, color: '#6b7280', fontWeight: 600 }
-const inputStyle   = {
-  padding: '7px 10px', borderRadius: 6, border: '1px solid #d1d5db',
-  fontSize: 14, color: '#111827', background: '#fff',
-}
