@@ -2931,7 +2931,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-empty-ranking strong { color: #48615d; font-size: 1rem; }
 .fs-empty-ranking p { max-width: 230px; margin: 4px 0 0; color: #879894; font-size: 0.92rem; line-height: 1.45; }
 .fs-top-results-foot { display: flex; gap: 5px; margin-top: auto; padding-top: 9px; border-top: 1px solid #eef2f1; color: #8b9a96; font-size: 0.82rem; }
-.fs-content-grid { display: grid; grid-template-columns: minmax(0, 1.66fr) minmax(260px, .78fr); gap: 12px; align-items: start; }
+.fs-content-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .78fr); gap: 12px; align-items: start; }
 .fs-main-column, .fs-side-column { display: grid; gap: 12px; min-width: 0; }
 .fs-recognition-panel, .fs-nutrition-panel, .fs-add-log-panel, .fs-recent-meals, .fs-detail-panel, .fs-calorie-panel { padding: 12px; }
 .fs-recognized-tag { padding: 4px 8px; border-radius: 10px; background: #e8f8ef; color: #138762 !important; font-size: 0.82rem !important; white-space: nowrap; }
@@ -2973,6 +2973,8 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-food-tags > strong i { margin-right: 5px; color: #098f68; }
 .fs-food-tags > div { display: flex; flex-wrap: wrap; gap: 5px; }
 .fs-food-tags > div span { padding: 4px 7px; border-radius: 12px; background: #f0f4f6; color: #637673; font-size: 0.82rem; }
+.fs-request-food-button { justify-self: end; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid #07966c; border-radius: 6px; background: #fff; color: #087e5c; font-size: 0.92rem; font-weight: 700; cursor: pointer; }
+.fs-request-food-button:hover { background: #f0fbf6; }
 .fs-nutrition-empty { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 10px; border-radius: 6px; background: #f8fbfa; color: #879792; font-size: 0.9rem; }
 .fs-nutrition-empty i { color: #62b393; font-size: 16px; }
 .fs-log-form { display: grid; grid-template-columns: 1fr 1fr .75fr auto; align-items: end; gap: 7px; margin-top: 10px; }
@@ -3021,7 +3023,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 
 @media (max-width: 900px) {
   .fs-workspace { grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); }
-  .fs-content-grid { grid-template-columns: minmax(0, 1.3fr) minmax(240px, .8fr); }
+  .fs-content-grid { grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); }
   .fs-log-form { grid-template-columns: 1fr 1fr; }
   .fs-log-form .fs-button { min-height: 31px; }
   .foodscan-shell .dashboard-search { font-size: 0; }

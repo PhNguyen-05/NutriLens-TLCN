@@ -298,7 +298,6 @@ export default function FoodScanPage() {
                   <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">Món ăn Việt Nam</span></div>
                   <p>{result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.'}</p>
                   <ConfidenceBar value={selectedPrediction.confidence} />
-                  <button type="button" className="fs-text-button" onClick={() => document.getElementById('fs-nutrition')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Xem chi tiết <i className="bi bi-arrow-right" /></button>
                 </div>
               </div> : result ? <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-exclamation-circle" /></span><div><strong>{result.message || 'Chưa nhận diện được món ăn'}</strong><p>{result.predictions?.length ? 'Hãy chọn lại ảnh rõ hơn hoặc kiểm tra các gợi ý bên cạnh.' : 'Hãy thử ảnh có ánh sáng tốt, nhìn rõ toàn bộ món ăn.'}</p></div></div> : <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-stars" /></span><div><strong>Kết quả phân tích sẽ xuất hiện ở đây</strong><p>Chọn ảnh món ăn và bắt đầu nhận diện để xem tên món cùng độ tin cậy của AI.</p></div></div>}
             </article>
@@ -313,6 +312,7 @@ export default function FoodScanPage() {
                 <div className="fs-food-tags"><strong><i className="bi bi-diagram-3-fill" />Thành phần chính</strong><div><span>{selectedPrediction?.name || result.nutrition.foodName}</span><span>Ước tính theo khẩu phần</span><span>Dữ liệu NutriLens</span></div></div>
               </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
             </article>
+            {result?.recognized && result.nutrition && <button type="button" className="fs-request-food-button"><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>}
 
             {result?.recognized && selectedPrediction && <article className="fs-panel fs-add-log-panel">
               <div className="fs-panel-heading"><h2><i className="bi bi-journal-plus" />Thêm vào nhật ký bữa ăn</h2></div>
