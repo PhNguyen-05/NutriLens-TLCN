@@ -13,6 +13,25 @@ const { predictFood } = require('../utils/aiService');
 const Food    = require('../models/Food');
 const MealLog = require('../models/MealLog');
 
+async function searchFoods(req, res, next) {
+  try {
+    const query = String(req.query.query || '').trim();
+    const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const filter = safeQuery
+      ? { $or: [{ name: { $regex: safeQuery, $options: 'i' } }, { slug: { $regex: safeQuery, $options: 'i' } }] }
+      : {};
+    const foods = await Food.find(filter)
+      .select('slug name description imageUrl servingSize calories protein fat carbs fiber sodium')
+      .sort({ name: 1 })
+      .limit(8)
+      .lean();
+
+    return res.status(200).json({ foods });
+  } catch (err) {
+    next(err);
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────
    POST /api/food/scan
    Body: multipart/form-data  { file: <image> }
@@ -179,4 +198,4 @@ async function deleteMealLog(req, res, next) {
   }
 }
 
-module.exports = { scanFood, addMealLog, getMealLogs, deleteMealLog };
+module.exports = { searchFoods, scanFood, addMealLog, getMealLogs, deleteMealLog };

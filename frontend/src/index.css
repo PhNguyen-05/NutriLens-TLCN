@@ -2944,6 +2944,22 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-result-copy > p { margin: 4px 0 6px; color: #6f8384; font-size: 0.93rem; }
 .fs-result-copy .fs-confidence { max-width: 260px; }
 .fs-text-button { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 0; border: 0; background: transparent; color: #078d64; font-size: 0.9rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+.fs-manual-search { padding: 12px; }
+.fs-manual-search .fs-panel-heading { margin-bottom: 9px; }
+.fs-manual-search .fs-panel-heading p { margin: 3px 0 0; color: #82918d; font-size: 0.84rem; }
+.fs-manual-search-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.fs-manual-search-input { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 38px; padding: 0 10px; border: 1px solid #dfe8e5; border-radius: 6px; color: #82918d; }
+.fs-manual-search-input:focus-within { border-color: #31b587; box-shadow: 0 0 0 2px rgba(8, 169, 120, .1); }
+.fs-manual-search-input input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #344b45; font: inherit; font-size: 0.9rem; }
+.fs-manual-search-input input::placeholder { color: #a0aba8; }
+.fs-manual-search-form .fs-button { min-height: 38px; padding: 0 13px; }
+.fs-manual-search-error { margin: 7px 0 0; color: #b64943; font-size: 0.84rem; }
+.fs-quick-searches { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 9px; }
+.fs-quick-searches > strong { margin-right: 2px; color: #82918d; font-size: 0.82rem; font-weight: 600; }
+.fs-quick-searches > button { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 9px; border: 1px solid #e7edef; border-radius: 5px; background: #f6f8f9; color: #566a68; font-size: 0.8rem; cursor: pointer; }
+.fs-quick-searches > button:hover { border-color: #a7ddc9; background: #f0fbf6; color: #087e5c; }
+.fs-quick-searches > button small { color: #82918d; font-size: 0.72rem; }
+.fs-quick-searches > span { color: #82918d; font-size: 0.82rem; }
 .fs-result-empty { display: flex; align-items: center; gap: 10px; min-height: 72px; margin-top: 8px; padding: 10px; border-radius: 7px; background: #f8fbfa; }
 .fs-result-empty-icon { width: 30px; height: 30px; flex: 0 0 30px; display: grid; place-items: center; border-radius: 50%; background: #e9f8f1; color: #0a956b; }
 .fs-result-empty strong { color: #3f5752; font-size: 1rem; }
@@ -2953,6 +2969,14 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-serving-select { position: relative; display: inline-flex; align-items: center; }
 .fs-serving-select select { max-width: 150px; min-height: 32px; appearance: none; padding: 0 22px 0 8px; border: 1px solid #e4eaed; border-radius: 5px; background: #fff; color: #526a68; font-size: 0.9rem; }
 .fs-serving-select > i { position: absolute; right: 7px; color: #6e8580; font-size: 8px; pointer-events: none; }
+.fs-nutrition-controls { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(140px, 1fr) minmax(150px, 1fr); align-items: end; gap: 8px; margin-bottom: 11px; }
+.fs-meal-selector { min-width: 0; margin: 0; padding: 0; border: 0; }
+.fs-meal-selector legend, .fs-nutrition-field > span { display: block; margin-bottom: 5px; color: #647671; font-size: 0.82rem; font-weight: 650; }
+.fs-meal-selector > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 6px; background: #f1f5f4; }
+.fs-meal-selector button { min-width: 0; min-height: 31px; padding: 0 5px; border: 0; border-radius: 4px; background: transparent; color: #647671; font-size: 0.79rem; cursor: pointer; }
+.fs-meal-selector button.active { background: #07966c; color: #fff; font-weight: 700; }
+.fs-nutrition-field { display: grid; min-width: 0; }
+.fs-nutrition-field input, .fs-nutrition-field select { width: 100%; min-width: 0; height: 37px; padding: 0 8px; border: 1px solid #dfe8e5; border-radius: 5px; background: #fff; color: #455c56; font: inherit; font-size: 0.84rem; }
 .fs-macro-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
 .fs-macro-card { display: grid; gap: 4px; min-width: 0; padding: 9px; border: 1px solid; border-radius: 7px; }
 .fs-macro-card.calories { border-color: #f4d2ad; background: #fff9f1; color: #c66b20; }
@@ -2968,13 +2992,11 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-nutrition-note span, .fs-nutrition-note strong { display: block; }
 .fs-nutrition-note strong { margin-bottom: 2px; font-size: 0.9rem; }
 .fs-nutrition-note span { color: #66817a; font-size: 0.83rem; line-height: 1.45; }
-.fs-food-tags { margin-top: 9px; padding-top: 8px; border-top: 1px solid #edf1f1; }
-.fs-food-tags > strong { display: block; margin-bottom: 6px; color: #526963; font-size: 0.9rem; }
-.fs-food-tags > strong i { margin-right: 5px; color: #098f68; }
-.fs-food-tags > div { display: flex; flex-wrap: wrap; gap: 5px; }
-.fs-food-tags > div span { padding: 4px 7px; border-radius: 12px; background: #f0f4f6; color: #637673; font-size: 0.82rem; }
+
 .fs-request-food-button { justify-self: end; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; border: 1px solid #07966c; border-radius: 6px; background: #fff; color: #087e5c; font-size: 0.92rem; font-weight: 700; cursor: pointer; }
 .fs-request-food-button:hover { background: #f0fbf6; }
+.fs-nutrition-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.fs-nutrition-actions .fs-button.primary { flex: 0 1 auto; min-width: 190px; }
 .fs-nutrition-empty { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 10px; border-radius: 6px; background: #f8fbfa; color: #879792; font-size: 0.9rem; }
 .fs-nutrition-empty i { color: #62b393; font-size: 16px; }
 .fs-log-form { display: grid; grid-template-columns: 1fr 1fr .75fr auto; align-items: end; gap: 7px; margin-top: 10px; }
@@ -3024,6 +3046,8 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 @media (max-width: 900px) {
   .fs-workspace { grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); }
   .fs-content-grid { grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr); }
+  .fs-nutrition-controls { grid-template-columns: 1fr 1fr; }
+  .fs-meal-selector { grid-column: 1 / -1; }
   .fs-log-form { grid-template-columns: 1fr 1fr; }
   .fs-log-form .fs-button { min-height: 31px; }
   .foodscan-shell .dashboard-search { font-size: 0; }
@@ -3046,6 +3070,13 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   .fs-dropzone, .fs-photo-preview { min-height: 145px; }
   .fs-photo-preview > img { min-height: 145px; max-height: 190px; }
   .fs-macro-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fs-manual-search-form { grid-template-columns: 1fr; }
+  .fs-manual-search-form .fs-button { justify-content: center; }
+  .fs-nutrition-controls { grid-template-columns: 1fr; }
+  .fs-meal-selector { grid-column: auto; }
+  .fs-nutrition-actions { flex-direction: column-reverse; }
+  .fs-nutrition-actions > button { justify-content: center; width: 100%; }
+  .fs-nutrition-actions .fs-button.primary { flex: 1; }
   .fs-side-column { grid-template-columns: 1fr; }
   .fs-encouragement { grid-column: auto; }
   .fs-log-form { grid-template-columns: 1fr 1fr; }

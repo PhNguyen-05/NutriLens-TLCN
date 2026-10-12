@@ -13,6 +13,7 @@ const express = require('express');
 const multer  = require('multer');
 const requireAuth = require('../middleware/auth');
 const {
+  searchFoods,
   scanFood,
   addMealLog,
   getMealLogs,
@@ -37,6 +38,7 @@ const upload = multer({
 
 // POST /api/food/scan — không cần đăng nhập (cho phép dùng thử)
 // Nếu muốn yêu cầu đăng nhập: thêm requireAuth trước upload.single
+router.get('/search', searchFoods);
 router.post('/scan', upload.single('file'), scanFood);
 
 // Các route nhật ký yêu cầu đăng nhập

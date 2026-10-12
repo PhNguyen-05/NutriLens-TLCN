@@ -85,6 +85,10 @@ export default function FoodScanPage() {
   const [servings, setServings]         = useState(1)
   const [date, setDate]                 = useState(todayString)
   const [mealType, setMealType]         = useState('lunch')
+  const [foodQuery, setFoodQuery] = useState('')
+  const [foodMatches, setFoodMatches] = useState([])
+  const [foodSearchLoading, setFoodSearchLoading] = useState(true)
+  const [foodSearchError, setFoodSearchError] = useState(null)
 
   // Trạng thái lưu nhật ký
   const [saving, setSaving]     = useState(false)
@@ -97,6 +101,49 @@ export default function FoodScanPage() {
   const firstName = user?.fullName?.split(' ')[0] || 'bạn'
   const selectedPrediction = result?.predictions?.[selectedPred]
   const targetCalories = Number(profile?.nutritionGoal?.calorieTarget || 2000)
+
+  async function searchFoodLibrary(query = '') {
+    setFoodSearchLoading(true)
+    setFoodSearchError(null)
+    try {
+      const { data } = await axiosInstance.get('/food/search', { params: { query } })
+      setFoodMatches(data.foods || [])
+    } catch {
+      setFoodMatches([])
+      setFoodSearchError('Không thể tải thư viện món ăn. Vui lòng thử lại.')
+    } finally {
+      setFoodSearchLoading(false)
+    }
+  }
+
+  function selectManualFood(food) {
+    setResult({
+      recognized: true,
+      manual: true,
+      predictions: [{ slug: food.slug, name: food.name, confidence: null }],
+      nutrition: {
+        foodSlug: food.slug,
+        foodName: food.name,
+        description: food.description,
+        imageUrl: food.imageUrl,
+        servingSize: food.servingSize,
+        calories: food.calories,
+        protein: food.protein,
+        fat: food.fat,
+        carbs: food.carbs,
+        fiber: food.fiber,
+        sodium: food.sodium,
+      },
+    })
+    setSelectedPred(0)
+    setPreview(null)
+    setFileObj(null)
+    setScanError(null)
+    setSaveMsg(null)
+    setServings(1)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (cameraInputRef.current) cameraInputRef.current.value = ''
+  }
 
   const loadMealLogs = useCallback(async () => {
     setLogsLoading(true)
@@ -123,6 +170,14 @@ export default function FoodScanPage() {
   useEffect(() => {
     loadMealLogs()
   }, [loadMealLogs])
+
+  useEffect(() => {
+    let isActive = true
+    axiosInstance.get('/food/search')
+      .then(({ data }) => { if (isActive) { setFoodMatches(data.foods || []); setFoodSearchLoading(false) } })
+      .catch(() => { if (isActive) { setFoodSearchError('Không thể tải thư viện món ăn. Vui lòng thử lại.'); setFoodSearchLoading(false) } })
+    return () => { isActive = false }
+  }, [])
 
   // ── Handlers ──
 
@@ -277,7 +332,7 @@ export default function FoodScanPage() {
 
           <article className="fs-panel fs-top-results">
             <div className="fs-panel-heading"><h2><i className="bi bi-patch-check-fill" />Top 3 kết quả đáng tin cậy nhất</h2><span>AI đề xuất</span></div>
-            {result?.predictions?.length ? <div className="fs-prediction-list">
+            {result?.manual ? <div className="fs-empty-ranking"><span><i className="bi bi-search" /></span><strong>Đã chọn từ thư viện món ăn</strong><p>Kết quả tra cứu thủ công đang hiển thị bên dưới.</p></div> : result?.predictions?.length ? <div className="fs-prediction-list">
               {result.predictions.slice(0, 3).map((prediction, index) => <button type="button" className={`fs-prediction ${selectedPred === index && result.recognized ? 'selected' : ''}`} key={prediction.slug || prediction.name} onClick={() => result.recognized && setSelectedPred(index)} disabled={!result.recognized}>
                 <span className="fs-prediction-rank">{index + 1}</span>
                 <span className="fs-prediction-info"><strong>{prediction.name}</strong><ConfidenceBar value={prediction.confidence} /></span>
@@ -290,39 +345,44 @@ export default function FoodScanPage() {
 
         <section className="fs-content-grid">
           <div className="fs-main-column">
+            <article className="fs-panel fs-manual-search">
+              <div className="fs-panel-heading"><div><h2><i className="bi bi-question-circle-fill" />Món ăn nhận diện chưa chính xác?</h2><p>Tra cứu và chọn món ăn từ thư viện NutriLens.</p></div></div>
+              <form className="fs-manual-search-form" onSubmit={(event) => { event.preventDefault(); searchFoodLibrary(foodQuery) }}>
+                <label className="fs-manual-search-input"><i className="bi bi-search" /><input type="search" value={foodQuery} onChange={(event) => setFoodQuery(event.target.value)} placeholder="Nhập tên món cần tìm (ví dụ: Bún chả, Cơm tấm...)" aria-label="Tìm món ăn trong thư viện" /></label>
+                <button className="fs-button primary" type="submit" disabled={foodSearchLoading}><i className={`bi ${foodSearchLoading ? 'bi-hourglass-split' : 'bi-search'}`} />{foodSearchLoading ? 'Đang tìm...' : 'Tìm kiếm'}</button>
+              </form>
+              {foodSearchError && <p className="fs-manual-search-error" role="alert">{foodSearchError}</p>}
+              <div className="fs-quick-searches"><strong>{foodQuery ? 'Kết quả tìm kiếm:' : 'Gợi ý nhanh:'}</strong>{foodMatches.length ? foodMatches.map((food) => <button type="button" key={food.slug} onClick={() => selectManualFood(food)}>{food.name}{food.calories != null && <small>{roundN(food.calories, 0)} kcal</small>}</button>) : <span>{foodSearchLoading ? 'Đang tải món ăn...' : 'Không tìm thấy món phù hợp.'}</span>}</div>
+            </article>
+
             <article className="fs-panel fs-recognition-panel">
-              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">Đã xác nhận AI</span>}</div>
+              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">{result.manual ? 'Tra cứu thủ công' : 'Đã xác nhận AI'}</span>}</div>
               {result?.recognized && selectedPrediction ? <div className="fs-recognition-result">
                 {preview && <img className="fs-result-image" src={preview} alt={selectedPrediction.name} />}
                 <div className="fs-result-copy">
-                  <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">Món ăn Việt Nam</span></div>
-                  <p>{result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.'}</p>
-                  <ConfidenceBar value={selectedPrediction.confidence} />
+                  <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">{result.manual ? 'Thư viện món ăn' : 'Món ăn Việt Nam'}</span></div>
+                  <p>{result.nutrition?.description || (result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.')}</p>
+                  {!result.manual && <ConfidenceBar value={selectedPrediction.confidence} />}
                 </div>
               </div> : result ? <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-exclamation-circle" /></span><div><strong>{result.message || 'Chưa nhận diện được món ăn'}</strong><p>{result.predictions?.length ? 'Hãy chọn lại ảnh rõ hơn hoặc kiểm tra các gợi ý bên cạnh.' : 'Hãy thử ảnh có ánh sáng tốt, nhìn rõ toàn bộ món ăn.'}</p></div></div> : <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-stars" /></span><div><strong>Kết quả phân tích sẽ xuất hiện ở đây</strong><p>Chọn ảnh món ăn và bắt đầu nhận diện để xem tên món cùng độ tin cậy của AI.</p></div></div>}
             </article>
 
             <article className="fs-panel fs-nutrition-panel" id="fs-nutrition">
-              <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div>
-                {result?.nutrition && <label className="fs-serving-select"><select value={servings} onChange={(event) => setServings(Number(event.target.value))} aria-label="Số khẩu phần">{[0.5, 1, 1.5, 2, 3].map((value) => <option key={value} value={value}>{value} khẩu phần ({Math.round((result.nutrition.servingSize || 0) * value)}g)</option>)}</select><i className="bi bi-chevron-down" /></label>}
-              </div>
+              <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div></div>
               {result?.recognized && result.nutrition ? <>
+                <div className="fs-nutrition-controls">
+                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} onClick={() => setMealType(value)}>{label}</button>)}</div></fieldset>
+                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+                  <label className="fs-nutrition-field"><span>Khẩu phần ăn</span><select value={servings} onChange={(event) => setServings(Number(event.target.value))}>{[0.5, 1, 1.5, 2, 3].map((value) => <option key={value} value={value}>{value} khẩu phần ({Math.round((result.nutrition.servingSize || 0) * value)}g)</option>)}</select></label>
+                </div>
                 <NutritionTable nutrition={result.nutrition} servings={servings} />
                 {result.nutrition.fiber != null && <div className="fs-nutrition-note"><i className="bi bi-lightbulb-fill" /><span><strong>Đánh giá dinh dưỡng</strong>Món ăn cung cấp năng lượng và các nhóm chất theo khẩu phần đã chọn.</span></div>}
-                <div className="fs-food-tags"><strong><i className="bi bi-diagram-3-fill" />Thành phần chính</strong><div><span>{selectedPrediction?.name || result.nutrition.foodName}</span><span>Ước tính theo khẩu phần</span><span>Dữ liệu NutriLens</span></div></div>
               </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
             </article>
-            {result?.recognized && result.nutrition && <button type="button" className="fs-request-food-button"><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>}
-
-            {result?.recognized && selectedPrediction && <article className="fs-panel fs-add-log-panel">
-              <div className="fs-panel-heading"><h2><i className="bi bi-journal-plus" />Thêm vào nhật ký bữa ăn</h2></div>
-              <div className="fs-log-form">
-                <label><span>Ngày ghi nhận</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-                <label><span>Bữa ăn</span><select value={mealType} onChange={(event) => setMealType(event.target.value)}>{Object.entries(MEAL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                <label><span>Số khẩu phần</span><input type="number" min="0.5" max="10" step="0.5" value={servings} onChange={(event) => setServings(Math.max(0.5, Math.min(10, Number(event.target.value))))} /></label>
-                <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-plus-lg'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký'}</button>
-              </div>
-            </article>}
+            {result?.recognized && result.nutrition && <div className="fs-nutrition-actions">
+              <button type="button" className="fs-request-food-button"><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
+              <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
+            </div>}
 
             <article className="fs-panel fs-recent-meals">
               <div className="fs-panel-heading"><div><h2><i className="bi bi-clock-history" />Nhật ký bữa ăn gần đây</h2><p>Các món bạn đã ghi nhận trong ngày {date.split('-').reverse().join('/')}</p></div><Link to="/dashboard">Xem tất cả <i className="bi bi-arrow-right" /></Link></div>
@@ -341,7 +401,7 @@ export default function FoodScanPage() {
               <div className="fs-panel-heading"><h2><i className="bi bi-info-square-fill" />Thông tin chi tiết</h2></div>
               <dl>
                 <div><dt>Tên món ăn</dt><dd>{selectedPrediction?.name || result?.nutrition?.foodName || 'Chưa nhận diện'}</dd></div>
-                <div><dt>Độ tin cậy AI</dt><dd>{selectedPrediction ? `${roundN(selectedPrediction.confidence, 0)}%` : '—'}</dd></div>
+                {result?.manual ? <div><dt>Nguồn dữ liệu</dt><dd>Thư viện NutriLens</dd></div> : <div><dt>Độ tin cậy AI</dt><dd>{selectedPrediction ? `${roundN(selectedPrediction.confidence, 0)}%` : '—'}</dd></div>}
                 <div><dt>Khẩu phần cơ sở</dt><dd>{result?.nutrition?.servingSize ? `${result.nutrition.servingSize}g` : '—'}</dd></div>
                 <div><dt>Loại bữa ăn</dt><dd>{result?.recognized ? MEAL_LABELS[mealType] || '—' : '—'}</dd></div>
               </dl>
