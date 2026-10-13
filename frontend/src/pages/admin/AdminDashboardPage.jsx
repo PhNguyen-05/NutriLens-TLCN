@@ -33,7 +33,7 @@ export default function AdminDashboardPage() {
         <div className="admin-section-label">NGƯỜI DÙNG</div>
         <button className={activeItem === 'Người dùng' ? 'active' : ''} onClick={() => setActiveItem('Người dùng')}><i className="bi bi-people" /> Quản lý người dùng</button>
         <div className="admin-section-label">DINH DƯỠNG</div>
-        <button onClick={() => setActiveItem('Món ăn')} className={activeItem === 'Món ăn' ? 'active' : ''}><i className="bi bi-tools" /> Danh mục món ăn <b className="sidebar-badge">356</b></button>
+        <button onClick={() => setActiveItem('Món ăn')} className={activeItem === 'Món ăn' ? 'active' : ''}><i className="bi bi-tools" /> Danh mục món ăn</button>
         <button onClick={() => setActiveItem('Bổ sung món')}><i className="bi bi-patch-plus" /> Yêu cầu bổ sung món <b className="sidebar-badge coral">18</b></button>
         <div className="admin-section-label">VẬN ĐỘNG</div>
         <button onClick={() => setActiveItem('Bài tập')}><i className="bi bi-person-walking" /> Quản lý bài tập</button>

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import axiosInstance from '../../api/axiosInstance'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const FOOD_GROUPS = [
+const DEFAULT_FOOD_GROUPS = [
   'Bún / Mì / Phở',
   'Cơm / Xôi',
   'Bánh / Dimsum',
@@ -70,20 +70,190 @@ function nutrientPercent(form) {
   }
 }
 
-// ─── FoodFormModal ────────────────────────────────────────────────────────────
-function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
+// ─── FoodDetailModal (Xem chi tiết món ăn) ──────────────────────────────────
+function FoodDetailModal({ food, onClose, onEdit }) {
+  const [detailData, setDetailData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!food?._id) return
+    let active = true
+    axiosInstance.get(`/admin/foods/${food._id}`)
+      .then(({ data }) => { if (active) setDetailData(data.data) })
+      .catch(() => { if (active) setDetailData(food) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [food])
+
+  const item = detailData || food
+  if (!item) return null
+
+  const isHidden = (item.status || 'active') === 'hidden'
+  const servingSize = item.servingSize || 100
+  const ratio = servingSize / 100
+  const calPerServing = Math.round((item.calories || 0) * ratio)
+  const proPerServing = ((item.protein || 0) * ratio).toFixed(1)
+  const carbPerServing = ((item.carbs || 0) * ratio).toFixed(1)
+  const fatPerServing = ((item.fat || 0) * ratio).toFixed(1)
+  const pct = nutrientPercent(item)
+
+  return (
+    <div className="fm-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <section className="fm-detail-modal" role="dialog" aria-modal="true">
+        <header className="fm-detail-header">
+          <div className="fm-detail-heading">
+            <span className="fm-detail-icon"><i className="bi bi-card-heading" /></span>
+            <div>
+              <h2>{item.name}</h2>
+              <div className="fm-detail-badges">
+                <code className="fdm-code">{item.foodCode || 'Chưa gán mã'}</code>
+                <span className="fdm-group-chip">{item.foodGroup || 'Chưa phân nhóm'}</span>
+                <span className={`fdm-status ${isHidden ? 'fdm-status--hidden' : 'fdm-status--active'}`}>
+                  <i />{isHidden ? 'Đã ẩn' : 'Đang sử dụng'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <button className="fm-close" onClick={onClose} aria-label="Đóng"><i className="bi bi-x-lg" /></button>
+        </header>
+
+        <div className="fm-detail-body">
+          {/* Top visual section */}
+          <div className="fm-detail-top">
+            <div className="fm-detail-image-box">
+              {item.imageUrl ? (
+                <img src={getImageUrl(item.imageUrl)} alt={item.name} />
+              ) : (
+                <div className="fm-detail-no-img">🍽<span>Chưa có ảnh đại diện</span></div>
+              )}
+            </div>
+
+            <div className="fm-detail-overview">
+              <div className="fm-detail-stat-card">
+                <small>Khẩu phần tiêu chuẩn</small>
+                <strong>{servingSize} gram</strong>
+                <span>~{calPerServing} kcal mỗi suất</span>
+              </div>
+              <div className="fm-detail-stat-card highlight">
+                <small>Năng lượng trên 100g</small>
+                <strong>{item.calories} kcal</strong>
+                <span>Chuẩn Viện Dinh Dưỡng</span>
+              </div>
+              {item.mealLogCount !== undefined && (
+                <div className="fm-detail-stat-card log-count">
+                  <small>Lịch sử sử dụng</small>
+                  <strong>{item.mealLogCount}</strong>
+                  <span>Lượt trong MealLog người dùng</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dinh dưỡng chi tiết */}
+          <div className="fm-detail-section">
+            <h3 className="fm-detail-section-title"><i className="bi bi-pie-chart-fill" /> Giá trị dinh dưỡng chi tiết</h3>
+            <div className="fm-detail-nutrient-grid">
+              <div className="fm-detail-nutrient fm-detail-nutrient--cal">
+                <span className="fm-detail-nut-icon">🔥</span>
+                <div>
+                  <small>Calo / Năng lượng</small>
+                  <strong>{item.calories} <span className="fm-unit">kcal / 100g</span></strong>
+                  <p>Suất {servingSize}g: <b>{calPerServing} kcal</b></p>
+                </div>
+              </div>
+
+              <div className="fm-detail-nutrient fm-detail-nutrient--pro">
+                <span className="fm-detail-nut-icon">💪</span>
+                <div>
+                  <small>Chất đạm (Protein)</small>
+                  <strong>{item.protein} <span className="fm-unit">g / 100g</span></strong>
+                  <p>Suất {servingSize}g: <b>{proPerServing} g</b></p>
+                </div>
+              </div>
+
+              <div className="fm-detail-nutrient fm-detail-nutrient--carb">
+                <span className="fm-detail-nut-icon">🌾</span>
+                <div>
+                  <small>Đường bột (Carbs)</small>
+                  <strong>{item.carbs} <span className="fm-unit">g / 100g</span></strong>
+                  <p>Suất {servingSize}g: <b>{carbPerServing} g</b></p>
+                </div>
+              </div>
+
+              <div className="fm-detail-nutrient fm-detail-nutrient--fat">
+                <span className="fm-detail-nut-icon">🫒</span>
+                <div>
+                  <small>Chất béo (Fat)</small>
+                  <strong>{item.fat} <span className="fm-unit">g / 100g</span></strong>
+                  <p>Suất {servingSize}g: <b>{fatPerServing} g</b></p>
+                </div>
+              </div>
+            </div>
+
+            {/* Macro bar */}
+            {(pct.p + pct.c + pct.f) > 0 && (
+              <div className="fm-macro-bar-wrap" style={{ marginTop: 12, borderRadius: 10, background: '#f8fafc', padding: '12px 16px' }}>
+                <div className="fm-macro-bar" style={{ height: 8 }}>
+                  <div className="fm-macro-seg fm-macro-seg--pro" style={{ width: `${pct.p}%` }} title={`Protein ${pct.p}%`} />
+                  <div className="fm-macro-seg fm-macro-seg--carb" style={{ width: `${pct.c}%` }} title={`Carbs ${pct.c}%`} />
+                  <div className="fm-macro-seg fm-macro-seg--fat" style={{ width: `${pct.f}%` }} title={`Fat ${pct.f}%`} />
+                </div>
+                <div className="fm-macro-legend" style={{ marginTop: 8 }}>
+                  <span><i style={{ background: '#1a5fa0' }} />Protein {pct.p}%</span>
+                  <span><i style={{ background: '#a06010' }} />Carbs {pct.c}%</span>
+                  <span><i style={{ background: '#a01f1f' }} />Fat {pct.f}%</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Mô tả & Thông tin hệ thống */}
+          <div className="fm-detail-section">
+            <h3 className="fm-detail-section-title"><i className="bi bi-file-text-fill" /> Mô tả & Thông tin hệ thống</h3>
+            <p className="fm-detail-desc">{item.description || 'Chưa có ghi chú mô tả cho món ăn này.'}</p>
+            <div className="fm-detail-meta">
+              <span><b>Slug nghiệp vụ:</b> <code>{item.slug}</code></span>
+              {item.createdAt && <span><b>Ngày tạo:</b> {new Date(item.createdAt).toLocaleDateString('vi-VN')}</span>}
+              {item.updatedAt && <span><b>Cập nhật:</b> {new Date(item.updatedAt).toLocaleDateString('vi-VN')}</span>}
+            </div>
+          </div>
+        </div>
+
+        <footer className="fm-detail-footer">
+          <button className="fm-btn-cancel" onClick={onClose}>Đóng</button>
+          <button className="fm-btn-save" onClick={() => { onClose(); onEdit(item) }}>
+            <i className="bi bi-pencil-fill" /> Chỉnh sửa món ăn
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
+// ─── FoodFormModal (Thêm / Chỉnh sửa món ăn) ────────────────────────────────
+function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
   const [apiError, setApiError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [isCustomGroup, setIsCustomGroup] = useState(false)
+  const [customGroupInput, setCustomGroupInput] = useState('')
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef(null)
 
+  // Danh sách nhóm tổng hợp: mặc định + các nhóm đã có trong database
+  const groupOptions = useMemo(() => {
+    const set = new Set([...DEFAULT_FOOD_GROUPS, ...allExistingGroups.filter(Boolean)])
+    return Array.from(set)
+  }, [allExistingGroups])
+
   useEffect(() => {
     if (mode === 'edit' && editTarget) {
+      const g = editTarget.foodGroup || ''
       setForm({
         name: editTarget.name || '',
-        foodGroup: editTarget.foodGroup || '',
+        foodGroup: g,
         servingLabel: SERVING_PRESETS.find((p) => String(p.value) === String(editTarget.servingSize))?.label || '',
         calories: String(editTarget.calories ?? ''),
         protein: String(editTarget.protein ?? ''),
@@ -93,12 +263,21 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
         imageUrl: editTarget.imageUrl || '',
         description: editTarget.description || '',
       })
+      if (g && !groupOptions.includes(g)) {
+        setIsCustomGroup(true)
+        setCustomGroupInput(g)
+      } else {
+        setIsCustomGroup(false)
+        setCustomGroupInput('')
+      }
     } else {
       setForm(EMPTY_FORM)
+      setIsCustomGroup(false)
+      setCustomGroupInput('')
     }
     setErrors({})
     setApiError('')
-  }, [mode, editTarget])
+  }, [mode, editTarget, groupOptions])
 
   function change(e) {
     const { name, value } = e.target
@@ -107,30 +286,99 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
     setApiError('')
   }
 
+  function handleGroupSelect(e) {
+    const val = e.target.value
+    if (val === '__CUSTOM__') {
+      setIsCustomGroup(true)
+      setForm((p) => ({ ...p, foodGroup: customGroupInput }))
+    } else {
+      setIsCustomGroup(false)
+      setForm((p) => ({ ...p, foodGroup: val }))
+    }
+  }
+
+  function handleCustomGroupChange(e) {
+    const val = e.target.value
+    setCustomGroupInput(val)
+    setForm((p) => ({ ...p, foodGroup: val }))
+  }
+
   function applyPreset(value) {
     const preset = SERVING_PRESETS.find((p) => p.value === value)
     setForm((p) => ({ ...p, servingSize: value, servingLabel: preset?.label || '' }))
     setErrors((p) => ({ ...p, servingSize: undefined }))
   }
 
+  // Upload file thật lên server backend
+  async function handleFileUpload(file) {
+    if (!file) return
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+      setApiError('Chỉ chấp nhận tệp ảnh JPG, PNG hoặc WEBP')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setApiError('Kích thước ảnh không được vượt quá 5MB')
+      return
+    }
+
+    setUploadingImage(true)
+    setApiError('')
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      const { data } = await axiosInstance.post('/admin/foods/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setForm((p) => ({ ...p, imageUrl: data.imageUrl }))
+    } catch (err) {
+      setApiError(err.response?.data?.message || 'Không thể tải ảnh lên, vui lòng thử lại')
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   const handleDrop = useCallback((e) => {
     e.preventDefault(); setDragging(false)
     const file = e.dataTransfer.files?.[0]
-    if (file && /^image\/(jpeg|png|webp)$/.test(file.type))
-      setForm((p) => ({ ...p, imageUrl: URL.createObjectURL(file) }))
+    if (file) handleFileUpload(file)
   }, [])
 
   async function submit() {
     const errs = validate(form)
-    if (Object.keys(errs).length) { setErrors(errs); return }
+    if (Object.keys(errs).length) {
+      setErrors(errs)
+      const fieldLabels = {
+        name: 'Tên món ăn',
+        calories: 'Năng lượng (Calo)',
+        protein: 'Chất đạm (Protein)',
+        fat: 'Chất béo (Fat)',
+        carbs: 'Đường bột (Carbs)',
+        servingSize: 'Trọng lượng khẩu phần',
+      }
+      const missingList = Object.keys(errs).map((k) => fieldLabels[k] || k).join(', ')
+      setApiError(`Vui lòng kiểm tra và điền đầy đủ các thông tin bắt buộc (*): ${missingList}`)
+
+      // Cuộn tới trường lỗi đầu tiên và focus
+      const firstKey = Object.keys(errs)[0]
+      const el = document.querySelector(`[name="${firstKey}"]`) || document.getElementById(`fm-${firstKey}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setTimeout(() => el.focus(), 250)
+      }
+      return
+    }
     setSaving(true); setApiError('')
     try {
       const payload = {
-        name: form.name, foodGroup: form.foodGroup,
-        calories: form.calories, protein: form.protein,
-        fat: form.fat, carbs: form.carbs,
+        name: form.name,
+        foodGroup: form.foodGroup,
+        calories: form.calories,
+        protein: form.protein,
+        fat: form.fat,
+        carbs: form.carbs,
         servingSize: form.servingSize,
-        imageUrl: form.imageUrl, description: form.description,
+        imageUrl: form.imageUrl,
+        description: form.description,
       }
       if (mode === 'add') await axiosInstance.post('/admin/foods', payload)
       else await axiosInstance.put(`/admin/foods/${editTarget._id}`, payload)
@@ -142,6 +390,23 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
 
   const servingKcal = calcServingKcal(form)
   const pct = nutrientPercent(form)
+
+  const calcMacroKcal = useMemo(() => {
+    const p = parseFloat(form.protein) || 0
+    const c = parseFloat(form.carbs) || 0
+    const f = parseFloat(form.fat) || 0
+    const total = Math.round(p * 4 + c * 4 + f * 9)
+    const totalGrams = +(p + c + f).toFixed(1)
+    return { kcal: total, totalGrams }
+  }, [form.protein, form.carbs, form.fat])
+
+  function autoFillCalories() {
+    if (calcMacroKcal.kcal > 0) {
+      setForm((p) => ({ ...p, calories: String(calcMacroKcal.kcal) }))
+      setErrors((p) => ({ ...p, calories: undefined }))
+      setApiError('')
+    }
+  }
 
   return (
     <div className="fm-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -189,11 +454,30 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
           <div className="fm-section">
             <div className="fm-row fm-row--3">
               <div className="fm-field">
-                <label className="fm-label" htmlFor="fm-group">NHÓM THỰC PHẨM</label>
-                <select id="fm-group" name="foodGroup" className="fm-select" value={form.foodGroup} onChange={change}>
-                  <option value="">-- Chọn nhóm --</option>
-                  {FOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
+                <label className="fm-label" htmlFor="fm-group">
+                  NHÓM THỰC PHẨM
+                  {isCustomGroup && (
+                    <button type="button" className="fm-group-switch-btn" onClick={() => { setIsCustomGroup(false); setForm(p => ({ ...p, foodGroup: '' })) }}>
+                      (Chọn danh sách)
+                    </button>
+                  )}
+                </label>
+                {isCustomGroup ? (
+                  <input
+                    id="fm-group-custom"
+                    className="fm-input"
+                    value={customGroupInput}
+                    onChange={handleCustomGroupChange}
+                    placeholder="Gõ tên danh mục mới..."
+                    autoFocus
+                  />
+                ) : (
+                  <select id="fm-group" name="foodGroup" className="fm-select" value={form.foodGroup} onChange={handleGroupSelect}>
+                    <option value="">-- Chọn nhóm --</option>
+                    {groupOptions.map((g) => <option key={g} value={g}>{g}</option>)}
+                    <option value="__CUSTOM__">➕ Nhập nhóm mới...</option>
+                  </select>
+                )}
               </div>
               <div className="fm-field">
                 <label className="fm-label" htmlFor="fm-preset">ĐƠN VỊ KHẨU PHẦN</label>
@@ -223,28 +507,40 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
               <span className="fm-nutrition-emoji">🥗</span>
               <div>
                 <strong>THÀNH PHẦN DINH DƯỠNG CHUẨN</strong>
-                <span>trên 100g thực phẩm</span>
+                <span>trên 100g thực phẩm (1g Đạm = 4kcal · 1g Đường = 4kcal · 1g Béo = 9kcal)</span>
               </div>
-              {servingKcal !== null && (
-                <div className="fm-kcal-badge">
-                  Quy đổi cho {form.servingSize}g<b> ~{servingKcal} kcal</b>
-                </div>
-              )}
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {calcMacroKcal.kcal > 0 && (
+                  <button
+                    type="button"
+                    className="fm-calc-btn"
+                    onClick={autoFillCalories}
+                    title="Tự động tính năng lượng = Protein*4 + Carbs*4 + Fat*9"
+                  >
+                    <i className="bi bi-lightning-charge-fill" /> Tính Calo (~{calcMacroKcal.kcal} kcal)
+                  </button>
+                )}
+                {servingKcal !== null && (
+                  <div className="fm-kcal-badge">
+                    Quy đổi cho {form.servingSize}g<b> ~{servingKcal} kcal</b>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="fm-nutrients">
               {[
-                { key: 'calories', label: 'Năng lượng (Calo)', unit: 'kcal', color: 'cal', icon: '🔥' },
-                { key: 'protein',  label: 'Chất đạm (Protein)', unit: 'g',    color: 'pro', icon: '💪' },
-                { key: 'carbs',    label: 'Đường bột (Carbs)',  unit: 'g',    color: 'carb', icon: '🌾' },
-                { key: 'fat',      label: 'Chất béo (Fat)',     unit: 'g',    color: 'fat', icon: '🫒' },
-              ].map(({ key, label, unit, color, icon }) => (
+                { key: 'calories', label: 'Năng lượng (Calo)', unit: 'kcal', color: 'cal', icon: '🔥', ph: 'VD: 250' },
+                { key: 'protein',  label: 'Chất đạm (Protein)', unit: 'g',    color: 'pro', icon: '💪', ph: 'VD: 15' },
+                { key: 'carbs',    label: 'Đường bột (Carbs)',  unit: 'g',    color: 'carb', icon: '🌾', ph: 'VD: 30' },
+                { key: 'fat',      label: 'Chất béo (Fat)',     unit: 'g',    color: 'fat', icon: '🫒', ph: 'VD: 8' },
+              ].map(({ key, label, unit, color, icon, ph }) => (
                 <div key={key} className={`fm-nutrient fm-nutrient--${color}`}>
                   <div className="fm-nutrient-label"><span>{icon}</span>{label}</div>
                   <div className="fm-nutrient-input-wrap">
                     <input id={`fm-${key}`} name={key} type="number" min="0" step="0.1"
                       className={`fm-nutrient-input ${errors[key] ? 'fm-input--err' : ''}`}
-                      value={form[key]} onChange={change} placeholder="0" />
+                      value={form[key]} onChange={change} placeholder={ph} />
                     <span className="fm-nutrient-unit">{unit}</span>
                   </div>
                   {errors[key] && <span className="fm-err-msg">{errors[key]}</span>}
@@ -261,46 +557,97 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
                   <div className="fm-macro-seg fm-macro-seg--fat" style={{ width: `${pct.f}%` }} title={`Fat ${pct.f}%`} />
                 </div>
                 <div className="fm-macro-legend">
-                  <span><i style={{ background: '#1a5fa0' }} />Protein {pct.p}%</span>
-                  <span><i style={{ background: '#a06010' }} />Carbs {pct.c}%</span>
-                  <span><i style={{ background: '#a01f1f' }} />Fat {pct.f}%</span>
+                  <span><i style={{ background: '#1a5fa0' }} />Protein {pct.p}% ({Math.round((parseFloat(form.protein) || 0) * 4)} kcal)</span>
+                  <span><i style={{ background: '#a06010' }} />Carbs {pct.c}% ({Math.round((parseFloat(form.carbs) || 0) * 4)} kcal)</span>
+                  <span><i style={{ background: '#a01f1f' }} />Fat {pct.f}% ({Math.round((parseFloat(form.fat) || 0) * 9)} kcal)</span>
+                  <span style={{ marginLeft: 'auto', color: '#0b734e', fontWeight: 600 }}>
+                    Năng lượng từ 3 chất: ~{calcMacroKcal.kcal} kcal
+                  </span>
                 </div>
+
+                {/* Cảnh báo lệch nếu calo nhập lệch đáng kể so với P/C/F */}
+                {form.calories !== '' && calcMacroKcal.kcal > 0 && Math.abs(Number(form.calories) - calcMacroKcal.kcal) > 40 && (
+                  <div className="fm-macro-hint">
+                    <i className="bi bi-info-circle-fill" />
+                    <span>
+                      Năng lượng từ Đạm + Đường + Béo ước tính là <strong>~{calcMacroKcal.kcal} kcal</strong> (bạn đang nhập <strong>{form.calories} kcal</strong>).
+                    </span>
+                    <button type="button" onClick={autoFillCalories} className="fm-hint-apply-btn">
+                      Áp dụng {calcMacroKcal.kcal} kcal
+                    </button>
+                  </div>
+                )}
+
+                {/* Cảnh báo tổng khối lượng vượt quá 100g */}
+                {calcMacroKcal.totalGrams > 100 && (
+                  <div className="fm-macro-hint fm-macro-hint--warn">
+                    <i className="bi bi-exclamation-triangle-fill" />
+                    <span>
+                      Tổng khối lượng 3 chất (Đạm + Đường + Béo) là <strong>{calcMacroKcal.totalGrams}g</strong>, vượt quá 100g thực phẩm chuẩn! Vui lòng kiểm tra lại.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* ── Ảnh ── */}
-          <div className="fm-section-label">HÌNH ẢNH ĐẠI DIỆN & NHÃN AI LENS</div>
-          <div
-            className={`fm-dropzone ${dragging ? 'fm-dropzone--over' : ''} ${form.imageUrl ? 'fm-dropzone--filled' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false) }}
-            onDrop={handleDrop}
-            onClick={() => fileRef.current?.click()}
-            role="button" tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
-          >
+          {/* ── Ảnh đại diện ── */}
+          <div className="fm-field">
+            <div className="fm-section-label">HÌNH ẢNH ĐẠI DIỆN MÓN ĂN</div>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }}
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) setForm((p) => ({ ...p, imageUrl: URL.createObjectURL(f) })); e.target.value = '' }} />
-            {form.imageUrl ? (
-              <div className="fm-preview">
-                <img src={getImageUrl(form.imageUrl)} alt="" />
-                <button className="fm-preview-remove" type="button"
-                  onClick={(e) => { e.stopPropagation(); setForm((p) => ({ ...p, imageUrl: '' })) }}>
-                  <i className="bi bi-x-circle-fill" />
-                </button>
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = '' }} />
+
+            {uploadingImage ? (
+              <div className="fm-uploading-box">
+                <span className="food-spinner" style={{ width: 26, height: 26, borderWidth: 3 }} />
+                <span>Đang tải ảnh lên máy chủ...</span>
+              </div>
+            ) : form.imageUrl ? (
+              <div className="fm-image-preview-card">
+                <div className="fm-ipc-thumb-wrap">
+                  <img src={getImageUrl(form.imageUrl)} alt="Preview" className="fm-ipc-thumb" />
+                </div>
+                <div className="fm-ipc-info">
+                  <div className="fm-ipc-status">
+                    <i className="bi bi-check-circle-fill" />
+                    <span>Đã có ảnh đại diện</span>
+                  </div>
+                  <p className="fm-ipc-url" title={form.imageUrl}>{form.imageUrl}</p>
+                  <div className="fm-ipc-actions">
+                    <button type="button" className="fm-ipc-btn fm-ipc-btn--change" onClick={() => fileRef.current?.click()}>
+                      <i className="bi bi-arrow-repeat" /> Thay đổi ảnh
+                    </button>
+                    <button type="button" className="fm-ipc-btn fm-ipc-btn--remove" onClick={() => setForm((p) => ({ ...p, imageUrl: '' }))}>
+                      <i className="bi bi-trash3" /> Xóa ảnh
+                    </button>
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="fm-drop-placeholder">
-                <span className="fm-drop-icon"><i className="bi bi-cloud-arrow-up-fill" /></span>
-                <p>Kéo thả ảnh món ăn hoặc <span className="fm-link">chọn từ máy tính</span></p>
-                <small>JPG, PNG, WEBP — tối đa 5MB</small>
+              <div
+                className={`fm-dropzone ${dragging ? 'fm-dropzone--over' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false) }}
+                onDrop={handleDrop}
+                onClick={() => fileRef.current?.click()}
+                role="button" tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
+              >
+                <div className="fm-drop-placeholder">
+                  <span className="fm-drop-icon"><i className="bi bi-cloud-arrow-up-fill" /></span>
+                  <p>Kéo thả ảnh vào đây hoặc <span className="fm-link">chọn tệp từ máy tính</span></p>
+                  <small>Hỗ trợ JPG, PNG, WEBP (tối đa 5MB) — tự động lưu vào máy chủ</small>
+                </div>
               </div>
             )}
-          </div>
-          <div className="fm-field">
-            <label className="fm-label" htmlFor="fm-url">Hoặc nhập URL ảnh trực tiếp</label>
-            <input id="fm-url" name="imageUrl" className="fm-input" value={form.imageUrl} onChange={change} placeholder="https://..." />
+
+            <div style={{ marginTop: 4 }}>
+              <label className="fm-label" htmlFor="fm-url" style={{ fontSize: 10, color: '#7a92a8', textTransform: 'none', letterSpacing: 'normal' }}>
+                Hoặc dán URL ảnh trực tiếp từ internet
+              </label>
+              <input id="fm-url" name="imageUrl" className="fm-input" style={{ fontSize: 12, padding: '7px 10px', marginTop: 3 }}
+                value={form.imageUrl} onChange={change} placeholder="https://..." />
+            </div>
           </div>
 
           {/* ── Mô tả ── */}
@@ -310,18 +657,19 @@ function FoodFormModal({ mode, editTarget, totalFoods, onClose, onSaved }) {
               value={form.description} onChange={change}
               placeholder="Nguyên liệu chính, đặc trưng vùng miền, cách chế biến..." />
           </div>
-
-          {apiError && (
-            <div className="fm-api-err" role="alert">
-              <i className="bi bi-exclamation-triangle-fill" />{apiError}
-            </div>
-          )}
         </div>
+
+        {/* Pinned Error Banner */}
+        {apiError && (
+          <div className="fm-api-err" role="alert" style={{ margin: '0 24px 10px', flexShrink: 0 }}>
+            <i className="bi bi-exclamation-triangle-fill" />{apiError}
+          </div>
+        )}
 
         {/* Footer */}
         <footer className="fm-footer">
           <button className="fm-btn-cancel" onClick={onClose}>Hủy bỏ</button>
-          <button className="fm-btn-save" onClick={submit} disabled={saving}>
+          <button className="fm-btn-save" onClick={submit} disabled={saving || uploadingImage}>
             {saving
               ? <><span className="food-spinner-inline" />Đang lưu...</>
               : <><i className="bi bi-check-lg" />{mode === 'add' ? 'Thêm vào danh mục' : 'Lưu thay đổi'}</>}
@@ -355,7 +703,7 @@ function ConfirmModal({ title, icon, iconClass, body, cancelLabel = 'Hủy', con
   )
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Main FoodManagementPage Component ────────────────────────────────────────
 export default function FoodManagementPage() {
   const [foods, setFoods] = useState([])
   const [summary, setSummary] = useState({ total: 0, active: 0, hidden: 0 })
@@ -363,13 +711,16 @@ export default function FoodManagementPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [groupFilter, setGroupFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [listError, setListError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
 
+  // Modals
   const [formMode, setFormMode] = useState(null)
   const [editTarget, setEditTarget] = useState(null)
+  const [detailTarget, setDetailTarget] = useState(null)
 
   const [hideTarget, setHideTarget] = useState(null)
   const [hideSaving, setHideSaving] = useState(false)
@@ -393,7 +744,7 @@ export default function FoodManagementPage() {
       setLoading(true); setListError('')
       try {
         const { data } = await axiosInstance.get('/admin/foods', {
-          params: { search, status: statusFilter, foodGroup: groupFilter, page, limit: 20 },
+          params: { search, status: statusFilter, foodGroup: groupFilter, sort: sortBy, page, limit: 20 },
           signal: ctrl.signal,
         })
         setFoods(data.data || [])
@@ -404,7 +755,7 @@ export default function FoodManagementPage() {
       } finally { if (!ctrl.signal.aborted) setLoading(false) }
     }, search ? 280 : 0)
     return () => { window.clearTimeout(t); ctrl.abort() }
-  }, [search, statusFilter, groupFilter, page, refreshKey])
+  }, [search, statusFilter, groupFilter, sortBy, page, refreshKey])
 
   function refresh() { setRefreshKey((k) => k + 1) }
 
@@ -412,6 +763,15 @@ export default function FoodManagementPage() {
     setFormMode(null); setEditTarget(null)
     showToast(msg); refresh()
   }
+
+  // Thu thập danh sách các nhóm hiện có
+  const existingGroups = useMemo(() => {
+    const set = new Set([...DEFAULT_FOOD_GROUPS])
+    for (const f of foods) {
+      if (f.foodGroup) set.add(f.foodGroup)
+    }
+    return Array.from(set)
+  }, [foods])
 
   // ── Hide ──
   async function executeHide(food) {
@@ -509,7 +869,17 @@ export default function FoodManagementPage() {
           <i className="bi bi-tags-fill" />
           <select value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); setPage(1) }}>
             <option value="all">Tất cả nhóm</option>
-            {FOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+            {existingGroups.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </label>
+
+        <label className="fdm-filter-select">
+          <i className="bi bi-sort-alpha-down" />
+          <select value={sortBy} onChange={(e) => { setSortBy(e.target.value); setPage(1) }}>
+            <option value="newest">Mới nhất (Mặc định)</option>
+            <option value="a-z">Tên món: A → Z</option>
+            <option value="z-a">Tên món: Z → A</option>
+            <option value="oldest">Cũ nhất</option>
           </select>
         </label>
 
@@ -531,17 +901,17 @@ export default function FoodManagementPage() {
             <table className="fdm-table">
               <thead>
                 <tr>
-                  <th style={{ width: 44 }}>#</th>
+                  <th className="fdm-th-center" style={{ width: 44 }}>#</th>
                   <th>Món ăn</th>
                   <th>Nhóm</th>
-                  <th>Mã món</th>
-                  <th className="fdm-th-num">Calo</th>
-                  <th className="fdm-th-num">Protein</th>
-                  <th className="fdm-th-num">Carbs</th>
-                  <th className="fdm-th-num">Fat</th>
-                  <th className="fdm-th-num">KP (g)</th>
-                  <th>Trạng thái</th>
-                  <th style={{ width: 110 }}>Thao tác</th>
+                  <th className="fdm-th-center">Mã món</th>
+                  <th className="fdm-th-center">Calo</th>
+                  <th className="fdm-th-center">Protein</th>
+                  <th className="fdm-th-center">Carbs</th>
+                  <th className="fdm-th-center">Fat</th>
+                  <th className="fdm-th-center">KP (g)</th>
+                  <th className="fdm-th-center">Trạng thái</th>
+                  <th className="fdm-th-center" style={{ width: 140 }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -557,7 +927,7 @@ export default function FoodManagementPage() {
                   const isHidden = (food.status || 'active') === 'hidden'
                   return (
                     <tr key={food._id} className={isHidden ? 'fdm-row--dim' : ''}>
-                      <td className="fdm-td-idx">{si + idx}</td>
+                      <td className="fdm-td-center fdm-td-idx">{si + idx}</td>
                       <td>
                         <div className="fdm-food-cell">
                           <span className="fdm-thumb">
@@ -567,25 +937,27 @@ export default function FoodManagementPage() {
                           </span>
                           <div className="fdm-food-info">
                             <strong>{food.name}</strong>
-                            <small>{food.slug}</small>
                           </div>
                         </div>
                       </td>
                       <td><span className="fdm-group-chip">{food.foodGroup || '—'}</span></td>
-                      <td><code className="fdm-code">{food.foodCode || '—'}</code></td>
-                      <td className="fdm-td-num fdm-num--cal">{food.calories}</td>
-                      <td className="fdm-td-num fdm-num--pro">{food.protein}</td>
-                      <td className="fdm-td-num fdm-num--carb">{food.carbs}</td>
-                      <td className="fdm-td-num fdm-num--fat">{food.fat}</td>
-                      <td className="fdm-td-num">{food.servingSize}g</td>
-                      <td>
+                      <td className="fdm-td-center"><code className="fdm-code">{food.foodCode || '—'}</code></td>
+                      <td className="fdm-td-center fdm-td-num fdm-num--cal">{food.calories}</td>
+                      <td className="fdm-td-center fdm-td-num fdm-num--pro">{food.protein}g</td>
+                      <td className="fdm-td-center fdm-td-num fdm-num--carb">{food.carbs}g</td>
+                      <td className="fdm-td-center fdm-td-num fdm-num--fat">{food.fat}g</td>
+                      <td className="fdm-td-center fdm-td-num">{food.servingSize}g</td>
+                      <td className="fdm-td-center">
                         <span className={`fdm-status ${isHidden ? 'fdm-status--hidden' : 'fdm-status--active'}`}>
                           <i />{isHidden ? 'Đã ẩn' : 'Hiển thị'}
                         </span>
                       </td>
-                      <td>
-                        <div className="fdm-actions">
-                          <button className="fdm-btn fdm-btn--edit" onClick={() => { setEditTarget(food); setFormMode('edit') }} title="Sửa">
+                      <td className="fdm-td-center">
+                        <div className="fdm-actions fdm-actions--center">
+                          <button className="fdm-btn fdm-btn--view" onClick={() => setDetailTarget(food)} title="Xem chi tiết">
+                            <i className="bi bi-card-text" />
+                          </button>
+                          <button className="fdm-btn fdm-btn--edit" onClick={() => { setEditTarget(food); setFormMode('edit') }} title="Chỉnh sửa">
                             <i className="bi bi-pencil-fill" />
                           </button>
                           {isHidden ? (
@@ -629,12 +1001,22 @@ export default function FoodManagementPage() {
         )}
       </div>
 
-      {/* ─── Form Modal ─── */}
+      {/* ─── Detail Modal (Xem chi tiết) ─── */}
+      {detailTarget && (
+        <FoodDetailModal
+          food={detailTarget}
+          onClose={() => setDetailTarget(null)}
+          onEdit={(food) => { setDetailTarget(null); setEditTarget(food); setFormMode('edit') }}
+        />
+      )}
+
+      {/* ─── Form Modal (Thêm / Sửa) ─── */}
       {formMode && (
         <FoodFormModal
           mode={formMode}
           editTarget={editTarget}
           totalFoods={summary.total}
+          allExistingGroups={existingGroups}
           onClose={() => { setFormMode(null); setEditTarget(null) }}
           onSaved={handleSaved}
         />

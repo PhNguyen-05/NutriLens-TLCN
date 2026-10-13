@@ -33,7 +33,7 @@ async function generateFoodCode() {
 
 async function listFoods(req, res) {
   try {
-    const { search = '', status = 'all', foodGroup = 'all', page, limit } = req.query;
+    const { search = '', status = 'all', foodGroup = 'all', sort = 'newest', page, limit } = req.query;
     if (status !== 'all' && !['active', 'hidden'].includes(status)) {
       return res.status(400).json({ message: 'Trạng thái lọc không hợp lệ' });
     }
@@ -47,10 +47,27 @@ async function listFoods(req, res) {
     if (search.trim()) query.name = { $regex: escapeRegex(search.trim()), $options: 'i' };
     if (foodGroup !== 'all' && foodGroup) query.foodGroup = foodGroup;
 
+    let sortOptions = { createdAt: -1 };
+    let useCollation = false;
+    if (sort === 'name_asc' || sort === 'a-z') {
+      sortOptions = { name: 1 };
+      useCollation = true;
+    } else if (sort === 'name_desc' || sort === 'z-a') {
+      sortOptions = { name: -1 };
+      useCollation = true;
+    } else if (sort === 'oldest') {
+      sortOptions = { createdAt: 1 };
+    }
+
     const pagination = normalizePagination(page, limit);
 
+    let foodsQuery = Food.find(query).sort(sortOptions);
+    if (useCollation) {
+      foodsQuery = foodsQuery.collation({ locale: 'vi', strength: 1 });
+    }
+
     const [foods, total, totalAll, totalHidden] = await Promise.all([
-      Food.find(query).sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit).lean(),
+      foodsQuery.skip(pagination.skip).limit(pagination.limit).lean(),
       Food.countDocuments(query),
       Food.countDocuments({}),
       Food.countDocuments({ status: 'hidden' }),
@@ -115,11 +132,45 @@ async function createFood(req, res) {
       status: 'active',
     });
 
-    await AdminActionLog.create({ adminId, actionType: 'create_food', targetType: 'FoodItem', targetId: food._id, reason: null });
+    await AdminActionLog.create({
+      adminId,
+      actionType: 'create_food',
+      targetType: 'FoodItem',
+      targetId: food._id,
+      reason: `Thêm mới món "${food.name}"`,
+      note: `Mã: ${food.foodCode || 'Chưa gán'} | Nhóm: ${food.foodGroup || 'Chưa phân nhóm'}`,
+    });
     return res.status(201).json({ message: 'Thêm món ăn thành công', data: food });
   } catch (err) {
     console.error('[createFood] Lỗi:', err.message);
     return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });
+  }
+}
+
+/**
+ * GET /api/admin/foods/:id
+ * Lấy chi tiết món ăn kèm số lượng MealLog đang sử dụng.
+ */
+async function getFoodDetail(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: 'Mã món ăn không hợp lệ' });
+
+    const food = await Food.findById(id).lean();
+    if (!food) return res.status(404).json({ message: 'Món ăn không tồn tại' });
+
+    const mealLogCount = await MealLog.countDocuments({ foodSlug: food.slug });
+
+    return res.status(200).json({
+      data: {
+        ...food,
+        status: food.status || 'active',
+        mealLogCount,
+      },
+    });
+  } catch (err) {
+    console.error('[getFoodDetail] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải chi tiết món ăn' });
   }
 }
 
@@ -158,7 +209,14 @@ async function updateFood(req, res) {
     if (!food.foodCode) food.foodCode = await generateFoodCode();
 
     await food.save();
-    await AdminActionLog.create({ adminId, actionType: 'update_food', targetType: 'FoodItem', targetId: food._id, reason: null });
+    await AdminActionLog.create({
+      adminId,
+      actionType: 'update_food',
+      targetType: 'FoodItem',
+      targetId: food._id,
+      reason: `Cập nhật thông tin món "${food.name}"`,
+      note: `Mã: ${food.foodCode} | Khẩu phần: ${food.servingSize}g`,
+    });
     return res.status(200).json({ message: 'Cập nhật món ăn thành công', data: food });
   } catch (err) {
     console.error('[updateFood] Lỗi:', err.message);
@@ -187,7 +245,10 @@ async function updateFoodStatus(req, res) {
     await AdminActionLog.create({
       adminId,
       actionType: status === 'hidden' ? 'hide_food' : 'show_food',
-      targetType: 'FoodItem', targetId: food._id, reason: null,
+      targetType: 'FoodItem',
+      targetId: food._id,
+      reason: status === 'hidden' ? `Ẩn món "${food.name}" khỏi tìm kiếm & AI` : `Hiển thị lại món "${food.name}"`,
+      note: `Mã: ${food.foodCode || 'Chưa gán'}`,
     });
 
     const msg = status === 'hidden' ? 'Ẩn món ăn thành công' : 'Hiển thị lại món ăn thành công';
@@ -217,7 +278,14 @@ async function deleteFood(req, res) {
     }
 
     await food.deleteOne();
-    await AdminActionLog.create({ adminId, actionType: 'delete_food', targetType: 'FoodItem', targetId: food._id, reason: 'Xóa vĩnh viễn' });
+    await AdminActionLog.create({
+      adminId,
+      actionType: 'delete_food',
+      targetType: 'FoodItem',
+      targetId: food._id,
+      reason: `Xóa vĩnh viễn món "${food.name}"`,
+      note: `Mã: ${food.foodCode || food.slug}`,
+    });
     return res.status(200).json({ message: 'Xóa món ăn thành công' });
   } catch (err) {
     console.error('[deleteFood] Lỗi:', err.message);
@@ -225,4 +293,4 @@ async function deleteFood(req, res) {
   }
 }
 
-module.exports = { listFoods, createFood, updateFood, updateFoodStatus, deleteFood };
+module.exports = { listFoods, getFoodDetail, createFood, updateFood, updateFoodStatus, deleteFood };
