@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
@@ -121,6 +121,7 @@ function HealthMetricsPanel({ profile, loading, onQuickLog, baselineStatus }) {
 export default function DashboardPage() {
   const { user, handleLogout } = useAuth()
   const navigate = useNavigate()
+  const scanUploadInputRef = useRef(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [healthProfile, setHealthProfile] = useState(null)
   const [baselineStatus, setBaselineStatus] = useState(null)
@@ -143,6 +144,22 @@ export default function DashboardPage() {
 
   function handleGoToWeightTrackerToLog() {
     navigate('/weight-tracker', { state: { openLog: true } })
+  }
+
+  function handleScanImageSelected(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) navigate('/food-scan', { state: { scanImageFile: file } })
+  }
+
+  function handleScanImageDrop(event) {
+    event.preventDefault()
+    const file = event.dataTransfer.files?.[0]
+    if (file) navigate('/food-scan', { state: { scanImageFile: file } })
+  }
+
+  function openFoodCamera() {
+    navigate('/food-scan', { state: { openFoodCamera: true } })
   }
 
   // Gắn số liệu mục tiêu dinh dưỡng (UC09) động lên các thẻ hiển thị
@@ -257,10 +274,27 @@ export default function DashboardPage() {
           </article>
           <article className="scanner-panel">
             <div className="scanner-heading"><span>● AI LIVE SCANNER</span><small>↻ Lịch sử scan</small></div>
-            <div className="scanner-box"><i className="bi bi-camera2" /><strong>Chụp ảnh hoặc kéo thả món ăn</strong><small>Hỗ trợ nhận diện Phở, Gỏi cuốn, Cơm tấm & 1,200+ món Việt</small></div>
+            <div
+              className="scanner-box"
+              role="button"
+              tabIndex={0}
+              aria-label="Chọn hoặc kéo thả ảnh món ăn để nhận diện"
+              onClick={() => scanUploadInputRef.current?.click()}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  scanUploadInputRef.current?.click()
+                }
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleScanImageDrop}
+            >
+              <i className="bi bi-camera2" /><strong>Chụp ảnh hoặc kéo thả món ăn</strong><small>Hỗ trợ nhận diện Phở, Gỏi cuốn, Cơm tấm & 1,200+ món Việt</small>
+            </div>
             <div className="scanner-actions">
-              <button className="scanner-button"><i className="bi bi-camera" /> Bật Camera Quét</button>
-              <button className="scanner-upload" title="Tải ảnh món ăn"><i className="bi bi-file-earmark-arrow-up" /></button>
+              <button type="button" className="scanner-button" onClick={openFoodCamera}><i className="bi bi-camera" /> Bật Camera Quét</button>
+              <button type="button" className="scanner-upload" title="Tải ảnh món ăn" aria-label="Tải ảnh món ăn" onClick={() => scanUploadInputRef.current?.click()}><i className="bi bi-file-earmark-arrow-up" /></button>
+              <input ref={scanUploadInputRef} className="scanner-file-input" type="file" accept="image/*" aria-label="Chọn ảnh món ăn" onChange={handleScanImageSelected} />
             </div>
           </article>
         </section>
@@ -396,7 +430,7 @@ export default function DashboardPage() {
 
       <footer className="dashboard-footer">
         <span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b> © 2026 NutriLens Health Inc. Đồng hành dinh dưỡng thông minh dựa trên AI.</span>
-        <span className="footer-links">Điều khoản dịch vụ　 Chính sách bảo mật y tế　 Trung tâm hỗ trợ</span>
+        <span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật y tế · Trung tâm hỗ trợ</span>
       </footer>
     </div>
   )

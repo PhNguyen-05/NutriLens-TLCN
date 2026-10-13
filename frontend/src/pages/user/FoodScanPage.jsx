@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -66,6 +66,75 @@ function resolveMediaUrl(value) {
   const apiOrigin = String(axiosInstance.defaults.baseURL || '').replace(/\/api\/?$/, '')
   if (!apiOrigin) return url
   return url.startsWith('/') ? `${apiOrigin}${url}` : `${apiOrigin}/${url}`
+}
+
+const MAX_SCAN_IMAGE_BYTES = 5 * 1024 * 1024
+
+async function decodeFoodImage(file) {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file)
+    return { image: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() }
+  }
+
+  const url = URL.createObjectURL(file)
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image()
+      element.onload = () => resolve(element)
+      element.onerror = () => reject(new Error('Không thể đọc ảnh này. Hãy chọn ảnh JPG hoặc PNG.'))
+      element.src = url
+    })
+    return { image, width: image.naturalWidth, height: image.naturalHeight, release: () => URL.revokeObjectURL(url) }
+  } catch (error) {
+    URL.revokeObjectURL(url)
+    throw error
+  }
+}
+
+async function prepareScanImage(file) {
+  if (!file || (!file.type.startsWith('image/') && !/\.(jpe?g|png|webp|avif|heic)$/i.test(file.name))) {
+    throw new Error('Vui lòng chọn một tệp hình ảnh.')
+  }
+
+  const supportedType = ['image/jpeg', 'image/png'].includes(file.type)
+  if (supportedType && file.size <= MAX_SCAN_IMAGE_BYTES) return file
+
+  const decoded = await decodeFoodImage(file)
+  try {
+    const maxDimension = 1800
+    let scale = Math.min(1, maxDimension / Math.max(decoded.width, decoded.height))
+    const qualities = [0.9, 0.84, 0.78, 0.7, 0.64]
+
+    for (const quality of qualities) {
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(decoded.width * scale))
+      canvas.height = Math.max(1, Math.round(decoded.height * scale))
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('Trình duyệt không thể xử lý ảnh này.')
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(decoded.image, 0, 0, canvas.width, canvas.height)
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+      if (blob && blob.size <= MAX_SCAN_IMAGE_BYTES) {
+        return new File([blob], `nutrilens-${Date.now()}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+      }
+      scale *= 0.82
+    }
+
+    throw new Error('Ảnh quá lớn để xử lý. Hãy chọn ảnh có dung lượng thấp hơn.')
+  } finally {
+    decoded.release()
+  }
+}
+
+function readImagePreview(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('Không thể mở ảnh đã chọn.'))
+    reader.readAsDataURL(file)
+  })
 }
 
 function formatRequestDate(value) {
@@ -563,16 +632,27 @@ function FoodRequestListPage({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FoodScanPage() {
+  const location = useLocation()
+  const transferStateRef = useRef(location.state)
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
+  const cameraVideoRef = useRef(null)
+  const cameraStreamRef = useRef(null)
   const requestImageInputRef = useRef(null)
   const { user, handleLogout } = useAuth()
   const navigate = useNavigate()
   const [profileOpen, setProfileOpen] = useState(false)
+  const canOpenCamera = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
 
   // Ảnh preview
   const [preview, setPreview]     = useState(null)   // data URL
   const [fileObj, setFileObj]     = useState(null)   // File object
+  const [preparingImage, setPreparingImage] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(() => Boolean(location.state?.openFoodCamera))
+  const [cameraLoading, setCameraLoading] = useState(() => Boolean(location.state?.openFoodCamera && canOpenCamera))
+  const [cameraError, setCameraError] = useState(() => location.state?.openFoodCamera && !canOpenCamera
+    ? 'Trình duyệt chưa hỗ trợ camera trực tiếp. Bạn có thể chọn ảnh từ thiết bị.'
+    : null)
 
   // Kết quả AI
   const [scanning, setScanning]   = useState(false)
@@ -655,6 +735,7 @@ export default function FoodScanPage() {
     setScanError(null)
     setSaveMsg(null)
     setServings(1)
+    setCameraOpen(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
@@ -722,23 +803,142 @@ export default function FoodScanPage() {
     return () => window.clearTimeout(timer)
   }, [loadFoodRequests, requestMode, requestsExpanded])
 
+  useEffect(() => {
+    if (!cameraOpen) return undefined
+
+    let cancelled = false
+    let stream = null
+    const videoElement = cameraVideoRef.current
+    if (!navigator.mediaDevices?.getUserMedia) return undefined
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+      .then((cameraStream) => {
+        stream = cameraStream
+        if (cancelled) {
+          cameraStream.getTracks().forEach((track) => track.stop())
+          return
+        }
+        cameraStreamRef.current = cameraStream
+        if (videoElement) {
+          videoElement.srcObject = cameraStream
+          videoElement.play().catch(() => {})
+        }
+        setCameraLoading(false)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setCameraLoading(false)
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          setCameraError('Bạn chưa cấp quyền sử dụng camera. Hãy cho phép camera trong trình duyệt hoặc chọn ảnh từ thiết bị.')
+        } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+          setCameraError('Không tìm thấy camera trên thiết bị này. Bạn có thể chọn ảnh từ thiết bị.')
+        } else {
+          setCameraError('Không thể mở camera. Hãy kiểm tra quyền truy cập hoặc chọn ảnh từ thiết bị.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+      stream?.getTracks().forEach((track) => track.stop())
+      if (cameraStreamRef.current === stream) cameraStreamRef.current = null
+      if (videoElement) videoElement.srcObject = null
+    }
+  }, [cameraOpen])
+
+  useEffect(() => {
+    if (!cameraOpen) return undefined
+    const handleCameraKeyDown = (event) => {
+      if (event.key === 'Escape') setCameraOpen(false)
+    }
+    window.addEventListener('keydown', handleCameraKeyDown)
+    return () => window.removeEventListener('keydown', handleCameraKeyDown)
+  }, [cameraOpen])
+
   // ── Handlers ──
 
-  const handleFileChange = useCallback((e) => {
-    const file = e.target.files?.[0]
+  const handleSelectedImage = useCallback(async (file) => {
     if (!file) return
-    setResult(null); setScanError(null); setSaveMsg(null); setSelectedPred(0)
-    setFileObj(file)
-    const reader = new FileReader()
-    reader.onload = (ev) => setPreview(ev.target.result)
-    reader.readAsDataURL(file)
+    setPreparingImage(true)
+    setScanError(null)
+    setSaveMsg(null)
+    try {
+      const preparedFile = await prepareScanImage(file)
+      const imagePreview = await readImagePreview(preparedFile)
+      setResult(null)
+      setSelectedPred(0)
+      setFileObj(preparedFile)
+      setPreview(imagePreview)
+    } catch (error) {
+      setScanError(error.message || 'Không thể xử lý ảnh. Hãy thử chọn ảnh JPG hoặc PNG.')
+    } finally {
+      setPreparingImage(false)
+    }
   }, [])
+
+  useEffect(() => {
+    const transfer = transferStateRef.current
+    if (!transfer?.scanImageFile && !transfer?.openFoodCamera) return undefined
+
+    transferStateRef.current = null
+    navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null })
+
+    if (transfer.scanImageFile) {
+      window.setTimeout(() => handleSelectedImage(transfer.scanImageFile), 0)
+    }
+
+    return undefined
+  }, [handleSelectedImage, location.hash, location.pathname, location.search, navigate])
+
+  const handleFileChange = useCallback((event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    handleSelectedImage(file)
+  }, [handleSelectedImage])
 
   const handleDrop = useCallback((e) => {
     e.preventDefault()
     const file = e.dataTransfer.files?.[0]
-    if (file) { fileInputRef.current.files = e.dataTransfer.files; handleFileChange({ target: { files: [file] } }) }
-  }, [handleFileChange])
+    handleSelectedImage(file)
+  }, [handleSelectedImage])
+
+  const openCamera = () => {
+    const canOpenCamera = Boolean(navigator.mediaDevices?.getUserMedia)
+    setCameraError(canOpenCamera ? null : 'Trình duyệt chưa hỗ trợ camera trực tiếp. Bạn có thể chọn ảnh từ thiết bị.')
+    setCameraLoading(canOpenCamera)
+    setCameraOpen(true)
+  }
+
+  const closeCamera = () => setCameraOpen(false)
+
+  const captureCameraImage = () => {
+    const video = cameraVideoRef.current
+    if (!video?.videoWidth || !video.videoHeight) {
+      setCameraError('Camera chưa sẵn sàng. Vui lòng đợi hình ảnh xuất hiện rồi chụp lại.')
+      return
+    }
+
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setCameraError('Không thể chụp ảnh trên trình duyệt này.')
+      return
+    }
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setCameraError('Không thể tạo ảnh. Hãy thử chụp lại.')
+        return
+      }
+      const capturedImage = new File([blob], `nutrilens-camera-${Date.now()}.jpg`, {
+        type: 'image/jpeg',
+        lastModified: Date.now(),
+      })
+      setCameraOpen(false)
+      handleSelectedImage(capturedImage)
+    }, 'image/jpeg', 0.92)
+  }
 
   const handleScan = async () => {
     if (!fileObj) return
@@ -789,6 +989,7 @@ export default function FoodScanPage() {
   const reset = () => {
     setPreview(null); setFileObj(null); setResult(null)
     setScanError(null); setSaveMsg(null); setSelectedPred(0)
+    setCameraOpen(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
@@ -978,37 +1179,38 @@ export default function FoodScanPage() {
         <section className="fs-workspace">
           <article className="fs-panel fs-upload-panel">
             <div className="fs-upload-tabs">
-              <button type="button" className="active" onClick={() => fileInputRef.current?.click()}><i className="bi bi-upload" />Tải ảnh lên</button>
-              <button type="button" onClick={() => cameraInputRef.current?.click()}><i className="bi bi-camera" />Chụp ảnh</button>
+              <button type="button" className={!cameraOpen ? 'active' : ''} onClick={() => fileInputRef.current?.click()}><i className="bi bi-upload" />Tải ảnh lên</button>
+              <button type="button" className={cameraOpen ? 'active' : ''} onClick={openCamera}><i className="bi bi-camera-video" />Mở camera</button>
               {preview && <button type="button" className="fs-reset-button" onClick={reset} aria-label="Xóa ảnh"><i className="bi bi-trash3" /></button>}
             </div>
             <div className="fs-upload-grid">
               <div
-                className={`fs-dropzone ${preview ? 'has-file' : ''}`}
+                className={`fs-dropzone fs-upload-frame ${preview ? 'has-file' : ''}`}
                 onDrop={handleDrop}
                 onDragOver={(event) => event.preventDefault()}
-                onClick={() => !preview && fileInputRef.current?.click()}
+                onClick={() => fileInputRef.current?.click()}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(event) => { if (!preview && (event.key === 'Enter' || event.key === ' ')) fileInputRef.current?.click() }}
+                aria-label={preview ? 'Chọn ảnh khác' : 'Chọn hoặc kéo ảnh món ăn vào đây'}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInputRef.current?.click() } }}
               >
-                {preview ? <><i className="bi bi-check-circle-fill" /><strong>Ảnh đã sẵn sàng</strong><span>Kéo ảnh khác vào đây hoặc chọn lại</span></> : <>
+                {preview ? <>
+                  <img className="fs-upload-frame-image" src={preview} alt="Ảnh món ăn đã chọn" />
+                  {scanning && <div className="fs-scanning-overlay"><span className="fs-scan-ring" /><strong>AI đang phân tích ảnh...</strong></div>}
+                </> : <>
                   <span className="fs-upload-cloud"><i className="bi bi-cloud-arrow-up" /></span>
                   <strong>Kéo và thả ảnh vào đây</strong><span>hoặc</span>
                   <span className="fs-choose-file">Chọn ảnh từ máy</span>
-                  <small>Hỗ trợ định dạng JPG, PNG tối đa 5MB</small>
+                  <small>Ảnh JPG, PNG, WEBP · ảnh lớn được tự tối ưu</small>
                 </>}
               </div>
-              <div className={`fs-photo-preview ${preview ? 'has-photo' : ''}`}>
-                {preview ? <><img src={preview} alt="Ảnh món ăn đã chọn" />{scanning && <div className="fs-scanning-overlay"><span className="fs-scan-ring" /><strong>AI đang phân tích ảnh...</strong></div>}</> : <div className="fs-photo-placeholder"><i className="bi bi-image" /><span>Ảnh món ăn sẽ hiển thị tại đây</span></div>}
-              </div>
             </div>
-            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" onChange={handleFileChange} hidden />
-            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} hidden />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileChange} hidden />
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={(event) => { handleFileChange(event); setCameraOpen(false) }} hidden />
             <div className="fs-upload-actions">
               {preview && <button type="button" className="fs-button secondary" onClick={() => fileInputRef.current?.click()}><i className="bi bi-arrow-repeat" />Đổi ảnh</button>}
-              <button type="button" className="fs-button primary" onClick={handleScan} disabled={!fileObj || scanning}>
-                <i className={`bi ${scanning ? 'bi-hourglass-split' : 'bi-search'}`} />{scanning ? 'Đang nhận diện...' : 'Nhận diện món ăn'}
+              <button type="button" className="fs-button primary" onClick={handleScan} disabled={!fileObj || scanning || preparingImage}>
+                <i className={`bi ${scanning || preparingImage ? 'bi-hourglass-split' : 'bi-search'}`} />{preparingImage ? 'Đang xử lý ảnh...' : scanning ? 'Đang nhận diện...' : 'Nhận diện món ăn'}
               </button>
             </div>
           </article>
@@ -1071,7 +1273,7 @@ export default function FoodScanPage() {
               <div className="fs-panel-heading"><div><h2><i className="bi bi-clock-history" />Nhật ký bữa ăn gần đây</h2><p>Các món bạn đã ghi nhận trong ngày {date.split('-').reverse().join('/')}</p></div><Link to={`/meal-diary?date=${date}`}>Xem chi tiết <i className="bi bi-arrow-right" /></Link></div>
               {logsLoading ? <div className="fs-log-empty"><span className="fs-mini-spinner" />Đang tải nhật ký...</div> : recentMeals.length ? <div className="fs-recent-list">
                 {recentMeals.map((log) => <div className="fs-recent-item" key={log._id}>
-                  <span className="fs-recent-thumb"><i className="bi bi-egg-fried" />{log.imageUrl && <img src={resolveMediaUrl(log.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</span>
+                  <span className="fs-recent-thumb">{log.imageUrl ? <img src={resolveMediaUrl(log.imageUrl)} alt={log.foodName} onError={(event) => { event.currentTarget.style.display = 'none' }} /> : <i className="bi bi-egg-fried" />}</span>
                   <div><strong>{log.foodName}</strong><small>{MEAL_LABELS[log.mealType] || 'Bữa ăn'} · {log.servings || 1} khẩu phần</small></div>
                   <span className="fs-recent-kcal">{roundN((log.nutrition?.calories || 0) * (log.servings || 1))} kcal</span>
                 </div>)}
@@ -1108,6 +1310,26 @@ export default function FoodScanPage() {
         )}
       </main>
       <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span></footer>
+      {cameraOpen && <div className="fs-camera-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCamera() }}>
+        <section className="fs-camera-modal" role="dialog" aria-modal="true" aria-labelledby="fs-camera-title">
+          <header className="fs-camera-header">
+            <span><i className="bi bi-camera-video-fill" /></span>
+            <div><h2 id="fs-camera-title">Chụp ảnh món ăn</h2><p>Đặt món ăn trong khung hình rồi chụp để nhận diện.</p></div>
+            <button type="button" onClick={closeCamera} aria-label="Đóng camera"><i className="bi bi-x-lg" /></button>
+          </header>
+          <div className="fs-camera-stage">
+            <video ref={cameraVideoRef} autoPlay playsInline muted aria-label="Hình ảnh trực tiếp từ camera" />
+            {!cameraError && <span className="fs-camera-frame" aria-hidden="true" />}
+            {cameraLoading && <div className="fs-camera-state"><span className="fs-scan-ring" /><strong>Đang mở camera...</strong></div>}
+            {cameraError && <div className="fs-camera-state fs-camera-error" role="alert"><i className="bi bi-camera-video-off-fill" /><strong>Không mở được camera trực tiếp</strong><p>{cameraError}</p></div>}
+          </div>
+          <div className="fs-camera-actions">
+            <button type="button" className="fs-button secondary" onClick={() => { closeCamera(); window.setTimeout(() => fileInputRef.current?.click(), 0) }}><i className="bi bi-images" />Chọn ảnh có sẵn</button>
+            <button type="button" className="fs-button primary" onClick={captureCameraImage} disabled={cameraLoading || Boolean(cameraError)}><i className="bi bi-camera-fill" />Chụp ảnh</button>
+          </div>
+          {cameraError && <button type="button" className="fs-camera-fallback" onClick={() => { closeCamera(); window.setTimeout(() => cameraInputRef.current?.click(), 0) }}><i className="bi bi-phone" />Thử camera của thiết bị</button>}
+        </section>
+      </div>}
     </div>
   )
 }
