@@ -55,13 +55,17 @@ function buildFoodRequestDraft(result, selectedPrediction) {
   }
 }
 
-function requestNumberOrNull(value) {
-  const trimmed = String(value ?? '').trim()
-  return trimmed ? Number(trimmed) : null
-}
-
 function isPreviewableImageUrl(value) {
   return /^https?:\/\//i.test(String(value || '').trim())
+}
+
+function resolveMediaUrl(value) {
+  const url = String(value || '').trim()
+  if (!url) return null
+  if (/^(https?:|data:|blob:)/i.test(url)) return url
+  const apiOrigin = String(axiosInstance.defaults.baseURL || '').replace(/\/api\/?$/, '')
+  if (!apiOrigin) return url
+  return url.startsWith('/') ? `${apiOrigin}${url}` : `${apiOrigin}/${url}`
 }
 
 function formatRequestDate(value) {
@@ -73,6 +77,15 @@ function formatRequestDate(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function splitRequestDate(value) {
+  if (!value) return { date: 'Vừa gửi', time: '' }
+  const date = new Date(value)
+  return {
+    date: new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date),
+    time: new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(date),
+  }
 }
 
 function formatRequestNutrition(request) {
@@ -139,14 +152,13 @@ function FoodRequestPanel({
   sentRequests,
   requestsLoading,
   requestsError,
-  requestsExpanded,
   hasMoreRequests,
   submitting,
   onBack,
   onChange,
   onImageChange,
   onImageDrop,
-  onToggleRequests,
+  onOpenRequestsPage,
   onSubmit,
 }) {
   const previewImage = imagePreview || (isPreviewableImageUrl(form.imageUrl) ? form.imageUrl : null)
@@ -313,9 +325,7 @@ function FoodRequestPanel({
             <div className="fs-request-history-head">
               <h2><i className="bi bi-send-check-fill" />Các yêu cầu đã gửi</h2>
               {hasMoreRequests && (
-                <button type="button" onClick={onToggleRequests}>
-                  {requestsExpanded ? 'Thu gọn' : 'Xem tất cả'}
-                </button>
+                <button type="button" onClick={() => onOpenRequestsPage()}>Xem tất cả</button>
               )}
             </div>
             {requestsLoading ? (
@@ -324,26 +334,156 @@ function FoodRequestPanel({
               <div className="fs-request-history-state error"><i className="bi bi-exclamation-circle" />{requestsError}</div>
             ) : sentRequests.length ? (
               <div className="fs-request-history-list">
-                {sentRequests.map((request) => (
-                  <article className="fs-request-history-item" key={request._id}>
-                    <div className="fs-request-history-top">
-                      <span className="fs-request-history-thumb">{request.imageUrl ? <img src={request.imageUrl} alt="" /> : <i className="bi bi-image" />}</span>
-                      <div>
-                        <strong>{request.name}</strong>
-                        <small>{formatRequestDate(request.createdAt)}</small>
+                {sentRequests.map((request) => {
+                  const imageSrc = resolveMediaUrl(request.imageUrl)
+                  return (
+                    <article className="fs-request-history-item" key={request._id}>
+                      <div className="fs-request-history-top">
+                        <span className="fs-request-history-thumb">{imageSrc ? <img src={imageSrc} alt={request.name} /> : <i className="bi bi-image" />}</span>
+                        <div>
+                          <strong>{request.name}</strong>
+                          <small>{formatRequestDate(request.createdAt)}</small>
+                        </div>
+                        <em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em>
                       </div>
-                      <em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em>
-                    </div>
-                    <p>{formatRequestNutrition(request)}</p>
-                    {request.rejectReason && <small className="fs-request-reject-reason">Lý do: {request.rejectReason}</small>}
-                  </article>
-                ))}
+                      <p>{formatRequestNutrition(request)}</p>
+                      {request.rejectReason && <small className="fs-request-reject-reason">Lý do: {request.rejectReason}</small>}
+                      <button className="fs-request-detail-button" type="button" onClick={() => onOpenRequestsPage(request)}>
+                        <i className="bi bi-eye" />Xem chi tiết
+                      </button>
+                    </article>
+                  )
+                })}
               </div>
             ) : (
               <div className="fs-request-history-state"><i className="bi bi-inbox" />Chưa có yêu cầu nào được gửi.</div>
             )}
           </article>
         </aside>
+      </section>
+    </section>
+  )
+}
+
+function FoodRequestListPage({
+  requests,
+  requestsTotal,
+  loading,
+  error,
+  onBack,
+  onRefresh,
+}) {
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortOrder, setSortOrder] = useState('newest')
+
+  const requestStats = {
+    total: requestsTotal || requests.length,
+    pending: requests.filter((request) => request.status === 'Chờ duyệt').length,
+    approved: requests.filter((request) => request.status === 'Đã duyệt').length,
+    rejected: requests.filter((request) => request.status === 'Từ chối').length,
+  }
+
+  const filteredRequests = [...requests]
+    .filter((request) => {
+      const matchesQuery = request.name.toLowerCase().includes(query.trim().toLowerCase())
+      const matchesStatus = statusFilter === 'all' || request.status === statusFilter
+      return matchesQuery && matchesStatus
+    })
+    .sort((a, b) => {
+      const left = new Date(a.createdAt || 0).getTime()
+      const right = new Date(b.createdAt || 0).getTime()
+      return sortOrder === 'oldest' ? left - right : right - left
+    })
+
+  const resetFilters = () => {
+    setQuery('')
+    setStatusFilter('all')
+    setSortOrder('newest')
+  }
+
+  return (
+    <section className="fs-request-list-page">
+      <div className="fs-request-list-breadcrumb">
+        <button type="button" onClick={onBack} aria-label="Quay lại"><i className="bi bi-arrow-left" /></button>
+        <span>Trang chủ</span>
+        <i className="bi bi-chevron-right" />
+        <strong>Yêu cầu bổ sung món ăn</strong>
+      </div>
+
+      <section className="fs-request-list-hero">
+        <div>
+          <h1>Yêu cầu bổ sung món ăn của tôi</h1>
+          <p>Theo dõi trạng thái các yêu cầu bạn đã gửi về món ăn chưa có trong danh mục.</p>
+          <p>Chúng tôi sẽ thông báo khi có cập nhật từ quản trị viên.</p>
+        </div>
+        <div className="fs-request-list-illustration">
+          <i className="bi bi-clipboard2-pulse" />
+          <span><i className="bi bi-plus-lg" /></span>
+        </div>
+      </section>
+
+      <section className="fs-request-stat-grid">
+        <article><span className="list"><i className="bi bi-card-checklist" /></span><div><small>Tổng yêu cầu</small><strong>{requestStats.total}</strong><em>Tất cả yêu cầu đã gửi</em></div></article>
+        <article><span className="pending"><i className="bi bi-clock" /></span><div><small>Chờ duyệt</small><strong>{requestStats.pending}</strong><em>Đang được xem xét</em></div></article>
+        <article><span className="approved"><i className="bi bi-check-circle-fill" /></span><div><small>Đã duyệt</small><strong>{requestStats.approved}</strong><em>Đã được bổ sung vào hệ thống</em></div></article>
+        <article><span className="rejected"><i className="bi bi-x-circle-fill" /></span><div><small>Từ chối</small><strong>{requestStats.rejected}</strong><em>Không được chấp thuận</em></div></article>
+      </section>
+
+      <section className="fs-panel fs-request-list-panel">
+        <div className="fs-request-list-controls">
+          <label className="fs-request-list-search"><i className="bi bi-search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm kiếm theo tên món ăn..." /></label>
+          <label className="fs-request-list-select"><i className="bi bi-funnel" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Tất cả trạng thái</option><option value="Chờ duyệt">Chờ duyệt</option><option value="Đã duyệt">Đã duyệt</option><option value="Từ chối">Từ chối</option></select></label>
+          <label className="fs-request-list-select"><i className="bi bi-calendar3" /><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="newest">Mới nhất trước</option><option value="oldest">Cũ nhất trước</option></select></label>
+          <button type="button" className="fs-request-list-reset" onClick={resetFilters}><i className="bi bi-arrow-clockwise" />Đặt lại</button>
+        </div>
+
+        {loading ? (
+          <div className="fs-request-list-state"><span className="fs-mini-spinner" />Đang tải yêu cầu...</div>
+        ) : error ? (
+          <div className="fs-request-list-state error"><i className="bi bi-exclamation-circle" />{error}<button type="button" onClick={onRefresh}>Thử lại</button></div>
+        ) : filteredRequests.length ? (
+          <>
+            <div className="fs-request-list-table-wrap">
+              <table className="fs-request-list-table">
+                <thead>
+                  <tr>
+                    <th>Tên món ăn</th>
+                    <th>Ảnh minh họa</th>
+                    <th>Ngày gửi</th>
+                    <th>Dinh dưỡng (nếu có)</th>
+                    <th>Trạng thái</th>
+                    <th>Ghi chú từ Admin</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRequests.map((request, index) => {
+                    const imageSrc = resolveMediaUrl(request.imageUrl)
+                    const submittedAt = splitRequestDate(request.createdAt)
+                    return (
+                      <tr key={request._id}>
+                        <td><strong>{request.name}</strong><small>{`#FR${String(index + 1).padStart(3, '0')}`}</small></td>
+                        <td><span className="fs-request-table-image">{imageSrc ? <img src={imageSrc} alt={request.name} /> : <i className="bi bi-image" />}</span></td>
+                        <td><span className="fs-request-table-date">{submittedAt.date}<small>{submittedAt.time}</small></span></td>
+                        <td>{formatRequestNutrition(request)}</td>
+                        <td><em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em></td>
+                        <td>{request.rejectReason || (request.status === 'Đã duyệt' ? 'Món ăn đã được bổ sung vào danh mục.' : 'Chưa có phản hồi')}</td>
+                        <td><button className="fs-request-table-detail" type="button"><i className="bi bi-eye" />Xem chi tiết</button></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <footer className="fs-request-list-footer">
+              <span>Tổng cộng: {filteredRequests.length} yêu cầu</span>
+              <div><button type="button" aria-label="Trang trước"><i className="bi bi-chevron-left" /></button><strong>1</strong><button type="button" aria-label="Trang sau"><i className="bi bi-chevron-right" /></button></div>
+            </footer>
+          </>
+        ) : (
+          <div className="fs-request-list-state"><i className="bi bi-inbox" />Không có yêu cầu phù hợp với bộ lọc hiện tại.</div>
+        )}
       </section>
     </section>
   )
@@ -390,6 +530,8 @@ export default function FoodScanPage() {
   const [requestMode, setRequestMode] = useState(false)
   const [requestForm, setRequestForm] = useState(EMPTY_FOOD_REQUEST_FORM)
   const [requestImagePreview, setRequestImagePreview] = useState(null)
+  const [requestImageFile, setRequestImageFile] = useState(null)
+  const [requestListMode, setRequestListMode] = useState(false)
   const [requestSubmitting, setRequestSubmitting] = useState(false)
   const [requestFeedback, setRequestFeedback] = useState(null)
   const [sentRequests, setSentRequests] = useState([])
@@ -578,6 +720,8 @@ export default function FoodScanPage() {
     const draft = buildFoodRequestDraft(result, selectedPrediction)
     setRequestForm(draft)
     setRequestImagePreview(draft.imageUrl || null)
+    setRequestImageFile(null)
+    setRequestListMode(false)
     setRequestFeedback(null)
     setRequestsExpanded(false)
     setRequestMode(true)
@@ -602,6 +746,7 @@ export default function FoodScanPage() {
     const reader = new FileReader()
     reader.onload = (event) => {
       setRequestImagePreview(event.target.result)
+      setRequestImageFile(file)
       setRequestFeedback(null)
     }
     reader.readAsDataURL(file)
@@ -616,6 +761,14 @@ export default function FoodScanPage() {
     loadRequestImagePreview(event.dataTransfer.files?.[0])
   }
 
+  const openRequestsPage = () => {
+    setRequestMode(true)
+    setRequestListMode(true)
+    setRequestsExpanded(true)
+    loadFoodRequests(true)
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+  }
+
   const handleFoodRequestSubmit = async (event) => {
     event.preventDefault()
     const name = requestForm.name.trim()
@@ -627,16 +780,21 @@ export default function FoodScanPage() {
     setRequestSubmitting(true)
     setRequestFeedback(null)
     try {
-      await axiosInstance.post('/food/requests', {
-        name,
-        imageUrl: requestForm.imageUrl.trim() || null,
-        caloriesPer100g: requestNumberOrNull(requestForm.caloriesPer100g),
-        proteinPer100g: requestNumberOrNull(requestForm.proteinPer100g),
-        carbPer100g: requestNumberOrNull(requestForm.carbPer100g),
-        fatPer100g: requestNumberOrNull(requestForm.fatPer100g),
-        note: requestForm.note.trim() || null,
+      const payload = new FormData()
+      payload.append('name', name)
+      payload.append('imageUrl', requestForm.imageUrl.trim())
+      payload.append('caloriesPer100g', requestForm.caloriesPer100g)
+      payload.append('proteinPer100g', requestForm.proteinPer100g)
+      payload.append('carbPer100g', requestForm.carbPer100g)
+      payload.append('fatPer100g', requestForm.fatPer100g)
+      payload.append('note', requestForm.note.trim())
+      if (requestImageFile) payload.append('image', requestImageFile)
+
+      await axiosInstance.post('/food/requests', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       })
       setRequestFeedback({ type: 'success', text: 'Đã gửi yêu cầu bổ sung món ăn. Trạng thái hiện tại: Chờ duyệt.' })
+      setRequestImageFile(null)
       await loadFoodRequests(requestsExpanded)
     } catch (err) {
       setRequestFeedback({ type: 'error', text: err.response?.data?.message || 'Không thể gửi yêu cầu, vui lòng thử lại.' })
@@ -681,7 +839,16 @@ export default function FoodScanPage() {
       </header>
 
       <main className="dashboard-main foodscan-main">
-        {requestMode ? (
+        {requestMode ? requestListMode ? (
+          <FoodRequestListPage
+            requests={sentRequests}
+            requestsTotal={requestsTotal}
+            loading={requestsLoading}
+            error={requestsError}
+            onBack={() => setRequestListMode(false)}
+            onRefresh={() => loadFoodRequests(true)}
+          />
+        ) : (
           <FoodRequestPanel
             form={requestForm}
             feedback={requestFeedback}
@@ -690,14 +857,13 @@ export default function FoodScanPage() {
             sentRequests={sentRequests}
             requestsLoading={requestsLoading}
             requestsError={requestsError}
-            requestsExpanded={requestsExpanded}
             hasMoreRequests={hasMoreRequests}
             submitting={requestSubmitting}
             onBack={() => setRequestMode(false)}
             onChange={handleRequestChange}
             onImageChange={handleRequestImageChange}
             onImageDrop={handleRequestImageDrop}
-            onToggleRequests={() => setRequestsExpanded((expanded) => !expanded)}
+            onOpenRequestsPage={openRequestsPage}
             onSubmit={handleFoodRequestSubmit}
           />
         ) : (

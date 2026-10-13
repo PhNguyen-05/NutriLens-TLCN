@@ -81,10 +81,14 @@ async function createFoodRequest(req, res, next) {
       nutrition[field] = parsed.value;
     }
 
+    const uploadedImageUrl = req.file
+      ? `${req.protocol}://${req.get('host')}/uploads/food-requests/${req.file.filename}`
+      : null;
+
     const foodRequest = await FoodRequest.create({
       requestedBy: req.user.id,
       name,
-      imageUrl: trimToNull(req.body.imageUrl),
+      imageUrl: uploadedImageUrl || trimToNull(req.body.imageUrl),
       note: trimToNull(req.body.note),
       ...nutrition,
     });
