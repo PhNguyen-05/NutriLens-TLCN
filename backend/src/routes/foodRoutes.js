@@ -14,6 +14,8 @@ const multer  = require('multer');
 const requireAuth = require('../middleware/auth');
 const {
   searchFoods,
+  createFoodRequest,
+  getFoodRequests,
   scanFood,
   addMealLog,
   getMealLogs,
@@ -42,6 +44,8 @@ router.get('/search', searchFoods);
 router.post('/scan', upload.single('file'), scanFood);
 
 // Các route nhật ký yêu cầu đăng nhập
+router.get('/requests',        requireAuth, getFoodRequests);
+router.post('/requests',       requireAuth, createFoodRequest);
 router.post('/meal-logs',      requireAuth, addMealLog);
 router.get('/meal-logs',       requireAuth, getMealLogs);
 router.delete('/meal-logs/:id', requireAuth, deleteMealLog);

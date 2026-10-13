@@ -12,6 +12,26 @@
 const { predictFood } = require('../utils/aiService');
 const Food    = require('../models/Food');
 const MealLog = require('../models/MealLog');
+const FoodRequest = require('../models/FoodRequest');
+
+function readOptionalNumber(body, field, label) {
+  const rawValue = body[field];
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return { value: null };
+  }
+
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value < 0) {
+    return { error: `${label} phải là số không âm` };
+  }
+
+  return { value };
+}
+
+function trimToNull(value) {
+  const trimmed = String(value || '').trim();
+  return trimmed || null;
+}
 
 async function searchFoods(req, res, next) {
   try {
@@ -27,6 +47,78 @@ async function searchFoods(req, res, next) {
       .lean();
 
     return res.status(200).json({ foods });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   POST /api/food/requests
+   Body: JSON { name, imageUrl?, caloriesPer100g?, proteinPer100g?,
+                carbPer100g?, fatPer100g?, note? }
+   Tạo yêu cầu bổ sung món ăn, trạng thái mặc định: Chờ duyệt.
+────────────────────────────────────────────────────────────── */
+async function createFoodRequest(req, res, next) {
+  try {
+    const name = trimToNull(req.body.name);
+    if (!name) {
+      return res.status(400).json({ message: 'Tên món ăn là bắt buộc' });
+    }
+
+    const numericFields = [
+      ['caloriesPer100g', 'Năng lượng'],
+      ['proteinPer100g', 'Protein'],
+      ['carbPer100g', 'Carbohydrate'],
+      ['fatPer100g', 'Chất béo'],
+    ];
+
+    const nutrition = {};
+    for (const [field, label] of numericFields) {
+      const parsed = readOptionalNumber(req.body, field, label);
+      if (parsed.error) {
+        return res.status(400).json({ message: parsed.error });
+      }
+      nutrition[field] = parsed.value;
+    }
+
+    const foodRequest = await FoodRequest.create({
+      requestedBy: req.user.id,
+      name,
+      imageUrl: trimToNull(req.body.imageUrl),
+      note: trimToNull(req.body.note),
+      ...nutrition,
+    });
+
+    return res.status(201).json({
+      message: 'Đã gửi yêu cầu bổ sung món ăn',
+      request: foodRequest,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   GET /api/food/requests?limit=3
+   Lấy các yêu cầu bổ sung món ăn gần đây của user đang đăng nhập.
+────────────────────────────────────────────────────────────── */
+async function getFoodRequests(req, res, next) {
+  try {
+    const rawLimit = Number(req.query.limit || 3);
+    const limit = Number.isFinite(rawLimit)
+      ? Math.min(50, Math.max(1, Math.floor(rawLimit)))
+      : 3;
+
+    const [requests, total] = await Promise.all([
+      FoodRequest.find({ requestedBy: req.user.id })
+        .select('name imageUrl caloriesPer100g proteinPer100g carbPer100g fatPer100g note status rejectReason reviewedAt createdAt updatedAt')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean(),
+      FoodRequest.countDocuments({ requestedBy: req.user.id }),
+    ]);
+
+    return res.status(200).json({ requests, total });
   } catch (err) {
     next(err);
   }
@@ -198,4 +290,4 @@ async function deleteMealLog(req, res, next) {
   }
 }
 
-module.exports = { searchFoods, scanFood, addMealLog, getMealLogs, deleteMealLog };
+module.exports = { searchFoods, createFoodRequest, getFoodRequests, scanFood, addMealLog, getMealLogs, deleteMealLog };

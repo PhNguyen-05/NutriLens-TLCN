@@ -25,6 +25,75 @@ const MEAL_LABELS = {
   snack:     'Ăn vặt',
 }
 
+const EMPTY_FOOD_REQUEST_FORM = {
+  name: '',
+  imageUrl: '',
+  caloriesPer100g: '',
+  proteinPer100g: '',
+  carbPer100g: '',
+  fatPer100g: '',
+  note: '',
+}
+
+function nutritionPer100g(value, servingSize) {
+  if (value == null || value === '') return ''
+  const baseServing = Number(servingSize) || 100
+  if (!baseServing) return ''
+  return String(roundN((Number(value) / baseServing) * 100, 1))
+}
+
+function buildFoodRequestDraft(result, selectedPrediction) {
+  const nutrition = result?.nutrition || {}
+  return {
+    ...EMPTY_FOOD_REQUEST_FORM,
+    name: selectedPrediction?.name || nutrition.foodName || '',
+    imageUrl: nutrition.imageUrl || '',
+    caloriesPer100g: nutritionPer100g(nutrition.calories, nutrition.servingSize),
+    proteinPer100g: nutritionPer100g(nutrition.protein, nutrition.servingSize),
+    carbPer100g: nutritionPer100g(nutrition.carbs, nutrition.servingSize),
+    fatPer100g: nutritionPer100g(nutrition.fat, nutrition.servingSize),
+  }
+}
+
+function requestNumberOrNull(value) {
+  const trimmed = String(value ?? '').trim()
+  return trimmed ? Number(trimmed) : null
+}
+
+function isPreviewableImageUrl(value) {
+  return /^https?:\/\//i.test(String(value || '').trim())
+}
+
+function formatRequestDate(value) {
+  if (!value) return 'Vừa gửi'
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function formatRequestNutrition(request) {
+  const items = [
+    ['Calories', request.caloriesPer100g, 'kcal'],
+    ['Protein', request.proteinPer100g, 'g'],
+    ['Carb', request.carbPer100g, 'g'],
+    ['Fat', request.fatPer100g, 'g'],
+  ].filter(([, value]) => value != null && value !== '')
+
+  return items.length
+    ? items.map(([label, value, unit]) => `${label} ${roundN(value, 1)}${unit}`).join(' · ')
+    : 'Chưa cung cấp dinh dưỡng'
+}
+
+function requestStatusClass(status) {
+  if (status === 'Đã duyệt') return 'approved'
+  if (status === 'Từ chối') return 'rejected'
+  return 'pending'
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 /** Thanh confidence với màu động */
@@ -62,11 +131,230 @@ function NutritionTable({ nutrition, servings }) {
   )
 }
 
+function FoodRequestPanel({
+  form,
+  feedback,
+  imageInputRef,
+  imagePreview,
+  sentRequests,
+  requestsLoading,
+  requestsError,
+  requestsExpanded,
+  hasMoreRequests,
+  submitting,
+  onBack,
+  onChange,
+  onImageChange,
+  onImageDrop,
+  onToggleRequests,
+  onSubmit,
+}) {
+  const previewImage = imagePreview || (isPreviewableImageUrl(form.imageUrl) ? form.imageUrl : null)
+  const hasNutrition = ['caloriesPer100g', 'proteinPer100g', 'carbPer100g', 'fatPer100g'].some((key) => form[key])
+  const nutritionPreview = [
+    ['Calories', form.caloriesPer100g, 'kcal'],
+    ['Protein', form.proteinPer100g, 'g'],
+    ['Carbohydrate', form.carbPer100g, 'g'],
+    ['Chất béo', form.fatPer100g, 'g'],
+  ].filter(([, value]) => value)
+
+  return (
+    <section className="fs-request-page">
+      <section className="fs-request-hero">
+        <div className="fs-request-hero-main">
+          <span className="fs-request-hero-icon"><i className="bi bi-plus-circle-fill" /></span>
+          <div>
+            <h1>Yêu cầu bổ sung món ăn mới</h1>
+            <p>Gửi thông tin món ăn chưa có trong danh mục để Admin xem xét bổ sung.</p>
+          </div>
+        </div>
+        <button className="fs-request-back-button" type="button" onClick={onBack}>
+          <i className="bi bi-arrow-left" />
+          Quay lại
+        </button>
+      </section>
+
+      {feedback && (
+        <div className={`fs-alert ${feedback.type}`} role={feedback.type === 'error' ? 'alert' : 'status'}>
+          <i className={`bi ${feedback.type === 'error' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill'}`} />
+          {feedback.text}
+        </div>
+      )}
+
+      <section className="fs-request-grid">
+        <form className="fs-panel fs-request-form" onSubmit={onSubmit}>
+          <section className="fs-request-section">
+            <div className="fs-request-section-heading">
+              <span>1</span>
+              <div>
+                <h2>Thông tin món ăn</h2>
+              </div>
+            </div>
+            <label className="fs-request-field">
+              <span>Tên món ăn <b>*</b></span>
+              <input
+                value={form.name}
+                onChange={(event) => onChange('name', event.target.value)}
+                placeholder="Ví dụ: Bún chả Hà Nội"
+                required
+              />
+              <small>Chỉ tên món ăn là bắt buộc.</small>
+            </label>
+          </section>
+
+          <section className="fs-request-section">
+            <div className="fs-request-section-heading">
+              <span>2</span>
+              <div>
+                <h2>Ảnh minh họa <em>(Tùy chọn)</em></h2>
+              </div>
+            </div>
+            <div
+              className={`fs-request-upload ${previewImage ? 'has-image' : ''}`}
+              onDrop={onImageDrop}
+              onDragOver={(event) => event.preventDefault()}
+            >
+              {previewImage ? (
+                <img src={previewImage} alt={form.name ? `Ảnh minh họa ${form.name}` : 'Ảnh minh họa món ăn'} />
+              ) : (
+                <>
+                  <span><i className="bi bi-image" /></span>
+                  <strong>Kéo thả ảnh vào đây hoặc chọn ảnh từ thiết bị</strong>
+                  <small>Định dạng JPG, PNG, WEBP | Tối đa 5MB</small>
+                </>
+              )}
+              <div className="fs-request-upload-actions">
+                <button type="button" onClick={() => imageInputRef.current?.click()}><i className="bi bi-upload" />Chọn ảnh</button>
+              </div>
+            </div>
+            <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={onImageChange} />
+            <label className="fs-request-field">
+              <span>URL ảnh minh họa</span>
+              <input
+                value={form.imageUrl}
+                onChange={(event) => onChange('imageUrl', event.target.value)}
+                placeholder="https://..."
+              />
+            </label>
+          </section>
+
+          <section className="fs-request-section">
+            <div className="fs-request-section-heading">
+              <span>3</span>
+              <div>
+                <h2>Thông tin dinh dưỡng trên 100g <em>(Tùy chọn)</em></h2>
+              </div>
+            </div>
+            <div className="fs-request-nutrition-grid">
+              <label className="fs-request-field">
+                <span>Năng lượng (kcal)</span>
+                <input type="number" min="0" step="0.1" inputMode="decimal" value={form.caloriesPer100g} onChange={(event) => onChange('caloriesPer100g', event.target.value)} placeholder="Ví dụ: 120" />
+              </label>
+              <label className="fs-request-field">
+                <span>Protein (g)</span>
+                <input type="number" min="0" step="0.1" inputMode="decimal" value={form.proteinPer100g} onChange={(event) => onChange('proteinPer100g', event.target.value)} placeholder="Ví dụ: 5.2" />
+              </label>
+              <label className="fs-request-field">
+                <span>Carbohydrate (g)</span>
+                <input type="number" min="0" step="0.1" inputMode="decimal" value={form.carbPer100g} onChange={(event) => onChange('carbPer100g', event.target.value)} placeholder="Ví dụ: 18.6" />
+              </label>
+              <label className="fs-request-field">
+                <span>Chất béo (g)</span>
+                <input type="number" min="0" step="0.1" inputMode="decimal" value={form.fatPer100g} onChange={(event) => onChange('fatPer100g', event.target.value)} placeholder="Ví dụ: 3.4" />
+              </label>
+            </div>
+            <p className="fs-request-hint"><i className="bi bi-info-circle" />Bạn có thể để trống các giá trị chưa biết, Admin sẽ bổ sung khi duyệt.</p>
+          </section>
+
+          <section className="fs-request-section">
+            <div className="fs-request-section-heading">
+              <span>4</span>
+              <div>
+                <h2>Ghi chú cho Admin <em>(Tùy chọn)</em></h2>
+              </div>
+            </div>
+            <label className="fs-request-field">
+              <textarea
+                value={form.note}
+                onChange={(event) => onChange('note', event.target.value.slice(0, 500))}
+                placeholder="Thông tin bổ sung về món ăn nếu có..."
+                rows={4}
+              />
+              <small>{form.note.length}/500</small>
+            </label>
+          </section>
+
+          <footer className="fs-request-form-footer">
+            <span><i className="bi bi-info-circle" />Chỉ tên món ăn là bắt buộc.</span>
+            <div>
+              <button className="fs-button secondary" type="button" onClick={onBack}>Hủy</button>
+              <button className="fs-button primary" type="submit" disabled={submitting}>
+                <i className={`bi ${submitting ? 'bi-hourglass-split' : 'bi-send-fill'}`} />
+                {submitting ? 'Đang gửi...' : 'Gửi yêu cầu bổ sung'}
+              </button>
+            </div>
+          </footer>
+        </form>
+
+        <aside className="fs-request-side">
+          <article className="fs-panel fs-request-preview">
+            <h2>Xem trước yêu cầu</h2>
+            <div className={`fs-request-preview-image ${previewImage ? 'has-image' : ''}`}>
+              {previewImage ? <img src={previewImage} alt="" /> : <><i className="bi bi-image" /><span>Ảnh món ăn chưa được thêm</span></>}
+            </div>
+            <dl className="fs-request-preview-list">
+              <div><dt><i className="bi bi-bookmark" />Tên món ăn:</dt><dd>{form.name || 'Chưa nhập'}</dd></div>
+              <div><dt><i className="bi bi-fork-knife" />Dinh dưỡng/100g:</dt><dd>{hasNutrition ? nutritionPreview.map(([label, value, unit]) => `${label} ${value}${unit}`).join(' · ') : 'Chưa cung cấp'}</dd></div>
+              <div><dt><i className="bi bi-clock" />Trạng thái:</dt><dd><span>Chờ duyệt</span></dd></div>
+            </dl>
+          </article>
+
+          <article className="fs-panel fs-request-history">
+            <div className="fs-request-history-head">
+              <h2><i className="bi bi-send-check-fill" />Các yêu cầu đã gửi</h2>
+              {hasMoreRequests && (
+                <button type="button" onClick={onToggleRequests}>
+                  {requestsExpanded ? 'Thu gọn' : 'Xem tất cả'}
+                </button>
+              )}
+            </div>
+            {requestsLoading ? (
+              <div className="fs-request-history-state"><span className="fs-mini-spinner" />Đang tải yêu cầu...</div>
+            ) : requestsError ? (
+              <div className="fs-request-history-state error"><i className="bi bi-exclamation-circle" />{requestsError}</div>
+            ) : sentRequests.length ? (
+              <div className="fs-request-history-list">
+                {sentRequests.map((request) => (
+                  <article className="fs-request-history-item" key={request._id}>
+                    <div className="fs-request-history-top">
+                      <span className="fs-request-history-thumb">{request.imageUrl ? <img src={request.imageUrl} alt="" /> : <i className="bi bi-image" />}</span>
+                      <div>
+                        <strong>{request.name}</strong>
+                        <small>{formatRequestDate(request.createdAt)}</small>
+                      </div>
+                      <em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em>
+                    </div>
+                    <p>{formatRequestNutrition(request)}</p>
+                    {request.rejectReason && <small className="fs-request-reject-reason">Lý do: {request.rejectReason}</small>}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="fs-request-history-state"><i className="bi bi-inbox" />Chưa có yêu cầu nào được gửi.</div>
+            )}
+          </article>
+        </aside>
+      </section>
+    </section>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function FoodScanPage() {
   const fileInputRef = useRef(null)
   const cameraInputRef = useRef(null)
+  const requestImageInputRef = useRef(null)
   const { user, handleLogout } = useAuth()
   const navigate = useNavigate()
   const [profileOpen, setProfileOpen] = useState(false)
@@ -97,6 +385,18 @@ export default function FoodScanPage() {
   const [dailyTotals, setDailyTotals] = useState(null)
   const [logsLoading, setLogsLoading] = useState(true)
   const [profile, setProfile] = useState(null)
+
+  // Form yêu cầu bổ sung món ăn
+  const [requestMode, setRequestMode] = useState(false)
+  const [requestForm, setRequestForm] = useState(EMPTY_FOOD_REQUEST_FORM)
+  const [requestImagePreview, setRequestImagePreview] = useState(null)
+  const [requestSubmitting, setRequestSubmitting] = useState(false)
+  const [requestFeedback, setRequestFeedback] = useState(null)
+  const [sentRequests, setSentRequests] = useState([])
+  const [requestsTotal, setRequestsTotal] = useState(0)
+  const [requestsLoading, setRequestsLoading] = useState(false)
+  const [requestsError, setRequestsError] = useState(null)
+  const [requestsExpanded, setRequestsExpanded] = useState(false)
 
   const firstName = user?.fullName?.split(' ')[0] || 'bạn'
   const selectedPrediction = result?.predictions?.[selectedPred]
@@ -159,6 +459,24 @@ export default function FoodScanPage() {
     }
   }, [date])
 
+  const loadFoodRequests = useCallback(async (expanded = requestsExpanded) => {
+    setRequestsLoading(true)
+    setRequestsError(null)
+    try {
+      const { data } = await axiosInstance.get('/food/requests', {
+        params: { limit: expanded ? 50 : 3 },
+      })
+      setSentRequests(data.requests || [])
+      setRequestsTotal(Number(data.total || 0))
+    } catch {
+      setSentRequests([])
+      setRequestsTotal(0)
+      setRequestsError('Không thể tải danh sách yêu cầu đã gửi.')
+    } finally {
+      setRequestsLoading(false)
+    }
+  }, [requestsExpanded])
+
   useEffect(() => {
     let isActive = true
     axiosInstance.get('/profile')
@@ -168,7 +486,10 @@ export default function FoodScanPage() {
   }, [])
 
   useEffect(() => {
-    loadMealLogs()
+    const timer = window.setTimeout(() => {
+      loadMealLogs()
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [loadMealLogs])
 
   useEffect(() => {
@@ -178,6 +499,14 @@ export default function FoodScanPage() {
       .catch(() => { if (isActive) { setFoodSearchError('Không thể tải thư viện món ăn. Vui lòng thử lại.'); setFoodSearchLoading(false) } })
     return () => { isActive = false }
   }, [])
+
+  useEffect(() => {
+    if (!requestMode) return undefined
+    const timer = window.setTimeout(() => {
+      loadFoodRequests(requestsExpanded)
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [loadFoodRequests, requestMode, requestsExpanded])
 
   // ── Handlers ──
 
@@ -245,10 +574,82 @@ export default function FoodScanPage() {
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
 
+  const openFoodRequest = () => {
+    const draft = buildFoodRequestDraft(result, selectedPrediction)
+    setRequestForm(draft)
+    setRequestImagePreview(draft.imageUrl || null)
+    setRequestFeedback(null)
+    setRequestsExpanded(false)
+    setRequestMode(true)
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+  }
+
+  const handleRequestChange = (field, value) => {
+    setRequestForm((current) => ({ ...current, [field]: value }))
+    if (requestFeedback?.type === 'error') setRequestFeedback(null)
+  }
+
+  const loadRequestImagePreview = (file) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setRequestFeedback({ type: 'error', text: 'Vui lòng chọn đúng định dạng ảnh.' })
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setRequestFeedback({ type: 'error', text: 'Ảnh minh họa không được vượt quá 5MB.' })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      setRequestImagePreview(event.target.result)
+      setRequestFeedback(null)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleRequestImageChange = (event) => {
+    loadRequestImagePreview(event.target.files?.[0])
+  }
+
+  const handleRequestImageDrop = (event) => {
+    event.preventDefault()
+    loadRequestImagePreview(event.dataTransfer.files?.[0])
+  }
+
+  const handleFoodRequestSubmit = async (event) => {
+    event.preventDefault()
+    const name = requestForm.name.trim()
+    if (!name) {
+      setRequestFeedback({ type: 'error', text: 'Vui lòng nhập tên món ăn cần bổ sung.' })
+      return
+    }
+
+    setRequestSubmitting(true)
+    setRequestFeedback(null)
+    try {
+      await axiosInstance.post('/food/requests', {
+        name,
+        imageUrl: requestForm.imageUrl.trim() || null,
+        caloriesPer100g: requestNumberOrNull(requestForm.caloriesPer100g),
+        proteinPer100g: requestNumberOrNull(requestForm.proteinPer100g),
+        carbPer100g: requestNumberOrNull(requestForm.carbPer100g),
+        fatPer100g: requestNumberOrNull(requestForm.fatPer100g),
+        note: requestForm.note.trim() || null,
+      })
+      setRequestFeedback({ type: 'success', text: 'Đã gửi yêu cầu bổ sung món ăn. Trạng thái hiện tại: Chờ duyệt.' })
+      await loadFoodRequests(requestsExpanded)
+    } catch (err) {
+      setRequestFeedback({ type: 'error', text: err.response?.data?.message || 'Không thể gửi yêu cầu, vui lòng thử lại.' })
+    } finally {
+      setRequestSubmitting(false)
+    }
+  }
+
   // ── Render ──
   const dailyCalories = Number(dailyTotals?.calories || 0)
   const calorieProgress = Math.min(100, Math.round((dailyCalories / targetCalories) * 100))
   const recentMeals = [...mealLogs].reverse().slice(0, 3)
+  const hasMoreRequests = requestsTotal > 3 || requestsExpanded
 
   return (
     <div className="dashboard-shell foodscan-shell">
@@ -280,6 +681,27 @@ export default function FoodScanPage() {
       </header>
 
       <main className="dashboard-main foodscan-main">
+        {requestMode ? (
+          <FoodRequestPanel
+            form={requestForm}
+            feedback={requestFeedback}
+            imageInputRef={requestImageInputRef}
+            imagePreview={requestImagePreview}
+            sentRequests={sentRequests}
+            requestsLoading={requestsLoading}
+            requestsError={requestsError}
+            requestsExpanded={requestsExpanded}
+            hasMoreRequests={hasMoreRequests}
+            submitting={requestSubmitting}
+            onBack={() => setRequestMode(false)}
+            onChange={handleRequestChange}
+            onImageChange={handleRequestImageChange}
+            onImageDrop={handleRequestImageDrop}
+            onToggleRequests={() => setRequestsExpanded((expanded) => !expanded)}
+            onSubmit={handleFoodRequestSubmit}
+          />
+        ) : (
+          <>
         <section className="fs-page-heading">
           <span className="fs-page-icon"><i className="bi bi-camera-fill" /></span>
           <div>
@@ -380,7 +802,7 @@ export default function FoodScanPage() {
               </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
             </article>
             {result?.recognized && result.nutrition && <div className="fs-nutrition-actions">
-              <button type="button" className="fs-request-food-button"><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
+              <button type="button" className="fs-request-food-button" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
               <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
             </div>}
 
@@ -421,8 +843,10 @@ export default function FoodScanPage() {
             <div className="fs-encouragement"><span><i className="bi bi-heart-fill" /></span><p><strong>Bạn đang lựa chọn rất tốt!</strong>Hãy duy trì thói quen ghi nhận để theo dõi dinh dưỡng chính xác hơn.</p></div>
           </aside>
         </section>
+          </>
+        )}
       </main>
-      <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ　 Chính sách bảo mật　 Trung tâm hỗ trợ</span></footer>
+      <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span></footer>
     </div>
   )
 }
