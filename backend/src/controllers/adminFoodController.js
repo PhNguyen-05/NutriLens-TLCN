@@ -9,7 +9,7 @@ function escapeRegex(value) {
 
 function normalizePagination(page, limit) {
   const normalizedPage = Math.max(Number.parseInt(page, 10) || 1, 1);
-  const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100);
+  const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 10, 1), 100);
   return { page: normalizedPage, limit: normalizedLimit, skip: (normalizedPage - 1) * normalizedLimit };
 }
 

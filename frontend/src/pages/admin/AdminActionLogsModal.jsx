@@ -13,6 +13,7 @@ const actionLabels = {
   hide_post: 'Ẩn bài viết',
   remove_post: 'Gỡ bài viết',
   reject_request: 'Từ chối yêu cầu',
+  approve_request: 'Duyệt yêu cầu món',
 }
 
 function getAvatarUrl(avatarUrl) {
@@ -34,7 +35,10 @@ function getActionTypeAndIcon(actionType) {
     case 'unlock_user':
     case 'create_food':
     case 'show_food':
-      return { type: 'unlock', icon: actionType === 'create_food' ? 'bi-plus-circle-fill' : actionType === 'show_food' ? 'bi-eye-fill' : 'bi-unlock-fill' }
+    case 'approve_request':
+      return { type: 'unlock', icon: actionType === 'approve_request' ? 'bi-check-circle-fill' : actionType === 'create_food' ? 'bi-plus-circle-fill' : actionType === 'show_food' ? 'bi-eye-fill' : 'bi-unlock-fill' }
+    case 'reject_request':
+      return { type: 'lock', icon: 'bi-x-circle-fill' }
     case 'hide_food':
       return { type: 'lock', icon: 'bi-eye-slash-fill' }
     case 'update_food':

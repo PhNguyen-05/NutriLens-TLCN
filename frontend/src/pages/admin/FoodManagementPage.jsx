@@ -25,6 +25,8 @@ const SERVING_PRESETS = [
   { label: '1 Ổ / Cái (200g)', value: '200' },
 ]
 
+const PAGE_SIZE = 10
+
 const EMPTY_FORM = {
   name: '', foodGroup: '', servingLabel: '',
   calories: '', protein: '', fat: '', carbs: '',
@@ -744,7 +746,7 @@ export default function FoodManagementPage() {
       setLoading(true); setListError('')
       try {
         const { data } = await axiosInstance.get('/admin/foods', {
-          params: { search, status: statusFilter, foodGroup: groupFilter, sort: sortBy, page, limit: 20 },
+          params: { search, status: statusFilter, foodGroup: groupFilter, sort: sortBy, page, limit: PAGE_SIZE },
           signal: ctrl.signal,
         })
         setFoods(data.data || [])
@@ -815,8 +817,8 @@ export default function FoodManagementPage() {
     } finally { setDeleteSaving(false) }
   }
 
-  const si = pagination.total ? (page - 1) * 20 + 1 : 0
-  const ei = Math.min(page * 20, pagination.total)
+  const si = pagination.total ? (page - 1) * PAGE_SIZE + 1 : 0
+  const ei = Math.min(page * PAGE_SIZE, pagination.total)
 
   return (
     <div className="fdm-shell">
