@@ -187,8 +187,8 @@ async function scanFood(req, res, next) {
 
 /* ──────────────────────────────────────────────────────────────
    POST /api/food/meal-logs
-   Body: JSON { foodSlug, foodName, confidence?, imageUrl?,
-                servings?, date, mealType? }
+   Body: multipart/form-data { foodSlug, foodName, confidence?, imageUrl?, image?,
+                              servings?, date, mealType? }
    Lưu 1 bữa ăn vào nhật ký.
 ────────────────────────────────────────────────────────────── */
 async function addMealLog(req, res, next) {
@@ -224,9 +224,11 @@ async function addMealLog(req, res, next) {
       mealType,
       foodSlug,
       foodName,
-      confidence: confidence ?? null,
-      imageUrl: imageUrl ?? null,
-      servings,
+      confidence: confidence === '' || confidence == null ? null : Number(confidence),
+      imageUrl: req.file
+        ? `${req.protocol}://${req.get('host')}/uploads/meal-logs/${req.file.filename}`
+        : imageUrl || null,
+      servings: Number(servings) || 1,
       nutrition,
     });
 
@@ -273,6 +275,53 @@ async function getMealLogs(req, res, next) {
   }
 }
 
+async function updateMealLog(req, res, next) {
+  try {
+    const updates = {};
+    const { date, mealType, servings } = req.body;
+
+    if (date !== undefined) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ message: 'Ngày không hợp lệ (YYYY-MM-DD)' });
+      }
+      updates.date = date;
+    }
+
+    if (mealType !== undefined) {
+      if (!['breakfast', 'lunch', 'dinner', 'snack'].includes(mealType)) {
+        return res.status(400).json({ message: 'Loại bữa ăn không hợp lệ' });
+      }
+      updates.mealType = mealType;
+    }
+
+    if (servings !== undefined) {
+      const parsedServings = Number(servings);
+      if (!Number.isFinite(parsedServings) || parsedServings < 0.1 || parsedServings > 99) {
+        return res.status(400).json({ message: 'Khẩu phần phải từ 0,1 đến 99' });
+      }
+      updates.servings = parsedServings;
+    }
+
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ message: 'Không có thông tin cần cập nhật' });
+    }
+
+    const log = await MealLog.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!log) {
+      return res.status(404).json({ message: 'Không tìm thấy nhật ký hoặc bạn không có quyền cập nhật' });
+    }
+
+    return res.status(200).json({ message: 'Đã cập nhật nhật ký bữa ăn', mealLog: log });
+  } catch (err) {
+    next(err);
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────
    DELETE /api/food/meal-logs/:id
    Xoá 1 dòng nhật ký (chỉ được xoá của chính mình).
@@ -294,4 +343,4 @@ async function deleteMealLog(req, res, next) {
   }
 }
 
-module.exports = { searchFoods, createFoodRequest, getFoodRequests, scanFood, addMealLog, getMealLogs, deleteMealLog };
+module.exports = { searchFoods, createFoodRequest, getFoodRequests, scanFood, addMealLog, getMealLogs, updateMealLog, deleteMealLog };

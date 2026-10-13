@@ -21,6 +21,7 @@ const {
   scanFood,
   addMealLog,
   getMealLogs,
+  updateMealLog,
   deleteMealLog,
 } = require('../controllers/foodScanController');
 
@@ -63,6 +64,28 @@ const requestImageUpload = multer({
   },
 });
 
+const mealLogImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = path.join(__dirname, '../../uploads/meal-logs');
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(Object.assign(new Error('Chỉ chấp nhận ảnh JPG, PNG hoặc WEBP'), { statusCode: 415 }));
+    }
+  },
+});
+
 // POST /api/food/scan — không cần đăng nhập (cho phép dùng thử)
 // Nếu muốn yêu cầu đăng nhập: thêm requireAuth trước upload.single
 router.get('/search', searchFoods);
@@ -71,8 +94,9 @@ router.post('/scan', upload.single('file'), scanFood);
 // Các route nhật ký yêu cầu đăng nhập
 router.get('/requests',        requireAuth, getFoodRequests);
 router.post('/requests',       requireAuth, requestImageUpload.single('image'), createFoodRequest);
-router.post('/meal-logs',      requireAuth, addMealLog);
+router.post('/meal-logs',      requireAuth, mealLogImageUpload.single('image'), addMealLog);
 router.get('/meal-logs',       requireAuth, getMealLogs);
+router.patch('/meal-logs/:id', requireAuth, updateMealLog);
 router.delete('/meal-logs/:id', requireAuth, deleteMealLog);
 
 module.exports = router;

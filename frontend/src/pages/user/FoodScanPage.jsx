@@ -764,13 +764,18 @@ export default function FoodScanPage() {
     const pred = result.predictions[selectedPred]
     setSaving(true); setSaveMsg(null)
     try {
-      await axiosInstance.post('/food/meal-logs', {
-        foodSlug:   pred.slug,
-        foodName:   pred.name,
-        confidence: pred.confidence,
-        servings:   Number(servings),
-        date,
-        mealType,
+      const payload = new FormData()
+      payload.append('foodSlug', pred.slug)
+      payload.append('foodName', pred.name)
+      payload.append('confidence', pred.confidence ?? '')
+      payload.append('servings', String(Number(servings)))
+      payload.append('date', date)
+      payload.append('mealType', mealType)
+      if (fileObj) payload.append('image', fileObj)
+      else if (result.nutrition?.imageUrl) payload.append('imageUrl', result.nutrition.imageUrl)
+
+      await axiosInstance.post('/food/meal-logs', payload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       })
       setSaveMsg({ type: 'success', text: `Đã thêm "${pred.name}" vào nhật ký ${MEAL_LABELS[mealType]} ngày ${date}!` })
       await loadMealLogs()
@@ -1063,10 +1068,10 @@ export default function FoodScanPage() {
             </div>}
 
             <article className="fs-panel fs-recent-meals">
-              <div className="fs-panel-heading"><div><h2><i className="bi bi-clock-history" />Nhật ký bữa ăn gần đây</h2><p>Các món bạn đã ghi nhận trong ngày {date.split('-').reverse().join('/')}</p></div><Link to="/dashboard">Xem tất cả <i className="bi bi-arrow-right" /></Link></div>
+              <div className="fs-panel-heading"><div><h2><i className="bi bi-clock-history" />Nhật ký bữa ăn gần đây</h2><p>Các món bạn đã ghi nhận trong ngày {date.split('-').reverse().join('/')}</p></div><Link to={`/meal-diary?date=${date}`}>Xem chi tiết <i className="bi bi-arrow-right" /></Link></div>
               {logsLoading ? <div className="fs-log-empty"><span className="fs-mini-spinner" />Đang tải nhật ký...</div> : recentMeals.length ? <div className="fs-recent-list">
                 {recentMeals.map((log) => <div className="fs-recent-item" key={log._id}>
-                  <span className="fs-recent-thumb">{log.imageUrl ? <img src={log.imageUrl} alt="" /> : <i className="bi bi-egg-fried" />}</span>
+                  <span className="fs-recent-thumb"><i className="bi bi-egg-fried" />{log.imageUrl && <img src={resolveMediaUrl(log.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = 'none' }} />}</span>
                   <div><strong>{log.foodName}</strong><small>{MEAL_LABELS[log.mealType] || 'Bữa ăn'} · {log.servings || 1} khẩu phần</small></div>
                   <span className="fs-recent-kcal">{roundN((log.nutrition?.calories || 0) * (log.servings || 1))} kcal</span>
                 </div>)}
