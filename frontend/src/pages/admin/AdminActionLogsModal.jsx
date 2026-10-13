@@ -5,10 +5,15 @@ const actionLabels = {
   lock_user: 'Khóa tài khoản',
   unlock_user: 'Mở khóa tài khoản',
   approve_post: 'Duyệt bài viết',
+  create_food: 'Thêm món ăn',
+  update_food: 'Cập nhật món ăn',
+  hide_food: 'Ẩn món ăn',
+  show_food: 'Hiển thị món ăn',
   delete_food: 'Xóa món ăn',
   hide_post: 'Ẩn bài viết',
   remove_post: 'Gỡ bài viết',
   reject_request: 'Từ chối yêu cầu',
+  approve_request: 'Duyệt yêu cầu món',
 }
 
 function getAvatarUrl(avatarUrl) {
@@ -20,6 +25,27 @@ function getAvatarUrl(avatarUrl) {
 function formatDateDisplay(dateValue) {
   const [year, month, day] = dateValue.split('-')
   return year && month && day ? `${day}/${month}/${year}` : ''
+}
+
+function getActionTypeAndIcon(actionType) {
+  switch (actionType) {
+    case 'lock_user':
+    case 'delete_food':
+      return { type: 'lock', icon: actionType === 'delete_food' ? 'bi-trash-fill' : 'bi-lock-fill' }
+    case 'unlock_user':
+    case 'create_food':
+    case 'show_food':
+    case 'approve_request':
+      return { type: 'unlock', icon: actionType === 'approve_request' ? 'bi-check-circle-fill' : actionType === 'create_food' ? 'bi-plus-circle-fill' : actionType === 'show_food' ? 'bi-eye-fill' : 'bi-unlock-fill' }
+    case 'reject_request':
+      return { type: 'lock', icon: 'bi-x-circle-fill' }
+    case 'hide_food':
+      return { type: 'lock', icon: 'bi-eye-slash-fill' }
+    case 'update_food':
+      return { type: 'update', icon: 'bi-pencil-square' }
+    default:
+      return { type: 'update', icon: 'bi-gear-fill' }
+  }
 }
 
 export default function AdminActionLogsModal({ isOpen, onClose, embedded = false }) {
@@ -66,38 +92,57 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
 
   if (!isOpen) return null
 
+  const renderTableRows = () => {
+    if (logsLoading) return <tr><td colSpan="6" className="action-log-empty"><span className="user-spinner" />Đang tải lịch sử...</td></tr>
+    if (logsError) return <tr><td colSpan="6" className="action-log-empty error">{logsError}</td></tr>
+    if (actionLogs.length === 0) return <tr><td colSpan="6" className="action-log-empty">Không có thao tác nào trong khoảng thời gian này.</td></tr>
+
+    return actionLogs.map((log) => {
+      const { type, icon } = getActionTypeAndIcon(log.actionType)
+      const timestamp = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(log.createdAt))
+      return (
+        <tr key={log._id}>
+          <td>{timestamp}</td>
+          <td><span className={`action-log-action ${type}`}><i className={`bi ${icon}`} />{actionLabels[log.actionType] || log.actionType}</span></td>
+          <td><span className="action-log-target">{log.targetType === 'User' ? 'Tài khoản thường' : log.targetType === 'FoodItem' ? 'Danh mục món ăn' : log.targetType === 'Request' ? 'Yêu cầu bổ sung món' : log.targetType}</span></td>
+          <td><div className="action-log-admin"><span className="action-log-avatar">{log.admin?.avatarUrl ? <img src={getAvatarUrl(log.admin.avatarUrl)} alt="" /> : log.admin?.fullName?.charAt(0)?.toUpperCase() || 'A'}</span><span>{log.admin?.fullName || 'Admin'}</span></div></td>
+          <td>
+            {log.reason || '—'}
+            {log.target?.fullName && <small className="action-log-target-user">Tài khoản: {log.target.fullName} · {log.target.email}</small>}
+            {log.targetFood && <small className="action-log-target-user">Món ăn: {log.targetFood.name} {log.targetFood.foodCode ? `(${log.targetFood.foodCode})` : ''}</small>}
+            {log.targetRequest && <small className="action-log-target-user">Yêu cầu: {log.targetRequest.foodName} {log.targetRequest.requestCode ? `(${log.targetRequest.requestCode})` : ''}{log.targetRequest.userId?.fullName ? ` · Người gửi: ${log.targetRequest.userId.fullName}` : ''}</small>}
+          </td>
+          <td><span className="action-log-note">{log.note || (log.actionType === 'unlock_user' ? 'Đã xác minh yêu cầu mở khóa' : '—')}</span>{log.evidence?.map((file) => <a className="action-log-evidence" key={file.url} href={getAvatarUrl(file.url)} target="_blank" rel="noreferrer"><i className="bi bi-paperclip" />{file.originalName}</a>)}</td>
+        </tr>
+      )
+    })
+  }
+
+  const filtersMarkup = (
+    <div className="action-log-filters">
+      <label className="action-log-date"><i className="bi bi-calendar3" /><span className="action-log-date-field"><span>{formatDateDisplay(logFrom)}</span><input type="date" value={logFrom} max={logTo} aria-label="Ngày bắt đầu" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /></span><span>→</span><span className="action-log-date-field"><span>{formatDateDisplay(logTo)}</span><input type="date" value={logTo} min={logFrom} aria-label="Ngày kết thúc" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /></span><i className="bi bi-chevron-down action-log-date-chevron" /></label>
+      <label className="action-log-select"><i className="bi bi-person-gear" /><select value={logAction} onChange={(event) => { setLogAction(event.target.value); setLogPage(1) }} aria-label="Lọc hành động"><option value="all">Tất cả hành động</option>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label className="action-log-select"><i className="bi bi-shield-check" /><select value={logAdmin} onChange={(event) => { setLogAdmin(event.target.value); setLogPage(1) }} aria-label="Lọc người thực hiện"><option value="all">Tất cả người thực hiện</option>{logAdmins.map((logAdminUser) => <option key={logAdminUser._id} value={logAdminUser._id}>{logAdminUser.fullName}</option>)}</select></label>
+      <label className="action-log-search"><i className="bi bi-search" /><input value={logSearch} onChange={(event) => { setLogSearch(event.target.value); setLogPage(1) }} placeholder="Tìm kiếm theo tên người dùng, món ăn, lý do..." aria-label="Tìm kiếm trong lịch sử thao tác" /></label>
+    </div>
+  )
+
+  const paginationMarkup = (
+    <footer className="action-log-footer"><span>Tổng cộng: {logPagination.total.toLocaleString('vi-VN')} bản ghi</span><div><button aria-label="Trang trước" disabled={logPage <= 1 || logsLoading} onClick={() => setLogPage((current) => current - 1)}><i className="bi bi-chevron-left" /></button><span>{logPagination.totalPages ? `${logPage} / ${logPagination.totalPages}` : '0 / 0'}</span><button aria-label="Trang sau" disabled={logPage >= logPagination.totalPages || logsLoading} onClick={() => setLogPage((current) => current + 1)}><i className="bi bi-chevron-right" /></button></div></footer>
+  )
+
   if (embedded) {
     return (
       <div className="admin-action-log-page">
         <section className="admin-action-log-panel" aria-label="Lịch sử thao tác của Admin">
-          <div className="action-log-filters">
-            <label className="action-log-date"><i className="bi bi-calendar3" /><span className="action-log-date-field"><span>{formatDateDisplay(logFrom)}</span><input type="date" value={logFrom} max={logTo} aria-label="Ngày bắt đầu" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /></span><span>→</span><span className="action-log-date-field"><span>{formatDateDisplay(logTo)}</span><input type="date" value={logTo} min={logFrom} aria-label="Ngày kết thúc" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /></span><i className="bi bi-chevron-down action-log-date-chevron" /></label>
-            <label className="action-log-select"><i className="bi bi-person-gear" /><select value={logAction} onChange={(event) => { setLogAction(event.target.value); setLogPage(1) }} aria-label="Lọc hành động"><option value="all">Tất cả hành động</option>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label className="action-log-select"><i className="bi bi-shield-check" /><select value={logAdmin} onChange={(event) => { setLogAdmin(event.target.value); setLogPage(1) }} aria-label="Lọc người thực hiện"><option value="all">Tất cả người thực hiện</option>{logAdmins.map((logAdminUser) => <option key={logAdminUser._id} value={logAdminUser._id}>{logAdminUser.fullName}</option>)}</select></label>
-            <label className="action-log-search"><i className="bi bi-search" /><input value={logSearch} onChange={(event) => { setLogSearch(event.target.value); setLogPage(1) }} placeholder="Tìm kiếm theo tên người dùng, email..." aria-label="Tìm kiếm trong lịch sử thao tác" /></label>
-          </div>
-
+          {filtersMarkup}
           <div className="action-log-table-wrap">
             <table className="action-log-table">
-              <thead><tr><th>Thời gian</th><th>Hành động</th><th>Loại tài khoản</th><th>Người thực hiện</th><th>Lý do / Nội dung</th><th>Ghi chú / Minh chứng</th></tr></thead>
-              <tbody>
-                {logsLoading ? <tr><td colSpan="6" className="action-log-empty"><span className="user-spinner" />Đang tải lịch sử...</td></tr> : logsError ? <tr><td colSpan="6" className="action-log-empty error">{logsError}</td></tr> : actionLogs.length === 0 ? <tr><td colSpan="6" className="action-log-empty">Không có thao tác nào trong khoảng thời gian này.</td></tr> : actionLogs.map((log) => {
-                  const type = log.actionType === 'lock_user' ? 'lock' : log.actionType === 'unlock_user' ? 'unlock' : 'update'
-                  const timestamp = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(log.createdAt))
-                  return <tr key={log._id}>
-                    <td>{timestamp}</td>
-                    <td><span className={`action-log-action ${type}`}><i className={`bi ${type === 'lock' ? 'bi-lock-fill' : type === 'unlock' ? 'bi-unlock-fill' : 'bi-pencil-fill'}`} />{actionLabels[log.actionType] || log.actionType}</span></td>
-                    <td><span className="action-log-target">{log.targetType === 'User' ? 'Tài khoản thường' : log.targetType}</span></td>
-                    <td><div className="action-log-admin"><span className="action-log-avatar">{log.admin?.avatarUrl ? <img src={getAvatarUrl(log.admin.avatarUrl)} alt="" /> : log.admin?.fullName?.charAt(0)?.toUpperCase() || 'A'}</span><span>{log.admin?.fullName || 'Admin'}</span></div></td>
-                    <td>{log.reason || '—'}{log.target?.fullName && <small className="action-log-target-user">Tài khoản: {log.target.fullName} · {log.target.email}</small>}</td>
-                    <td><span className="action-log-note">{log.note || (log.actionType === 'unlock_user' ? 'Đã xác minh yêu cầu mở khóa' : '—')}</span>{log.evidence?.map((file) => <a className="action-log-evidence" key={file.url} href={getAvatarUrl(file.url)} target="_blank" rel="noreferrer"><i className="bi bi-paperclip" />{file.originalName}</a>)}</td>
-                  </tr>
-                })}
-              </tbody>
+              <thead><tr><th>Thời gian</th><th>Hành động</th><th>Loại đối tượng</th><th>Người thực hiện</th><th>Lý do / Nội dung</th><th>Ghi chú / Minh chứng</th></tr></thead>
+              <tbody>{renderTableRows()}</tbody>
             </table>
           </div>
-
-          <footer className="action-log-footer"><span>Tổng cộng: {logPagination.total.toLocaleString('vi-VN')} bản ghi</span><div><button aria-label="Trang trước" disabled={logPage <= 1 || logsLoading} onClick={() => setLogPage((current) => current - 1)}><i className="bi bi-chevron-left" /></button><span>{logPagination.totalPages ? `${logPage} / ${logPagination.totalPages}` : '0 / 0'}</span><button aria-label="Trang sau" disabled={logPage >= logPagination.totalPages || logsLoading} onClick={() => setLogPage((current) => current + 1)}><i className="bi bi-chevron-right" /></button></div></footer>
+          {paginationMarkup}
         </section>
       </div>
     )
@@ -107,39 +152,21 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
     <div className="user-modal-backdrop action-log-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section className="user-modal action-log-modal" role="dialog" aria-modal="true" aria-labelledby="action-log-title">
         <header className="action-log-heading">
-          <div><span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span><div><h2 id="action-log-title">Lịch sử thao tác của Admin</h2><p>Xem chi tiết các thao tác quản lý tài khoản, bao gồm khóa, mở khóa, cập nhật thông tin và các hành động khác.</p></div></div>
+          <div><span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span><div><h2 id="action-log-title">Lịch sử thao tác của Admin</h2><p>Xem chi tiết các thao tác quản lý tài khoản, danh mục món ăn và nội dung hệ thống.</p></div></div>
           <button aria-label="Đóng" onClick={onClose}><i className="bi bi-x-lg" /></button>
         </header>
 
-        <div className="action-log-filters">
-          <label className="action-log-date"><i className="bi bi-calendar3" /><span className="action-log-date-field"><span>{formatDateDisplay(logFrom)}</span><input type="date" value={logFrom} max={logTo} aria-label="Ngày bắt đầu" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogFrom(event.target.value); setLogPage(1) }} /></span><span>→</span><span className="action-log-date-field"><span>{formatDateDisplay(logTo)}</span><input type="date" value={logTo} min={logFrom} aria-label="Ngày kết thúc" onClick={(event) => event.currentTarget.showPicker?.()} onChange={(event) => { setLogTo(event.target.value); setLogPage(1) }} /></span><i className="bi bi-chevron-down action-log-date-chevron" /></label>
-          <label className="action-log-select"><i className="bi bi-person-gear" /><select value={logAction} onChange={(event) => { setLogAction(event.target.value); setLogPage(1) }} aria-label="Lọc hành động"><option value="all">Tất cả hành động</option>{Object.entries(actionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="action-log-select"><i className="bi bi-shield-check" /><select value={logAdmin} onChange={(event) => { setLogAdmin(event.target.value); setLogPage(1) }} aria-label="Lọc người thực hiện"><option value="all">Tất cả người thực hiện</option>{logAdmins.map((logAdminUser) => <option key={logAdminUser._id} value={logAdminUser._id}>{logAdminUser.fullName}</option>)}</select></label>
-          <label className="action-log-search"><i className="bi bi-search" /><input value={logSearch} onChange={(event) => { setLogSearch(event.target.value); setLogPage(1) }} placeholder="Tìm kiếm theo tên người dùng, email..." aria-label="Tìm kiếm trong lịch sử thao tác" /></label>
-        </div>
+        {filtersMarkup}
 
         <div className="action-log-table-wrap">
           <table className="action-log-table">
-            <thead><tr><th>Thời gian</th><th>Hành động</th><th>Loại tài khoản</th><th>Người thực hiện</th><th>Lý do / Nội dung</th><th>Ghi chú / Minh chứng</th></tr></thead>
-            <tbody>
-              {logsLoading ? <tr><td colSpan="6" className="action-log-empty"><span className="user-spinner" />Đang tải lịch sử...</td></tr> : logsError ? <tr><td colSpan="6" className="action-log-empty error">{logsError}</td></tr> : actionLogs.length === 0 ? <tr><td colSpan="6" className="action-log-empty">Không có thao tác nào trong khoảng thời gian này.</td></tr> : actionLogs.map((log) => {
-                const type = log.actionType === 'lock_user' ? 'lock' : log.actionType === 'unlock_user' ? 'unlock' : 'update'
-                const timestamp = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(log.createdAt))
-                return <tr key={log._id}>
-                  <td>{timestamp}</td>
-                  <td><span className={`action-log-action ${type}`}><i className={`bi ${type === 'lock' ? 'bi-lock-fill' : type === 'unlock' ? 'bi-unlock-fill' : 'bi-pencil-fill'}`} />{actionLabels[log.actionType] || log.actionType}</span></td>
-                  <td><span className="action-log-target">{log.targetType === 'User' ? 'Tài khoản thường' : log.targetType}</span></td>
-                  <td><div className="action-log-admin"><span className="action-log-avatar">{log.admin?.avatarUrl ? <img src={getAvatarUrl(log.admin.avatarUrl)} alt="" /> : log.admin?.fullName?.charAt(0)?.toUpperCase() || 'A'}</span><span>{log.admin?.fullName || 'Admin'}</span></div></td>
-                  <td>{log.reason || '—'}{log.target?.fullName && <small className="action-log-target-user">Tài khoản: {log.target.fullName} · {log.target.email}</small>}</td>
-                  <td><span className="action-log-note">{log.note || (log.actionType === 'unlock_user' ? 'Đã xác minh yêu cầu mở khóa' : '—')}</span>{log.evidence?.map((file) => <a className="action-log-evidence" key={file.url} href={getAvatarUrl(file.url)} target="_blank" rel="noreferrer"><i className="bi bi-paperclip" />{file.originalName}</a>)}</td>
-                </tr>
-              })}
-            </tbody>
+            <thead><tr><th>Thời gian</th><th>Hành động</th><th>Loại đối tượng</th><th>Người thực hiện</th><th>Lý do / Nội dung</th><th>Ghi chú / Minh chứng</th></tr></thead>
+            <tbody>{renderTableRows()}</tbody>
           </table>
         </div>
 
-        <footer className="action-log-footer"><span>Tổng cộng: {logPagination.total.toLocaleString('vi-VN')} bản ghi</span><div><button aria-label="Trang trước" disabled={logPage <= 1 || logsLoading} onClick={() => setLogPage((current) => current - 1)}><i className="bi bi-chevron-left" /></button><span>{logPagination.totalPages ? `${logPage} / ${logPagination.totalPages}` : '0 / 0'}</span><button aria-label="Trang sau" disabled={logPage >= logPagination.totalPages || logsLoading} onClick={() => setLogPage((current) => current + 1)}><i className="bi bi-chevron-right" /></button></div></footer>
+        {paginationMarkup}
       </section>
     </div>
   )
-}
+}
