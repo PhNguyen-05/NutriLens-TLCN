@@ -15,6 +15,32 @@ function normalizePagination(page, limit) {
   return { page: normalizedPage, limit: normalizedLimit, skip: (normalizedPage - 1) * normalizedLimit };
 }
 
+const STATUS_VALUES = {
+  pending: ['pending', 'Chờ duyệt'],
+  approved: ['approved', 'Đã duyệt'],
+  rejected: ['rejected', 'Từ chối'],
+};
+
+function normalizeStatus(status) {
+  return Object.keys(STATUS_VALUES).find((key) => STATUS_VALUES[key].includes(status)) || status || 'pending';
+}
+
+function serializeFoodRequestForAdmin(request) {
+  const plainRequest = typeof request.toObject === 'function' ? request.toObject() : request;
+  return {
+    ...plainRequest,
+    userId: plainRequest.userId || plainRequest.requestedBy,
+    foodName: plainRequest.foodName || plainRequest.name,
+    calories: plainRequest.calories ?? plainRequest.caloriesPer100g,
+    protein: plainRequest.protein ?? plainRequest.proteinPer100g,
+    carbs: plainRequest.carbs ?? plainRequest.carbPer100g,
+    fat: plainRequest.fat ?? plainRequest.fatPer100g,
+    rejectionReason: plainRequest.rejectionReason || plainRequest.rejectReason || null,
+    approvedFoodId: plainRequest.approvedFoodId || plainRequest.approvedFoodItemId || null,
+    status: normalizeStatus(plainRequest.status),
+  };
+}
+
 // Tự động sinh mã món ăn theo format FOD-VN-XXXX
 async function generateFoodCode() {
   const latest = await Food.findOne({ foodCode: /^FOD-VN-\d+$/ }).sort({ foodCode: -1 }).lean();
@@ -61,7 +87,7 @@ async function listFoodRequests(req, res) {
       if (!['pending', 'approved', 'rejected'].includes(status)) {
         return res.status(400).json({ message: 'Trạng thái lọc không hợp lệ' });
       }
-      query.status = status;
+      query.status = { $in: STATUS_VALUES[status] };
     }
 
     if (search.trim()) {
@@ -77,8 +103,10 @@ async function listFoodRequests(req, res) {
 
       query.$or = [
         { foodName: { $regex: escaped, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
         { requestCode: { $regex: escaped, $options: 'i' } },
         { userId: { $in: userIds } },
+        { requestedBy: { $in: userIds } },
       ];
     }
 
@@ -86,9 +114,9 @@ async function listFoodRequests(req, res) {
     if (sort === 'oldest') {
       sortOptions = { createdAt: 1 };
     } else if (sort === 'name_asc' || sort === 'a-z') {
-      sortOptions = { foodName: 1 };
+      sortOptions = { foodName: 1, name: 1 };
     } else if (sort === 'name_desc' || sort === 'z-a') {
-      sortOptions = { foodName: -1 };
+      sortOptions = { foodName: -1, name: -1 };
     }
 
     const { page: currentPage, limit: currentLimit, skip } = normalizePagination(page, limit);
@@ -96,23 +124,25 @@ async function listFoodRequests(req, res) {
     // Tính toán số liệu thống kê tổng quan (KPI cards)
     const [total, pending, approved, rejected] = await Promise.all([
       FoodRequest.countDocuments({}),
-      FoodRequest.countDocuments({ status: 'pending' }),
-      FoodRequest.countDocuments({ status: 'approved' }),
-      FoodRequest.countDocuments({ status: 'rejected' }),
+      FoodRequest.countDocuments({ status: { $in: STATUS_VALUES.pending } }),
+      FoodRequest.countDocuments({ status: { $in: STATUS_VALUES.approved } }),
+      FoodRequest.countDocuments({ status: { $in: STATUS_VALUES.rejected } }),
     ]);
 
     const totalFiltered = await FoodRequest.countDocuments(query);
     const requests = await FoodRequest.find(query)
       .populate('userId', 'fullName email avatarUrl role')
+      .populate('requestedBy', 'fullName email avatarUrl role')
       .populate('reviewedBy', 'fullName email avatarUrl')
       .populate('approvedFoodId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
+      .populate('approvedFoodItemId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
       .sort(sortOptions)
       .skip(skip)
       .limit(currentLimit)
       .lean();
 
     return res.status(200).json({
-      data: requests,
+      data: requests.map(serializeFoodRequestForAdmin),
       pagination: {
         page: currentPage,
         limit: currentLimit,
@@ -145,8 +175,10 @@ async function getFoodRequestDetail(req, res) {
 
     const request = await FoodRequest.findById(id)
       .populate('userId', 'fullName email avatarUrl role')
+      .populate('requestedBy', 'fullName email avatarUrl role')
       .populate('reviewedBy', 'fullName email avatarUrl')
       .populate('approvedFoodId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
+      .populate('approvedFoodItemId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
       .lean();
 
     if (!request) {
@@ -154,7 +186,8 @@ async function getFoodRequestDetail(req, res) {
     }
 
     // Kiểm tra trùng tên món trong danh mục FoodItem chính thức (Luồng chính 5, Ngoại lệ 5b, 6b)
-    const cleanName = request.foodName.trim();
+    const adminRequest = serializeFoodRequestForAdmin(request);
+    const cleanName = adminRequest.foodName.trim();
     const words = cleanName.split(/\s+/).filter((w) => w.length >= 2);
     const matchConditions = [
       { name: { $regex: escapeRegex(cleanName), $options: 'i' } },
@@ -172,7 +205,7 @@ async function getFoodRequestDetail(req, res) {
     const isDuplicate = matchedFoods.length > 0;
 
     return res.status(200).json({
-      data: request,
+      data: adminRequest,
       duplicateWarning: {
         isDuplicate,
         matchedFoods,
@@ -201,9 +234,9 @@ async function approveFoodRequest(req, res) {
       return res.status(404).json({ message: 'Yêu cầu không tồn tại' });
     }
 
-    if (request.status !== 'pending') {
+    if (normalizeStatus(request.status) !== 'pending') {
       return res.status(400).json({
-        message: `Yêu cầu này đã được xử lý trước đó (${request.status === 'approved' ? 'Đã duyệt' : 'Đã từ chối'})`,
+        message: `Yêu cầu này đã được xử lý trước đó (${normalizeStatus(request.status) === 'approved' ? 'Đã duyệt' : 'Đã từ chối'})`,
       });
     }
 
@@ -221,7 +254,7 @@ async function approveFoodRequest(req, res) {
       adminNote,
     } = req.body;
 
-    const finalFoodName = String(foodName || request.foodName || '').trim();
+    const finalFoodName = String(foodName || request.foodName || request.name || '').trim();
     if (!finalFoodName) {
       return res.status(400).json({ message: 'Tên món ăn không được để trống' });
     }
@@ -238,9 +271,9 @@ async function approveFoodRequest(req, res) {
     }
 
     // Kiểm tra các chỉ số đa lượng khác
-    const numProtein = protein !== undefined && protein !== '' ? Number(protein) : (request.protein || 0);
-    const numFat = fat !== undefined && fat !== '' ? Number(fat) : (request.fat || 0);
-    const numCarbs = carbs !== undefined && carbs !== '' ? Number(carbs) : (request.carbs || 0);
+    const numProtein = protein !== undefined && protein !== '' ? Number(protein) : (request.protein ?? request.proteinPer100g ?? 0);
+    const numFat = fat !== undefined && fat !== '' ? Number(fat) : (request.fat ?? request.fatPer100g ?? 0);
+    const numCarbs = carbs !== undefined && carbs !== '' ? Number(carbs) : (request.carbs ?? request.carbPer100g ?? 0);
 
     if (
       !Number.isFinite(numProtein) || numProtein < 0 ||
@@ -292,7 +325,7 @@ async function approveFoodRequest(req, res) {
 
     // 3. Gửi thông báo cho người dùng đã gửi yêu cầu (Luồng chính 8)
     await Notification.create({
-      userId: request.userId,
+      userId: request.userId || request.requestedBy,
       title: 'Yêu cầu thêm món ăn đã được duyệt',
       message: `Món ăn "${newFood.name}" mà bạn đề xuất đã được Ban Quản Trị phê duyệt và thêm vào danh mục món ăn chính thức.`,
       type: 'food_request_approved',
@@ -345,9 +378,9 @@ async function rejectFoodRequest(req, res) {
       return res.status(404).json({ message: 'Yêu cầu không tồn tại' });
     }
 
-    if (request.status !== 'pending') {
+    if (normalizeStatus(request.status) !== 'pending') {
       return res.status(400).json({
-        message: `Yêu cầu này đã được xử lý trước đó (${request.status === 'approved' ? 'Đã duyệt' : 'Đã từ chối'})`,
+        message: `Yêu cầu này đã được xử lý trước đó (${normalizeStatus(request.status) === 'approved' ? 'Đã duyệt' : 'Đã từ chối'})`,
       });
     }
 
@@ -369,14 +402,14 @@ async function rejectFoodRequest(req, res) {
 
     // 2. Gửi thông báo kết quả cho người dùng (Luồng thay thế 9a)
     await Notification.create({
-      userId: request.userId,
+      userId: request.userId || request.requestedBy,
       title: 'Yêu cầu thêm món ăn đã bị từ chối',
-      message: `Yêu cầu thêm món "${request.foodName}" đã bị từ chối. Lý do: ${reason}`,
+      message: `Yêu cầu thêm món "${request.foodName || request.name}" đã bị từ chối. Lý do: ${reason}`,
       type: 'food_request_rejected',
       data: {
         requestId: request._id,
         requestCode: request.requestCode,
-        foodName: request.foodName,
+        foodName: request.foodName || request.name,
         reason,
       },
     });

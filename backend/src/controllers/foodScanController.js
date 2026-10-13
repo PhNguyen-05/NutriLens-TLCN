@@ -33,6 +33,29 @@ function trimToNull(value) {
   return trimmed || null;
 }
 
+function serializeFoodRequestForUser(request) {
+  const plainRequest = typeof request.toObject === 'function' ? request.toObject() : request;
+  const statusLabels = {
+    pending: 'Chờ duyệt',
+    approved: 'Đã duyệt',
+    rejected: 'Từ chối',
+    'Chờ duyệt': 'Chờ duyệt',
+    'Đã duyệt': 'Đã duyệt',
+    'Từ chối': 'Từ chối',
+  };
+
+  return {
+    ...plainRequest,
+    name: plainRequest.name || plainRequest.foodName,
+    caloriesPer100g: plainRequest.caloriesPer100g ?? plainRequest.calories,
+    proteinPer100g: plainRequest.proteinPer100g ?? plainRequest.protein,
+    carbPer100g: plainRequest.carbPer100g ?? plainRequest.carbs,
+    fatPer100g: plainRequest.fatPer100g ?? plainRequest.fat,
+    rejectReason: plainRequest.rejectReason || plainRequest.rejectionReason || null,
+    status: statusLabels[plainRequest.status] || 'Chờ duyệt',
+  };
+}
+
 async function searchFoods(req, res, next) {
   try {
     const query = String(req.query.query || '').trim();
@@ -95,7 +118,7 @@ async function createFoodRequest(req, res, next) {
 
     return res.status(201).json({
       message: 'Đã gửi yêu cầu bổ sung món ăn',
-      request: foodRequest,
+      request: serializeFoodRequestForUser(foodRequest),
     });
   } catch (err) {
     next(err);
@@ -114,15 +137,15 @@ async function getFoodRequests(req, res, next) {
       : 3;
 
     const [requests, total] = await Promise.all([
-      FoodRequest.find({ requestedBy: req.user.id })
-        .select('name imageUrl caloriesPer100g proteinPer100g carbPer100g fatPer100g note status rejectReason reviewedAt createdAt updatedAt')
+      FoodRequest.find({ $or: [{ requestedBy: req.user.id }, { userId: req.user.id }] })
+        .select('requestCode requestedBy userId name foodName imageUrl caloriesPer100g proteinPer100g carbPer100g fatPer100g calories protein carbs fat note status rejectReason rejectionReason reviewedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),
-      FoodRequest.countDocuments({ requestedBy: req.user.id }),
+      FoodRequest.countDocuments({ $or: [{ requestedBy: req.user.id }, { userId: req.user.id }] }),
     ]);
 
-    return res.status(200).json({ requests, total });
+    return res.status(200).json({ requests: requests.map(serializeFoodRequestForUser), total });
   } catch (err) {
     next(err);
   }
