@@ -175,6 +175,38 @@ async function seedFoodRequests() {
 
     const inserted = await FoodRequest.insertMany(requestsData);
     console.log(`[Seed] Thành công! Đã thêm ${inserted.length} yêu cầu món ăn mẫu vào cơ sở dữ liệu.`);
+
+    // Ghi nhật ký thao tác tương ứng vào AdminActionLog
+    const AdminActionLog = require('../src/models/AdminActionLog');
+    await AdminActionLog.deleteMany({ targetType: 'Request' });
+
+    const approvedReq = inserted.find((r) => r.requestCode === 'REQ-0008');
+    if (approvedReq && admin) {
+      await AdminActionLog.create({
+        adminId: admin._id,
+        actionType: 'approve_request',
+        targetType: 'Request',
+        targetId: approvedReq._id,
+        reason: `Phê duyệt yêu cầu thêm món "${approvedReq.foodName}"`,
+        note: `Mã yêu cầu: ${approvedReq.requestCode} | Đã chuẩn hóa định lượng và thông tin dinh dưỡng`,
+        createdAt: approvedReq.reviewedAt,
+      });
+    }
+
+    const rejectedReq = inserted.find((r) => r.requestCode === 'REQ-0009');
+    if (rejectedReq && admin) {
+      await AdminActionLog.create({
+        adminId: admin._id,
+        actionType: 'reject_request',
+        targetType: 'Request',
+        targetId: rejectedReq._id,
+        reason: rejectedReq.rejectionReason,
+        note: `Mã yêu cầu: ${rejectedReq.requestCode} | ${rejectedReq.adminNote}`,
+        createdAt: rejectedReq.reviewedAt,
+      });
+    }
+    console.log('[Seed] Đã tạo lịch sử thao tác mẫu cho Duyệt và Từ chối yêu cầu món.');
+
     process.exit(0);
   } catch (err) {
     console.error('[Seed] Lỗi khi tạo dữ liệu:', err);

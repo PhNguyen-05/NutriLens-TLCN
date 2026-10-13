@@ -104,12 +104,13 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
         <tr key={log._id}>
           <td>{timestamp}</td>
           <td><span className={`action-log-action ${type}`}><i className={`bi ${icon}`} />{actionLabels[log.actionType] || log.actionType}</span></td>
-          <td><span className="action-log-target">{log.targetType === 'User' ? 'Tài khoản thường' : log.targetType === 'FoodItem' ? 'Danh mục món ăn' : log.targetType}</span></td>
+          <td><span className="action-log-target">{log.targetType === 'User' ? 'Tài khoản thường' : log.targetType === 'FoodItem' ? 'Danh mục món ăn' : log.targetType === 'Request' ? 'Yêu cầu bổ sung món' : log.targetType}</span></td>
           <td><div className="action-log-admin"><span className="action-log-avatar">{log.admin?.avatarUrl ? <img src={getAvatarUrl(log.admin.avatarUrl)} alt="" /> : log.admin?.fullName?.charAt(0)?.toUpperCase() || 'A'}</span><span>{log.admin?.fullName || 'Admin'}</span></div></td>
           <td>
             {log.reason || '—'}
             {log.target?.fullName && <small className="action-log-target-user">Tài khoản: {log.target.fullName} · {log.target.email}</small>}
             {log.targetFood && <small className="action-log-target-user">Món ăn: {log.targetFood.name} {log.targetFood.foodCode ? `(${log.targetFood.foodCode})` : ''}</small>}
+            {log.targetRequest && <small className="action-log-target-user">Yêu cầu: {log.targetRequest.foodName} {log.targetRequest.requestCode ? `(${log.targetRequest.requestCode})` : ''}{log.targetRequest.userId?.fullName ? ` · Người gửi: ${log.targetRequest.userId.fullName}` : ''}</small>}
           </td>
           <td><span className="action-log-note">{log.note || (log.actionType === 'unlock_user' ? 'Đã xác minh yêu cầu mở khóa' : '—')}</span>{log.evidence?.map((file) => <a className="action-log-evidence" key={file.url} href={getAvatarUrl(file.url)} target="_blank" rel="noreferrer"><i className="bi bi-paperclip" />{file.originalName}</a>)}</td>
         </tr>

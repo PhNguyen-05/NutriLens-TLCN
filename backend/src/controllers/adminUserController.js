@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 
 const User = require('../models/User');
 const Food = require('../models/Food');
+const FoodRequest = require('../models/FoodRequest');
 const AdminActionLog = require('../models/AdminActionLog');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
@@ -254,7 +255,7 @@ async function listActionLogs(req, res) {
     const query = {};
     const validActions = [
       'lock_user', 'unlock_user', 'approve_post', 'delete_food',
-      'hide_post', 'remove_post', 'reject_request',
+      'hide_post', 'remove_post', 'reject_request', 'approve_request',
       'create_food', 'update_food', 'hide_food', 'show_food',
     ];
 
@@ -283,13 +284,15 @@ async function listActionLogs(req, res) {
     const keyword = String(search).trim();
     if (keyword) {
       const pattern = { $regex: escapeRegex(keyword), $options: 'i' };
-      const [matchingUsers, matchingFoods] = await Promise.all([
+      const [matchingUsers, matchingFoods, matchingRequests] = await Promise.all([
         User.find({ $or: [{ fullName: pattern }, { email: pattern }] }).select('_id').lean(),
         Food.find({ $or: [{ name: pattern }, { foodCode: pattern }] }).select('_id').lean(),
+        FoodRequest.find({ $or: [{ foodName: pattern }, { requestCode: pattern }] }).select('_id').lean(),
       ]);
       const matchingUserIds = matchingUsers.map((user) => user._id);
       const matchingFoodIds = matchingFoods.map((food) => food._id);
-      const allMatchingTargetIds = [...matchingUserIds, ...matchingFoodIds];
+      const matchingRequestIds = matchingRequests.map((req) => req._id);
+      const allMatchingTargetIds = [...matchingUserIds, ...matchingFoodIds, ...matchingRequestIds];
 
       query.$or = [
         { reason: pattern },
@@ -307,14 +310,17 @@ async function listActionLogs(req, res) {
 
     const relatedIds = [...new Set(logs.flatMap((log) => [String(log.adminId), String(log.targetId)]))];
     const foodTargetIds = logs.filter((log) => log.targetType === 'FoodItem').map((log) => log.targetId);
+    const requestTargetIds = logs.filter((log) => log.targetType === 'Request').map((log) => log.targetId);
 
-    const [relatedUsers, relatedFoods] = await Promise.all([
+    const [relatedUsers, relatedFoods, relatedRequests] = await Promise.all([
       User.find({ _id: { $in: relatedIds } }).select('fullName email avatarUrl role').lean(),
       Food.find({ _id: { $in: foodTargetIds } }).select('name foodCode slug imageUrl status').lean(),
+      FoodRequest.find({ _id: { $in: requestTargetIds } }).select('foodName requestCode status calories userId').populate('userId', 'fullName email').lean(),
     ]);
 
     const usersById = new Map(relatedUsers.map((user) => [String(user._id), user]));
     const foodsById = new Map(relatedFoods.map((food) => [String(food._id), food]));
+    const requestsById = new Map(relatedRequests.map((req) => [String(req._id), req]));
 
     return res.status(200).json({
       data: logs.map((log) => ({
@@ -322,6 +328,7 @@ async function listActionLogs(req, res) {
         admin: usersById.get(String(log.adminId)) || null,
         target: log.targetType === 'User' ? usersById.get(String(log.targetId)) || null : null,
         targetFood: log.targetType === 'FoodItem' ? foodsById.get(String(log.targetId)) || null : null,
+        targetRequest: log.targetType === 'Request' ? requestsById.get(String(log.targetId)) || null : null,
       })),
       admins,
       pagination: { page: pagination.page, limit: pagination.limit, total, totalPages: Math.ceil(total / pagination.limit) },
