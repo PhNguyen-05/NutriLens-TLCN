@@ -14,6 +14,8 @@ const Food    = require('../models/Food');
 const MealLog = require('../models/MealLog');
 const FoodRequest = require('../models/FoodRequest');
 
+const PENDING_FOOD_REQUEST_STATUSES = ['pending', 'Chờ duyệt'];
+
 function readOptionalNumber(body, field, label) {
   const rawValue = body[field];
   if (rawValue === undefined || rawValue === null || rawValue === '') {
@@ -120,6 +122,86 @@ async function createFoodRequest(req, res, next) {
       message: 'Đã gửi yêu cầu bổ sung món ăn',
       request: serializeFoodRequestForUser(foodRequest),
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function updateFoodRequest(req, res, next) {
+  try {
+    const ownerFilter = { $or: [{ requestedBy: req.user.id }, { userId: req.user.id }] };
+    const existingRequest = await FoodRequest.findOne({ _id: req.params.id, ...ownerFilter });
+    if (!existingRequest) {
+      return res.status(404).json({ message: 'Không tìm thấy yêu cầu hoặc bạn không có quyền chỉnh sửa' });
+    }
+    if (!PENDING_FOOD_REQUEST_STATUSES.includes(existingRequest.status)) {
+      return res.status(409).json({ message: 'Chỉ có thể chỉnh sửa yêu cầu đang chờ duyệt' });
+    }
+
+    const name = trimToNull(req.body.name);
+    if (!name) return res.status(400).json({ message: 'Tên món ăn là bắt buộc' });
+
+    const numericFields = [
+      ['caloriesPer100g', 'Năng lượng'],
+      ['proteinPer100g', 'Protein'],
+      ['carbPer100g', 'Carbohydrate'],
+      ['fatPer100g', 'Chất béo'],
+    ];
+    const nutrition = {};
+    for (const [field, label] of numericFields) {
+      const parsed = readOptionalNumber(req.body, field, label);
+      if (parsed.error) return res.status(400).json({ message: parsed.error });
+      nutrition[field] = parsed.value;
+    }
+
+    const uploadedImageUrl = req.file
+      ? `${req.protocol}://${req.get('host')}/uploads/food-requests/${req.file.filename}`
+      : null;
+    const imageUrl = uploadedImageUrl
+      || (req.body.imageUrl !== undefined ? trimToNull(req.body.imageUrl) : existingRequest.imageUrl);
+    const updatedRequest = await FoodRequest.findOneAndUpdate(
+      { _id: req.params.id, status: { $in: PENDING_FOOD_REQUEST_STATUSES }, ...ownerFilter },
+      {
+        $set: {
+          status: 'pending',
+          name,
+          foodName: name,
+          imageUrl,
+          note: trimToNull(req.body.note),
+          ...nutrition,
+          calories: nutrition.caloriesPer100g,
+          protein: nutrition.proteinPer100g,
+          carbs: nutrition.carbPer100g,
+          fat: nutrition.fatPer100g,
+        },
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedRequest) {
+      return res.status(409).json({ message: 'Chỉ có thể chỉnh sửa yêu cầu đang chờ duyệt' });
+    }
+    return res.status(200).json({ message: 'Đã cập nhật yêu cầu món ăn', request: serializeFoodRequestForUser(updatedRequest) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteFoodRequest(req, res, next) {
+  try {
+    const ownerFilter = { $or: [{ requestedBy: req.user.id }, { userId: req.user.id }] };
+    const deletedRequest = await FoodRequest.findOneAndDelete({
+      _id: req.params.id,
+      status: { $in: PENDING_FOOD_REQUEST_STATUSES },
+      ...ownerFilter,
+    });
+    if (deletedRequest) return res.status(200).json({ message: 'Đã xóa yêu cầu món ăn' });
+
+    const existingRequest = await FoodRequest.findOne({ _id: req.params.id, ...ownerFilter }).select('status');
+    if (!existingRequest) {
+      return res.status(404).json({ message: 'Không tìm thấy yêu cầu hoặc bạn không có quyền xóa' });
+    }
+    return res.status(409).json({ message: 'Chỉ có thể xóa yêu cầu đang chờ duyệt' });
   } catch (err) {
     next(err);
   }
@@ -366,4 +448,4 @@ async function deleteMealLog(req, res, next) {
   }
 }
 
-module.exports = { searchFoods, createFoodRequest, getFoodRequests, scanFood, addMealLog, getMealLogs, updateMealLog, deleteMealLog };
+module.exports = { searchFoods, createFoodRequest, updateFoodRequest, deleteFoodRequest, getFoodRequests, scanFood, addMealLog, getMealLogs, updateMealLog, deleteMealLog };

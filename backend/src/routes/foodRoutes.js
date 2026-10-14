@@ -17,6 +17,8 @@ const requireAuth = require('../middleware/auth');
 const {
   searchFoods,
   createFoodRequest,
+  updateFoodRequest,
+  deleteFoodRequest,
   getFoodRequests,
   scanFood,
   addMealLog,
@@ -94,6 +96,8 @@ router.post('/scan', upload.single('file'), scanFood);
 // Các route nhật ký yêu cầu đăng nhập
 router.get('/requests',        requireAuth, getFoodRequests);
 router.post('/requests',       requireAuth, requestImageUpload.single('image'), createFoodRequest);
+router.patch('/requests/:id',  requireAuth, requestImageUpload.single('image'), updateFoodRequest);
+router.delete('/requests/:id', requireAuth, deleteFoodRequest);
 router.post('/meal-logs',      requireAuth, mealLogImageUpload.single('image'), addMealLog);
 router.get('/meal-logs',       requireAuth, getMealLogs);
 router.patch('/meal-logs/:id', requireAuth, updateMealLog);

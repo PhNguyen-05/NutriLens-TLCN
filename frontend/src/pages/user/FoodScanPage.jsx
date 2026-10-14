@@ -289,6 +289,7 @@ function FoodRequestPanel({
   requestsLoading,
   requestsError,
   hasMoreRequests,
+  isEditing,
   submitting,
   onBack,
   onChange,
@@ -313,7 +314,7 @@ function FoodRequestPanel({
         <div className="fs-request-hero-main">
           <span className="fs-request-hero-icon"><i className="bi bi-plus-circle-fill" /></span>
           <div>
-            <h1>Yêu cầu bổ sung món ăn mới</h1>
+            <h1>{isEditing ? 'Chỉnh sửa yêu cầu món ăn' : 'Yêu cầu bổ sung món ăn mới'}</h1>
             <p>Gửi thông tin món ăn chưa có trong danh mục để Admin xem xét bổ sung.</p>
           </div>
         </div>
@@ -439,8 +440,7 @@ function FoodRequestPanel({
             <div>
               <button className="fs-button secondary" type="button" onClick={onBack}>Hủy</button>
               <button className="fs-button primary" type="submit" disabled={submitting}>
-                <i className={`bi ${submitting ? 'bi-hourglass-split' : 'bi-send-fill'}`} />
-                {submitting ? 'Đang gửi...' : 'Gửi yêu cầu bổ sung'}
+                {isEditing ? (submitting ? 'Đang cập nhật...' : 'Cập nhật') : <><i className={`bi ${submitting ? 'bi-hourglass-split' : 'bi-send-fill'}`} />{submitting ? 'Đang gửi...' : 'Gửi yêu cầu bổ sung'}</>}
               </button>
             </div>
           </footer>
@@ -472,7 +472,7 @@ function FoodRequestPanel({
               <div className="fs-request-history-state error"><i className="bi bi-exclamation-circle" />{requestsError}</div>
             ) : sentRequests.length ? (
               <div className="fs-request-history-list">
-                {sentRequests.map((request) => {
+                {sentRequests.slice(0, 3).map((request) => {
                   return (
                     <article className="fs-request-history-item" key={request._id}>
                       <div className="fs-request-history-top">
@@ -485,9 +485,6 @@ function FoodRequestPanel({
                       </div>
                       <p>{formatRequestNutrition(request)}</p>
                       {request.rejectReason && <small className="fs-request-reject-reason">Lý do: {request.rejectReason}</small>}
-                      <button className="fs-request-detail-button" type="button" onClick={() => onOpenRequestsPage(request)}>
-                        <i className="bi bi-eye" />Xem chi tiết
-                      </button>
                     </article>
                   )
                 })}
@@ -510,6 +507,9 @@ function FoodRequestListPage({
   onBack,
   onRefresh,
   onSelectRequest,
+  onEditRequest,
+  onDeleteRequest,
+  deletingRequestId,
   onCloseDetail,
   selectedRequest,
 }) {
@@ -535,12 +535,6 @@ function FoodRequestListPage({
       const right = new Date(b.createdAt || 0).getTime()
       return sortOrder === 'oldest' ? left - right : right - left
     })
-
-  const resetFilters = () => {
-    setQuery('')
-    setStatusFilter('all')
-    setSortOrder('newest')
-  }
 
   return (
     <section className="fs-request-list-page">
@@ -575,7 +569,6 @@ function FoodRequestListPage({
           <label className="fs-request-list-search"><i className="bi bi-search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm kiếm theo tên món ăn..." /></label>
           <label className="fs-request-list-select"><i className="bi bi-funnel" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Tất cả trạng thái</option><option value="Chờ duyệt">Chờ duyệt</option><option value="Đã duyệt">Đã duyệt</option><option value="Từ chối">Từ chối</option></select></label>
           <label className="fs-request-list-select"><i className="bi bi-calendar3" /><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}><option value="newest">Mới nhất trước</option><option value="oldest">Cũ nhất trước</option></select></label>
-          <button type="button" className="fs-request-list-reset" onClick={resetFilters}><i className="bi bi-arrow-clockwise" />Đặt lại</button>
         </div>
 
         {loading ? (
@@ -608,7 +601,17 @@ function FoodRequestListPage({
                         <td>{formatRequestNutrition(request)}</td>
                         <td><em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em></td>
                         <td>{request.rejectReason || (request.status === 'Đã duyệt' ? 'Món ăn đã được bổ sung vào danh mục.' : 'Chưa có phản hồi')}</td>
-                        <td><button className="fs-request-table-detail" type="button" onClick={() => onSelectRequest(request)}><i className="bi bi-eye" />Xem chi tiết</button></td>
+                        <td>
+                          <div className="fs-request-row-actions">
+                            <button className="fs-request-table-detail" type="button" onClick={() => onSelectRequest(request)}><i className="bi bi-eye" />Xem chi tiết</button>
+                            {request.status === 'Chờ duyệt' && <>
+                              <button className="fs-request-table-edit" type="button" onClick={() => onEditRequest(request)}><i className="bi bi-pencil-square" />Sửa</button>
+                              <button className="fs-request-table-delete" type="button" onClick={() => onDeleteRequest(request)} disabled={deletingRequestId === request._id}>
+                                <i className={`bi ${deletingRequestId === request._id ? 'bi-hourglass-split' : 'bi-trash3'}`} />{deletingRequestId === request._id ? 'Đang xóa...' : 'Xóa'}
+                              </button>
+                            </>}
+                          </div>
+                        </td>
                       </tr>
                     )
                   })}
@@ -683,7 +686,9 @@ export default function FoodScanPage() {
   const [requestImagePreview, setRequestImagePreview] = useState(null)
   const [requestImageFile, setRequestImageFile] = useState(null)
   const [requestListMode, setRequestListMode] = useState(false)
+  const [editingRequestId, setEditingRequestId] = useState(null)
   const [requestSubmitting, setRequestSubmitting] = useState(false)
+  const [deletingRequestId, setDeletingRequestId] = useState(null)
   const [requestFeedback, setRequestFeedback] = useState(null)
   const [sentRequests, setSentRequests] = useState([])
   const [requestsTotal, setRequestsTotal] = useState(0)
@@ -1057,6 +1062,43 @@ export default function FoodScanPage() {
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
   }
 
+  const handleEditFoodRequest = (request) => {
+    if (request.status !== 'Chờ duyệt') return
+    setRequestForm({
+      name: request.name || '',
+      imageUrl: request.imageUrl || '',
+      caloriesPer100g: request.caloriesPer100g ?? '',
+      proteinPer100g: request.proteinPer100g ?? '',
+      carbPer100g: request.carbPer100g ?? '',
+      fatPer100g: request.fatPer100g ?? '',
+      note: request.note || '',
+    })
+    setRequestImagePreview(resolveMediaUrl(request.imageUrl))
+    setRequestImageFile(null)
+    setEditingRequestId(request._id)
+    setRequestListMode(false)
+    setRequestMode(true)
+    setRequestsExpanded(false)
+    setRequestFeedback(null)
+    setSelectedRequest(null)
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+  }
+
+  const handleDeleteFoodRequest = async (request) => {
+    if (request.status !== 'Chờ duyệt' || !window.confirm(`Bạn có chắc muốn xóa yêu cầu “${request.name}” không?`)) return
+    setDeletingRequestId(request._id)
+    setRequestsError(null)
+    try {
+      await axiosInstance.delete(`/food/requests/${request._id}`)
+      if (selectedRequest?._id === request._id) setSelectedRequest(null)
+      await loadFoodRequests(true)
+    } catch (err) {
+      setRequestsError(err.response?.data?.message || 'Không thể xóa yêu cầu. Vui lòng thử lại.')
+    } finally {
+      setDeletingRequestId(null)
+    }
+  }
+
   const handleFoodRequestSubmit = async (event) => {
     event.preventDefault()
     const name = requestForm.name.trim()
@@ -1065,6 +1107,7 @@ export default function FoodScanPage() {
       return
     }
 
+    const isUpdatingRequest = Boolean(editingRequestId)
     setRequestSubmitting(true)
     setRequestFeedback(null)
     try {
@@ -1078,18 +1121,37 @@ export default function FoodScanPage() {
       payload.append('note', requestForm.note.trim())
       if (requestImageFile) payload.append('image', requestImageFile)
 
-      const { data } = await axiosInstance.post('/food/requests', payload, {
+      const requestConfig = {
         headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      setRequestFeedback({ type: 'success', text: 'Đã gửi yêu cầu bổ sung món ăn. Trạng thái hiện tại: Chờ duyệt.' })
+      }
+      const { data } = isUpdatingRequest
+        ? await axiosInstance.patch(`/food/requests/${editingRequestId}`, payload, requestConfig)
+        : await axiosInstance.post('/food/requests', payload, requestConfig)
+      if (!isUpdatingRequest) {
+        setRequestFeedback({ type: 'success', text: 'Đã gửi yêu cầu bổ sung món ăn. Trạng thái hiện tại: Chờ duyệt.' })
+      }
       setRequestImageFile(null)
       if (data.request?.imageUrl) {
         setRequestForm((current) => ({ ...current, imageUrl: data.request.imageUrl }))
         setRequestImagePreview(resolveMediaUrl(data.request.imageUrl))
       }
-      await loadFoodRequests(requestsExpanded)
+      if (isUpdatingRequest) {
+        setSentRequests((current) => current.map((request) => (
+          request._id === editingRequestId ? data.request : request
+        )))
+        setEditingRequestId(null)
+        setRequestsExpanded(true)
+        setRequestFeedback(null)
+        setSelectedRequest(null)
+        setRequestListMode(true)
+        setRequestMode(true)
+      }
+      await loadFoodRequests(isUpdatingRequest ? true : requestsExpanded)
     } catch (err) {
-      setRequestFeedback({ type: 'error', text: err.response?.data?.message || 'Không thể gửi yêu cầu, vui lòng thử lại.' })
+      setRequestFeedback({
+        type: 'error',
+        text: err.response?.data?.message || (isUpdatingRequest ? 'Không thể cập nhật yêu cầu, vui lòng thử lại.' : 'Không thể gửi yêu cầu, vui lòng thử lại.'),
+      })
     } finally {
       setRequestSubmitting(false)
     }
@@ -1141,6 +1203,9 @@ export default function FoodScanPage() {
             onRefresh={() => loadFoodRequests(true)}
             selectedRequest={selectedRequest}
             onSelectRequest={setSelectedRequest}
+            onEditRequest={handleEditFoodRequest}
+            onDeleteRequest={handleDeleteFoodRequest}
+            deletingRequestId={deletingRequestId}
             onCloseDetail={() => setSelectedRequest(null)}
           />
         ) : (
@@ -1153,8 +1218,16 @@ export default function FoodScanPage() {
             requestsLoading={requestsLoading}
             requestsError={requestsError}
             hasMoreRequests={hasMoreRequests}
+            isEditing={Boolean(editingRequestId)}
             submitting={requestSubmitting}
-            onBack={() => setRequestMode(false)}
+            onBack={() => {
+              if (editingRequestId) {
+                setRequestListMode(true)
+                setRequestFeedback(null)
+              } else {
+                setRequestMode(false)
+              }
+            }}
             onChange={handleRequestChange}
             onImageChange={handleRequestImageChange}
             onImageClear={clearRequestImage}
