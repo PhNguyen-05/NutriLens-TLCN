@@ -645,7 +645,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
   const [selectedPred, setSelectedPred] = useState(0)   // index trong predictions
   const [servings, setServings]         = useState(1)
   const [date, setDate]                 = useState(todayString)
-  const [mealType, setMealType]         = useState('lunch')
+  const [mealType, setMealType]         = useState('')
   const [foodQuery, setFoodQuery] = useState('')
   const [foodMatches, setFoodMatches] = useState([])
   const [foodSearchLoading, setFoodSearchLoading] = useState(true)
@@ -945,7 +945,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
   }
 
   const handleAddLog = async () => {
-    if (!result?.recognized) return
+    if (!result?.recognized || !mealType) return
     const pred = result.predictions[selectedPred]
     setSaving(true); setSaveMsg(null)
     try {
@@ -973,7 +973,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
 
   const reset = () => {
     setPreview(null); setFileObj(null); setResult(null)
-    setScanError(null); setSaveMsg(null); setSelectedPred(0)
+    setScanError(null); setSaveMsg(null); setSelectedPred(0); setMealType('')
     setCameraOpen(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
@@ -1320,7 +1320,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
             </article>
             {result?.recognized && result.nutrition && <div className="fs-nutrition-actions">
               <button type="button" className="fs-request-food-button" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
-              <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
+              <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving || !mealType}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
             </div>}
 
             <article className="fs-panel fs-recent-meals">

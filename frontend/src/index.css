@@ -3086,6 +3086,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-panel-heading h2 > i { color: #07966c; font-size: 1rem; }
 .fs-panel-heading > span, .fs-panel-heading > a { flex: 0 0 auto; color: #078a64; font-size: 0.8rem; }
 .fs-panel-heading > span { padding: 3px 7px; border-radius: 10px; background: #eaf8f1; }
+.fs-top-results .fs-panel-heading h2 { white-space: nowrap; }
 .fs-prediction-list { display: grid; gap: 6px; margin-top: 10px; }
 .fs-prediction { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 52px; padding: 7px; border: 1px solid #edf1f2; border-radius: 7px; background: #f8fafb; color: inherit; text-align: left; }
 .fs-prediction:not(:disabled) { cursor: pointer; }
@@ -5145,7 +5146,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fd-food-macros span { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 10px; background: #f0f6ff; color: #4278c2; font-size: 11px; white-space: nowrap; }
 .fd-food-macros span.carbs { background: #fff5e8; color: #bb7520; }
 .fd-food-macros span.fat { background: #f7efff; color: #8851c1; }
-.fd-food-calories { display: grid; justify-items: end; gap: 2px; padding: 6px 10px; border-radius: 12px; background: #e9f8f1; color: #138365; font-size: 15px; white-space: nowrap; }
+.fd-food-calories { display: inline-flex; align-items: baseline; gap: 4px; padding: 6px 10px; border-radius: 12px; background: #e9f8f1; color: #138365; font-size: 15px; white-space: nowrap; }
 .fd-food-calories small { font-size: 10px; font-weight: 600; }
 .fd-food-actions { display: grid; justify-items: end; gap: 6px; }
 .fd-food-actions > div { display: flex; gap: 5px; }
