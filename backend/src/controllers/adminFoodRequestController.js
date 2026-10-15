@@ -186,21 +186,43 @@ async function getFoodRequestDetail(req, res) {
     }
 
     // Kiểm tra trùng tên món trong danh mục FoodItem chính thức (Luồng chính 5, Ngoại lệ 5b, 6b)
+    const GENERIC_PREFIXES = new Set([
+      'bánh', 'cơm', 'bún', 'phở', 'mì', 'cháo', 'canh', 'thịt', 'cá', 'gà', 'bò', 'heo',
+      'nước', 'trà', 'chè', 'gỏi', 'lẩu', 'xôi', 'súp', 'chả', 'nem', 'lòng', 'kho', 'xào', 'nướng'
+    ]);
+
     const adminRequest = serializeFoodRequestForAdmin(request);
     const cleanName = adminRequest.foodName.trim();
-    const words = cleanName.split(/\s+/).filter((w) => w.length >= 2);
-    const matchConditions = [
-      { name: { $regex: escapeRegex(cleanName), $options: 'i' } },
-    ];
-    words.forEach((w) => {
-      matchConditions.push({ name: { $regex: `^${escapeRegex(w)}$`, $options: 'i' } });
-      matchConditions.push({ name: { $regex: `^${escapeRegex(w)}\\b`, $options: 'i' } });
-    });
+    const cleanLower = cleanName.toLowerCase();
 
-    const matchedFoods = await Food.find({ $or: matchConditions })
+    const allActiveFoods = await Food.find({ status: { $ne: 'hidden' } })
       .select('name foodCode slug imageUrl calories protein fat carbs foodGroup status servingSize')
-      .limit(5)
       .lean();
+
+    const matchedFoods = allActiveFoods.filter((f) => {
+      const fNameLower = (f.name || '').toLowerCase().trim();
+      if (!fNameLower) return false;
+      // 1. Trùng khớp hoàn toàn
+      if (fNameLower === cleanLower) return true;
+      // 2. Tên món trong DB chứa toàn bộ tên đề xuất (vd: "Bánh đúc nóng" chứa "Bánh đúc")
+      if (fNameLower.includes(cleanLower)) return true;
+      // 3. Tên đề xuất chứa tên món trong DB (vd: "Phở bò nạm" chứa "Phở bò")
+      const fWords = fNameLower.split(/\s+/).filter(Boolean);
+      const isSingleGeneric = fWords.length === 1 && GENERIC_PREFIXES.has(fWords[0]);
+      if (!isSingleGeneric && cleanLower.includes(fNameLower)) return true;
+
+      // 4. Có chung từ định danh đặc thù (không phải từ chung chung như "bánh", "cơm")
+      const specificReqWords = cleanLower.split(/\s+/).filter((w) => w.length >= 2 && !GENERIC_PREFIXES.has(w));
+      const specificFoodWords = fWords.filter((w) => w.length >= 2 && !GENERIC_PREFIXES.has(w));
+      if (specificReqWords.length > 0 && specificFoodWords.length > 0) {
+        const hasCommonSpecific = specificReqWords.some((rw) => specificFoodWords.includes(rw));
+        const reqPrefix = cleanLower.split(/\s+/)[0];
+        const foodPrefix = fWords[0];
+        if (hasCommonSpecific && reqPrefix === foodPrefix) return true;
+      }
+
+      return false;
+    }).slice(0, 4);
 
     const isDuplicate = matchedFoods.length > 0;
 

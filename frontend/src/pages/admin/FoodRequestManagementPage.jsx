@@ -4,19 +4,16 @@ import axiosInstance from '../../api/axiosInstance'
 const PAGE_SIZE = 10
 
 const DEFAULT_FOOD_GROUPS = [
-  'Bún / Mì / Phở',
-  'Cơm / Xôi',
-  'Bánh / Dimsum',
-  'Bánh mì / Sandwich',
-  'Nướng / Kho / Xào',
-  'Canh / Cháo / Lẩu',
-  'Salad / Gỏi',
-  'Ăn vặt / Đường phố',
-  'Tráng miệng / Chè',
-  'Đồ uống & Tráng miệng',
-  'Món nước & Sợi',
-  'Món mặn & Thịt cá',
-  'Món chiên & Bánh',
+  'Cơm & Xôi',
+  'Bún, Mì & Phở',
+  'Bánh mì & Sandwich',
+  'Bánh truyền thống & Dimsum',
+  'Món thịt, cá & Hải sản',
+  'Canh, Cháo & Súp',
+  'Rau, Gỏi & Salad',
+  'Ăn vặt & Đường phố',
+  'Tráng miệng & Chè',
+  'Đồ uống & Giải khát',
   'Khác',
 ]
 
@@ -73,6 +70,7 @@ function FoodRequestReviewModal({
   const [errorMsg, setErrorMsg] = useState('')
   const [requestDetail, setRequestDetail] = useState(null)
   const [duplicateWarning, setDuplicateWarning] = useState(null)
+  const [imgFit, setImgFit] = useState('cover')
 
   // Form states (Admin can edit/supplement missing fields)
   const [form, setForm] = useState({
@@ -234,31 +232,22 @@ function FoodRequestReviewModal({
 
               {/* Duplicate Detection Alert Banner (Luồng chính 5, Luồng ngoại lệ 5b, 6b) */}
               {duplicateWarning?.isDuplicate && (
-                <div className="frm-warning-banner">
-                  <div className="frm-warning-header">
+                <div className="frm-warning-banner-compact">
+                  <div className="frm-warning-compact-title">
                     <i className="bi bi-exclamation-triangle-fill" />
-                    <span>Món ăn có thể đã tồn tại trong danh mục chính thức!</span>
+                    <span>Món tương tự trong danh mục:</span>
                   </div>
-                  <p style={{ margin: 0, fontSize: 12, color: '#92400e' }}>
-                    Hệ thống phát hiện các món ăn có tên tương tự đã có sẵn trong danh mục. Quản trị viên vui lòng đối chiếu để tránh thêm món trùng lặp:
-                  </p>
-                  <div className="frm-matched-list">
+                  <div className="frm-matched-chips">
                     {duplicateWarning.matchedFoods?.map((f) => (
-                      <div className="frm-matched-item" key={f._id}>
-                        <div className="frm-matched-item-info">
-                          {f.imageUrl ? (
-                            <img className="frm-matched-thumb" src={getImageUrl(f.imageUrl)} alt={f.name} />
-                          ) : (
-                            <div className="frm-matched-thumb" style={{ display: 'grid', placeItems: 'center', color: '#8aa2b4' }}>
-                              <i className="bi bi-cup-hot" />
-                            </div>
-                          )}
-                          <div>
-                            <strong>{f.name}</strong>
-                            <small>{f.foodCode} • {f.foodGroup || 'Chưa phân nhóm'}</small>
-                          </div>
-                        </div>
-                        <span className="kcal">{f.calories} kcal / 100g</span>
+                      <div className="frm-matched-chip" key={f._id} title={`${f.name} (${f.foodCode}) - ${f.calories} kcal/100g`}>
+                        {f.imageUrl ? (
+                          <img src={getImageUrl(f.imageUrl)} alt="" />
+                        ) : (
+                          <i className="bi bi-cup-hot" style={{ fontSize: 11, color: '#8aa2b4' }} />
+                        )}
+                        <b>{f.name}</b>
+                        <small>{f.foodCode}</small>
+                        <span className="cal">{f.calories} kcal</span>
                       </div>
                     ))}
                   </div>
@@ -270,24 +259,24 @@ function FoodRequestReviewModal({
                 <div className="frm-proposal-card">
                   <h3 className="frm-proposal-title">
                     <span>Đề xuất từ người dùng</span>
-                    <span style={{ fontSize: 11, color: '#7a92a8', fontWeight: 600 }}>Nguyên bản</span>
+                    <span style={{ fontSize: 10, color: '#7a92a8', fontWeight: 600 }}>Nguyên bản</span>
                   </h3>
 
                   {/* Submitter User Box */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px', background: '#fff', borderRadius: 8, border: '1px solid #e3edf5' }}>
-                    <div className="frm-user-avatar" style={{ width: 38, height: 38 }}>
+                  <div className="frm-proposal-user">
+                    <div className="frm-user-avatar">
                       {requestDetail?.userId?.avatarUrl ? (
                         <img src={getImageUrl(requestDetail.userId.avatarUrl)} alt="" />
                       ) : (
                         requestDetail?.userId?.fullName?.charAt(0)?.toUpperCase() || 'U'
                       )}
                     </div>
-                    <div style={{ overflow: 'hidden' }}>
-                      <strong style={{ display: 'block', fontSize: 13, color: '#1c3349' }}>
-                        {requestDetail?.userId?.fullName || 'Người dùng ẩn danh'}
+                    <div style={{ overflow: 'hidden', minWidth: 0 }}>
+                      <strong style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {requestDetail?.userId?.fullName || 'Người dùng'}
                       </strong>
-                      <small style={{ color: '#7a92a8', fontSize: 11.5 }}>
-                        {requestDetail?.userId?.email || ''}
+                      <small style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {requestDetail?.userId?.email || '—'}
                       </small>
                     </div>
                   </div>
@@ -295,35 +284,62 @@ function FoodRequestReviewModal({
                   {/* Food Image */}
                   <div className="frm-proposal-img-box">
                     {form.imageUrl ? (
-                      <img src={getImageUrl(form.imageUrl)} alt={form.foodName} onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                      <>
+                        <img
+                          src={getImageUrl(form.imageUrl)}
+                          alt={form.foodName}
+                          style={{ objectFit: imgFit }}
+                          onError={(e) => { e.currentTarget.style.display = 'none' }}
+                        />
+                        <div className="frm-img-toolbar">
+                          <button
+                            type="button"
+                            className="frm-img-btn"
+                            onClick={() => setImgFit((prev) => (prev === 'cover' ? 'contain' : 'cover'))}
+                            title={
+                              imgFit === 'cover'
+                                ? 'Chuyển sang xem trọn vẹn toàn bộ ảnh (không cắt)'
+                                : 'Chuyển sang lấp đầy khung ảnh'
+                            }
+                          >
+                            <i className={imgFit === 'cover' ? 'bi bi-aspect-ratio' : 'bi bi-arrows-fullscreen'} />
+                            <span>{imgFit === 'cover' ? 'Xem trọn ảnh' : 'Lấp đầy'}</span>
+                          </button>
+                          <a
+                            href={getImageUrl(form.imageUrl)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="frm-img-btn"
+                            title="Mở ảnh gốc trong tab mới"
+                          >
+                            <i className="bi bi-box-arrow-up-right" />
+                          </a>
+                        </div>
+                      </>
                     ) : (
                       <div className="frm-proposal-img-fallback">
                         <i className="bi bi-card-image" />
-                        <span>Người dùng không gửi kèm ảnh</span>
+                        <span>Không kèm ảnh</span>
                       </div>
                     )}
                   </div>
 
                   {/* User Proposed Nutrition */}
-                  <div style={{ background: '#fff', padding: '11px', borderRadius: 8, border: '1px solid #e3edf5' }}>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#557288', marginBottom: 6 }}>
-                      Dinh dưỡng người dùng gợi ý:
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, fontSize: 12 }}>
-                      <div>Năng lượng: <b style={{ color: '#00875f' }}>{requestDetail?.calories !== null ? `${requestDetail?.calories} kcal` : 'Chưa có'}</b></div>
+                  <div className="frm-proposal-nutrition">
+                    <div className="frm-proposal-nut-grid">
+                      <div>Calo: <b style={{ color: '#00875f' }}>{requestDetail?.calories !== null && requestDetail?.calories !== undefined ? `${requestDetail.calories} kcal` : 'Chưa có'}</b></div>
                       <div>Khẩu phần: <b>{requestDetail?.servingLabel || `${requestDetail?.servingSize || 100}g`}</b></div>
-                      <div>Chất đạm: <b>{requestDetail?.protein !== null ? `${requestDetail?.protein}g` : '—'}</b></div>
-                      <div>Chất béo: <b>{requestDetail?.fat !== null ? `${requestDetail?.fat}g` : '—'}</b></div>
-                      <div>Chất bột đường: <b>{requestDetail?.carbs !== null ? `${requestDetail?.carbs}g` : '—'}</b></div>
-                      <div>Thời gian: <b>{formatDateDisplay(requestDetail?.createdAt)}</b></div>
+                      <div>Đạm: <b>{requestDetail?.protein !== null && requestDetail?.protein !== undefined ? `${requestDetail.protein}g` : '—'}</b></div>
+                      <div>Béo: <b>{requestDetail?.fat !== null && requestDetail?.fat !== undefined ? `${requestDetail.fat}g` : '—'}</b></div>
+                      <div>Đường: <b>{requestDetail?.carbs !== null && requestDetail?.carbs !== undefined ? `${requestDetail.carbs}g` : '—'}</b></div>
+                      <div>Gửi lúc: <b>{formatDateDisplay(requestDetail?.createdAt)}</b></div>
                     </div>
                   </div>
 
                   {/* User Note */}
                   {requestDetail?.description && (
-                    <div className="frm-proposal-desc">
-                      <b style={{ display: 'block', color: '#1c3349', marginBottom: 3 }}>Ghi chú từ người dùng:</b>
-                      "{requestDetail.description}"
+                    <div className="frm-proposal-desc" title={requestDetail.description}>
+                      <b>Ghi chú:</b> "{requestDetail.description}"
                     </div>
                   )}
                 </div>
@@ -341,7 +357,7 @@ function FoodRequestReviewModal({
                       <input
                         value={form.foodName}
                         onChange={(e) => setForm({ ...form, foodName: e.target.value })}
-                        placeholder="Nhập tên món ăn chính thức"
+                        placeholder="Tên món ăn chính thức"
                       />
                     </div>
                     <div className="frm-field">
@@ -360,7 +376,7 @@ function FoodRequestReviewModal({
 
                   <div className="frm-input-grid-2">
                     <div className="frm-field">
-                      <label>Định lượng chuẩn (gram)</label>
+                      <label>Định lượng (gram)</label>
                       <input
                         type="number"
                         min="1"
@@ -380,95 +396,96 @@ function FoodRequestReviewModal({
                   </div>
 
                   {/* Nutrition Fields (Luồng 6, Luồng 7c) */}
-                  <div style={{ marginTop: 4 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#1c3349', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span>Thành phần dinh dưỡng (trên 100g)</span>
-                      <small style={{ color: '#e11d48', fontWeight: 600 }}>* Calo là thông tin bắt buộc</small>
+                  <div className="frm-input-grid-4">
+                    <div className="frm-field frm-field--calo">
+                      <label>Calo (kcal) <span className="req">*</span></label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.calories}
+                        onChange={(e) => setForm({ ...form, calories: e.target.value })}
+                        placeholder="Bắt buộc *"
+                        className={errorMsg && !form.calories ? 'has-error' : ''}
+                      />
                     </div>
-                    <div className="frm-input-grid-4">
-                      <div className="frm-field frm-field--calo">
-                        <label>Calo (kcal) <span className="req">*</span></label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          value={form.calories}
-                          onChange={(e) => setForm({ ...form, calories: e.target.value })}
-                          placeholder="Bắt buộc"
-                          className={errorMsg && !form.calories ? 'has-error' : ''}
-                        />
-                      </div>
-                      <div className="frm-field">
-                        <label>Đạm (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          value={form.protein}
-                          onChange={(e) => setForm({ ...form, protein: e.target.value })}
-                          placeholder="0.0"
-                        />
-                      </div>
-                      <div className="frm-field">
-                        <label>Béo (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          value={form.fat}
-                          onChange={(e) => setForm({ ...form, fat: e.target.value })}
-                          placeholder="0.0"
-                        />
-                      </div>
-                      <div className="frm-field">
-                        <label>Đường / Carbs (g)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          value={form.carbs}
-                          onChange={(e) => setForm({ ...form, carbs: e.target.value })}
-                          placeholder="0.0"
-                        />
-                      </div>
+                    <div className="frm-field">
+                      <label>Đạm (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.protein}
+                        onChange={(e) => setForm({ ...form, protein: e.target.value })}
+                        placeholder="0.0"
+                      />
+                    </div>
+                    <div className="frm-field">
+                      <label>Béo (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.fat}
+                        onChange={(e) => setForm({ ...form, fat: e.target.value })}
+                        placeholder="0.0"
+                      />
+                    </div>
+                    <div className="frm-field">
+                      <label>Đường / Carbs (g)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={form.carbs}
+                        onChange={(e) => setForm({ ...form, carbs: e.target.value })}
+                        placeholder="0.0"
+                      />
                     </div>
                   </div>
 
-                  {/* Macro Calculator & Distribution Bar */}
+                  {/* Macro Calculator & Distribution Bar in 1 compact line */}
                   <div className="frm-macro-tool">
-                    <div className="frm-macro-header">
-                      <span style={{ fontWeight: 700, color: '#2b4760' }}>
-                        Phân bố năng lượng Macro
-                      </span>
-                      <button
-                        type="button"
-                        className="frm-macro-calc-btn"
-                        onClick={handleAutoCalcCalories}
-                        title="Tính calo = Đạm*4 + Carbs*4 + Béo*9"
-                      >
-                        <i className="bi bi-lightning-charge-fill" /> Tính Calo tự động từ Macro
-                      </button>
+                    <div className="frm-macro-bar-wrap">
+                      <div className="frm-macro-bar-track">
+                        <div className="frm-macro-bar-p" style={{ width: `${macroPcts.p}%` }} title={`Đạm: ${macroPcts.p}%`} />
+                        <div className="frm-macro-bar-c" style={{ width: `${macroPcts.c}%` }} title={`Carbs: ${macroPcts.c}%`} />
+                        <div className="frm-macro-bar-f" style={{ width: `${macroPcts.f}%` }} title={`Béo: ${macroPcts.f}%`} />
+                      </div>
+                      <div className="frm-macro-legend">
+                        <span><i className="bi bi-circle-fill" style={{ color: '#3b82f6', fontSize: 7 }} /> Đạm: <b>{macroPcts.p}%</b></span>
+                        <span><i className="bi bi-circle-fill" style={{ color: '#f59e0b', fontSize: 7 }} /> Carbs: <b>{macroPcts.c}%</b></span>
+                        <span><i className="bi bi-circle-fill" style={{ color: '#ef4444', fontSize: 7 }} /> Béo: <b>{macroPcts.f}%</b></span>
+                      </div>
                     </div>
-                    <div className="frm-macro-bar-track">
-                      <div className="frm-macro-bar-p" style={{ width: `${macroPcts.p}%` }} title={`Đạm: ${macroPcts.p}%`} />
-                      <div className="frm-macro-bar-c" style={{ width: `${macroPcts.c}%` }} title={`Carbs: ${macroPcts.c}%`} />
-                      <div className="frm-macro-bar-f" style={{ width: `${macroPcts.f}%` }} title={`Béo: ${macroPcts.f}%`} />
-                    </div>
-                    <div className="frm-macro-legend">
-                      <span><i className="bi bi-circle-fill" style={{ color: '#3b82f6', fontSize: 9 }} /> Đạm: <b>{macroPcts.p}%</b></span>
-                      <span><i className="bi bi-circle-fill" style={{ color: '#f59e0b', fontSize: 9 }} /> Carbs: <b>{macroPcts.c}%</b></span>
-                      <span><i className="bi bi-circle-fill" style={{ color: '#ef4444', fontSize: 9 }} /> Béo: <b>{macroPcts.f}%</b></span>
-                    </div>
+                    <button
+                      type="button"
+                      className="frm-macro-calc-btn"
+                      onClick={handleAutoCalcCalories}
+                      title="Tính calo = Đạm*4 + Carbs*4 + Béo*9"
+                    >
+                      <i className="bi bi-lightning-charge-fill" /> Tính Calo tự động
+                    </button>
                   </div>
 
-                  {/* Image URL & Description */}
-                  <div className="frm-field">
-                    <label>URL Hình ảnh món ăn</label>
-                    <input
-                      value={form.imageUrl}
-                      onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                      placeholder="https://... hoặc /uploads/foods/..."
-                    />
+                  {/* Image URL & Admin Note in 1 row */}
+                  <div className="frm-input-grid-2">
+                    <div className="frm-field">
+                      <label>URL Hình ảnh</label>
+                      <input
+                        value={form.imageUrl}
+                        onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                        placeholder="https://... hoặc /uploads/foods/..."
+                      />
+                    </div>
+                    <div className="frm-field">
+                      <label>Ghi chú Admin (nội bộ)</label>
+                      <input
+                        value={form.adminNote}
+                        onChange={(e) => setForm({ ...form, adminNote: e.target.value })}
+                        placeholder="Ghi chú đối soát hoặc nguồn..."
+                      />
+                    </div>
                   </div>
 
                   <div className="frm-field">
@@ -476,16 +493,7 @@ function FoodRequestReviewModal({
                     <textarea
                       value={form.description}
                       onChange={(e) => setForm({ ...form, description: e.target.value })}
-                      placeholder="Mô tả nguyên liệu, phương pháp nấu hoặc lưu ý dinh dưỡng..."
-                    />
-                  </div>
-
-                  <div className="frm-field">
-                    <label>Ghi chú của Admin (nội bộ)</label>
-                    <input
-                      value={form.adminNote}
-                      onChange={(e) => setForm({ ...form, adminNote: e.target.value })}
-                      placeholder="Ghi chú đối soát hoặc nguồn tra cứu dinh dưỡng..."
+                      placeholder="Mô tả nguyên liệu, hương vị..."
                     />
                   </div>
                 </div>

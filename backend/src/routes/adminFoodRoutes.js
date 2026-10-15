@@ -26,6 +26,10 @@ const {
   updateFood,
   updateFoodStatus,
   deleteFood,
+  listFoodGroups,
+  createFoodGroup,
+  renameFoodGroup,
+  deleteFoodGroup,
 } = require('../controllers/adminFoodController');
 
 const router = express.Router();
@@ -78,6 +82,13 @@ router.post('/upload-image', (req, res) => {
 
 router.get('/',             listFoods);
 router.post('/',            createFood);
+
+// Quản lý nhóm món ăn (Food Groups)
+router.get('/groups',       listFoodGroups);
+router.post('/groups',      createFoodGroup);
+router.put('/groups/:id',   renameFoodGroup);
+router.delete('/groups/:id', deleteFoodGroup);
+
 router.get('/:id',          getFoodDetail);
 router.put('/:id',          updateFood);
 router.patch('/:id/status', updateFoodStatus);
