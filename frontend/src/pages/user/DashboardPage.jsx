@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
+import FoodNavMenu from '../../components/common/FoodNavMenu'
 
 const meals = [
   ['🍜', 'Phở Bò Tái Lăn Hà Nội', 'Bữa Sáng · 08:15 · Đã xác nhận AI', '485 kcal', ['Protein 28g', 'Carbs 62g', 'Fat 14g', 'Natri 890mg']],
@@ -201,7 +202,7 @@ export default function DashboardPage() {
         <a className="dashboard-logo" href="/dashboard"><span><i className="bi bi-leaf-fill" /></span> NutriLens</a>
         <nav className="dashboard-nav">
           <a className="active" href="/dashboard">Tổng quan</a>
-          <Link to="/food-scan">Nhận diện & Đồ ăn</Link>
+          <FoodNavMenu />
           <a href="/dashboard">Luyện tập</a>
           <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>

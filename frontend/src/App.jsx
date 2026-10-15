@@ -85,7 +85,15 @@ export default function App() {
       />
       <Route
         path="/food-scan"
-        element={<PrivateRoute><FoodScanPage /></PrivateRoute>}
+        element={<PrivateRoute><FoodScanPage key="food-scan" /></PrivateRoute>}
+      />
+      <Route
+        path="/food-request"
+        element={<PrivateRoute><FoodScanPage key="food-request" initialMode="new-request" /></PrivateRoute>}
+      />
+      <Route
+        path="/food-requests"
+        element={<PrivateRoute><FoodScanPage key="food-requests" initialMode="requests" /></PrivateRoute>}
       />
       <Route
         path="/meal-diary"

@@ -7,6 +7,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
+import FoodNavMenu from '../../components/common/FoodNavMenu'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -33,26 +34,6 @@ const EMPTY_FOOD_REQUEST_FORM = {
   carbPer100g: '',
   fatPer100g: '',
   note: '',
-}
-
-function nutritionPer100g(value, servingSize) {
-  if (value == null || value === '') return ''
-  const baseServing = Number(servingSize) || 100
-  if (!baseServing) return ''
-  return String(roundN((Number(value) / baseServing) * 100, 1))
-}
-
-function buildFoodRequestDraft(result, selectedPrediction) {
-  const nutrition = result?.nutrition || {}
-  return {
-    ...EMPTY_FOOD_REQUEST_FORM,
-    name: selectedPrediction?.name || nutrition.foodName || '',
-    imageUrl: nutrition.imageUrl || '',
-    caloriesPer100g: nutritionPer100g(nutrition.calories, nutrition.servingSize),
-    proteinPer100g: nutritionPer100g(nutrition.protein, nutrition.servingSize),
-    carbPer100g: nutritionPer100g(nutrition.carbs, nutrition.servingSize),
-    fatPer100g: nutritionPer100g(nutrition.fat, nutrition.servingSize),
-  }
 }
 
 function isPreviewableImageUrl(value) {
@@ -540,9 +521,7 @@ function FoodRequestListPage({
     <section className="fs-request-list-page">
       <div className="fs-request-list-breadcrumb">
         <button type="button" onClick={onBack} aria-label="Quay lại"><i className="bi bi-arrow-left" /></button>
-        <span>Trang chủ</span>
-        <i className="bi bi-chevron-right" />
-        <strong>Yêu cầu bổ sung món ăn</strong>
+        <span>Quay lại</span>
       </div>
 
       <section className="fs-request-list-hero">
@@ -634,7 +613,7 @@ function FoodRequestListPage({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function FoodScanPage() {
+export default function FoodScanPage({ initialMode = 'scan' }) {
   const location = useLocation()
   const transferStateRef = useRef(location.state)
   const fileInputRef = useRef(null)
@@ -681,11 +660,11 @@ export default function FoodScanPage() {
   const [profile, setProfile] = useState(null)
 
   // Form yêu cầu bổ sung món ăn
-  const [requestMode, setRequestMode] = useState(false)
+  const [requestMode, setRequestMode] = useState(() => initialMode !== 'scan')
   const [requestForm, setRequestForm] = useState(EMPTY_FOOD_REQUEST_FORM)
   const [requestImagePreview, setRequestImagePreview] = useState(null)
   const [requestImageFile, setRequestImageFile] = useState(null)
-  const [requestListMode, setRequestListMode] = useState(false)
+  const [requestListMode, setRequestListMode] = useState(() => initialMode === 'requests')
   const [editingRequestId, setEditingRequestId] = useState(null)
   const [requestSubmitting, setRequestSubmitting] = useState(false)
   const [deletingRequestId, setDeletingRequestId] = useState(null)
@@ -694,11 +673,12 @@ export default function FoodScanPage() {
   const [requestsTotal, setRequestsTotal] = useState(0)
   const [requestsLoading, setRequestsLoading] = useState(false)
   const [requestsError, setRequestsError] = useState(null)
-  const [requestsExpanded, setRequestsExpanded] = useState(false)
+  const [requestsExpanded, setRequestsExpanded] = useState(() => initialMode === 'requests')
   const [selectedRequest, setSelectedRequest] = useState(null)
 
   const firstName = user?.fullName?.split(' ')[0] || 'bạn'
   const selectedPrediction = result?.predictions?.[selectedPred]
+  const recognitionImage = preview || resolveMediaUrl(result?.nutrition?.imageUrl)
   const targetCalories = Number(profile?.nutritionGoal?.calorieTarget || 2000)
 
   async function searchFoodLibrary(query = '') {
@@ -1000,11 +980,11 @@ export default function FoodScanPage() {
   }
 
   const openFoodRequest = () => {
-    const draft = buildFoodRequestDraft(result, selectedPrediction)
-    const shouldCarryScannedImage = Boolean(fileObj && preview)
-    setRequestForm(draft)
-    setRequestImagePreview(shouldCarryScannedImage ? preview : (draft.imageUrl || null))
-    setRequestImageFile(shouldCarryScannedImage ? fileObj : null)
+    setRequestForm({ ...EMPTY_FOOD_REQUEST_FORM })
+    setRequestImagePreview(null)
+    setRequestImageFile(null)
+    setEditingRequestId(null)
+    if (requestImageInputRef.current) requestImageInputRef.current.value = ''
     setRequestListMode(false)
     setRequestFeedback(null)
     setSelectedRequest(null)
@@ -1169,7 +1149,7 @@ export default function FoodScanPage() {
         <Link className="dashboard-logo" to="/dashboard"><span><i className="bi bi-leaf-fill" /></span>NutriLens</Link>
         <nav className="dashboard-nav" aria-label="Điều hướng chính">
           <Link to="/dashboard">Tổng quan</Link>
-          <Link className="active" to="/food-scan">Nhận diện &amp; Đồ ăn</Link>
+          <FoodNavMenu />
           <Link to="/dashboard">Luyện tập</Link>
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
@@ -1311,19 +1291,20 @@ export default function FoodScanPage() {
               </form>
               {foodSearchError && <p className="fs-manual-search-error" role="alert">{foodSearchError}</p>}
               <div className="fs-quick-searches"><strong>{foodQuery ? 'Kết quả tìm kiếm:' : 'Gợi ý nhanh:'}</strong>{foodMatches.length ? foodMatches.map((food) => <button type="button" key={food.slug} onClick={() => selectManualFood(food)}>{food.name}{food.calories != null && <small>{roundN(food.calories, 0)} kcal</small>}</button>) : <span>{foodSearchLoading ? 'Đang tải món ăn...' : 'Không tìm thấy món phù hợp.'}</span>}</div>
+              {foodQuery.trim() && !foodSearchLoading && foodMatches.length === 0 && <button type="button" className="fs-request-food-button fs-no-match-request" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>}
             </article>
 
-            <article className="fs-panel fs-recognition-panel">
-              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">{result.manual ? 'Tra cứu thủ công' : 'Đã xác nhận AI'}</span>}</div>
+            {!result?.manual && <article className="fs-panel fs-recognition-panel">
+              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">Đã xác nhận AI</span>}</div>
               {result?.recognized && selectedPrediction ? <div className="fs-recognition-result">
-                {preview && <img className="fs-result-image" src={preview} alt={selectedPrediction.name} />}
+                {recognitionImage && <img className="fs-result-image" src={recognitionImage} alt={selectedPrediction.name} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
                 <div className="fs-result-copy">
-                  <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">{result.manual ? 'Thư viện món ăn' : 'Món ăn Việt Nam'}</span></div>
+                  <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">Món ăn Việt Nam</span></div>
                   <p>{result.nutrition?.description || (result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.')}</p>
-                  {!result.manual && <ConfidenceBar value={selectedPrediction.confidence} />}
+                  <ConfidenceBar value={selectedPrediction.confidence} />
                 </div>
               </div> : result ? <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-exclamation-circle" /></span><div><strong>{result.message || 'Chưa nhận diện được món ăn'}</strong><p>{result.predictions?.length ? 'Hãy chọn lại ảnh rõ hơn hoặc kiểm tra các gợi ý bên cạnh.' : 'Hãy thử ảnh có ánh sáng tốt, nhìn rõ toàn bộ món ăn.'}</p></div></div> : <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-stars" /></span><div><strong>Kết quả phân tích sẽ xuất hiện ở đây</strong><p>Chọn ảnh món ăn và bắt đầu nhận diện để xem tên món cùng độ tin cậy của AI.</p></div></div>}
-            </article>
+            </article>}
 
             <article className="fs-panel fs-nutrition-panel" id="fs-nutrition">
               <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div></div>
@@ -1373,7 +1354,6 @@ export default function FoodScanPage() {
                 <p>Đã nạp trong ngày<strong>{roundN(dailyCalories, 0)} / {targetCalories.toLocaleString('vi-VN')} kcal</strong><small>{profile?.nutritionGoal?.calorieTarget ? 'Theo mục tiêu dinh dưỡng cá nhân' : 'Mục tiêu tham chiếu 2.000 kcal'}</small></p>
               </div>
               <div className="fs-calorie-progress"><i style={{ width: `${calorieProgress}%` }} /></div>
-              <Link to="/profile" className="fs-text-button">Xem chi tiết mục tiêu <i className="bi bi-arrow-right" /></Link>
             </article>
 
             <div className="fs-encouragement"><span><i className="bi bi-heart-fill" /></span><p><strong>Bạn đang lựa chọn rất tốt!</strong>Hãy duy trì thói quen ghi nhận để theo dõi dinh dưỡng chính xác hơn.</p></div>

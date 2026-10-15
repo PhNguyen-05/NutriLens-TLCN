@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
+import FoodNavMenu from '../../components/common/FoodNavMenu'
 
 const MEALS = [
   { value: 'breakfast', label: 'Bữa sáng', icon: 'bi-sunrise', color: '#13a879' },
@@ -222,7 +223,7 @@ export default function MealDiaryPage() {
         <Link className="dashboard-logo" to="/dashboard"><span><i className="bi bi-leaf-fill" /></span>NutriLens</Link>
         <nav className="dashboard-nav" aria-label="Điều hướng chính">
           <Link to="/dashboard">Tổng quan</Link>
-          <Link className="active" to="/food-scan">Nhận diện &amp; Đồ ăn</Link>
+          <FoodNavMenu />
           <Link to="/dashboard">Luyện tập</Link>
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
