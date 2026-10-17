@@ -203,7 +203,7 @@ export default function DashboardPage() {
         <nav className="dashboard-nav">
           <a className="active" href="/dashboard">Tổng quan</a>
           <FoodNavMenu />
-          <a href="/dashboard">Luyện tập</a>
+          <Link to="/exercise">Luyện tập</Link>
           <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>
           <a href="/dashboard">Bài viết & Mẹo</a>
@@ -387,7 +387,7 @@ export default function DashboardPage() {
               <p>Mục tiêu tiêu hao: 450 kcal · Đã hoàn thành 1/3 bài tập (160 kcal)</p>
             </div>
             <div>
-              <button className="solid-button">⊕ Thêm bài tập</button>
+              <button className="solid-button" onClick={() => navigate('/exercise')}>⊕ Thêm bài tập</button>
             </div>
           </div>
           <div className="workout-content">

@@ -224,7 +224,7 @@ export default function MealDiaryPage() {
         <nav className="dashboard-nav" aria-label="Điều hướng chính">
           <Link to="/dashboard">Tổng quan</Link>
           <FoodNavMenu />
-          <Link to="/dashboard">Luyện tập</Link>
+          <Link to="/exercise">Luyện tập</Link>
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
           <Link to="/dashboard">Bài viết &amp; Mẹo</Link>

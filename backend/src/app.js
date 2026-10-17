@@ -10,6 +10,7 @@ const adminFoodRoutes = require('./routes/adminFoodRoutes');
 const adminFoodRequestRoutes = require('./routes/adminFoodRequestRoutes');
 const profileRoutes = require('./routes/profileRoutes');
 const foodRoutes = require('./routes/foodRoutes');
+const exerciseRoutes = require('./routes/exerciseRoutes');
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/api/admin/foods', adminFoodRoutes);
 app.use('/api/admin/food-requests', adminFoodRequestRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/food', foodRoutes);
+app.use('/api/exercises', exerciseRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Không tìm thấy tài nguyên' });
