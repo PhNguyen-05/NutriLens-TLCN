@@ -257,15 +257,117 @@ const DEFAULT_EXERCISES = [
     description: 'Vận động theo điệu nhạc sôi động, đốt mỡ và giải tỏa tinh thần hứng khởi.',
     defaultDurationMinutes: 45,
   },
+  {
+    name: 'Đi bộ dốc trên máy tập',
+    slug: 'di-bo-doc-may-tap',
+    category: 'cardio',
+    categoryName: 'Cardio & Vận động',
+    met: 5.3,
+    intensity: 'Trung bình',
+    icon: 'bi-speedometer2',
+    description: 'Đi bộ trên máy độ dốc 5-8% tốc độ ~4.5 km/h, kích hoạt cơ đùi và mông.',
+    defaultDurationMinutes: 30,
+  },
+  {
+    name: 'Đạp xe tại chỗ phòng gym',
+    slug: 'dap-xe-tai-cho-gym',
+    category: 'cardio',
+    categoryName: 'Cardio & Vận động',
+    met: 7.0,
+    intensity: 'Trung bình',
+    icon: 'bi-bicycle',
+    description: 'Tập máy đạp xe tĩnh Spin Bike với mức kháng lực trung bình-cao.',
+    defaultDurationMinutes: 30,
+  },
+  {
+    name: 'Bơi ếch nhịp nhàng',
+    slug: 'boi-ech-nhip-nhang',
+    category: 'cardio',
+    categoryName: 'Cardio & Vận động',
+    met: 5.3,
+    intensity: 'Trung bình',
+    icon: 'bi-water',
+    description: 'Bơi ếch cự ly vừa sức, tăng cường tuần hoàn tim mạch và săn chắc cơ đùi trong.',
+    defaultDurationMinutes: 30,
+  },
+  {
+    name: 'Plank & Gập bụng (Core & Abs)',
+    slug: 'plank-gap-bung-core',
+    category: 'strength',
+    categoryName: 'Sức mạnh & Gym',
+    met: 4.0,
+    intensity: 'Trung bình',
+    icon: 'bi-shield-check',
+    description: 'Tập trung siết cơ bụng, lưng dưới và nhóm cơ ổn định thân trên.',
+    defaultDurationMinutes: 20,
+  },
+  {
+    name: 'Tập với dây kháng lực (Resistance Bands)',
+    slug: 'tap-day-khang-luc',
+    category: 'strength',
+    categoryName: 'Sức mạnh & Gym',
+    met: 4.5,
+    intensity: 'Trung bình',
+    icon: 'bi-activity',
+    description: 'Các bài tập kích hoạt cơ bắp với dây đàn hồi, an toàn cho khớp vai và hông.',
+    defaultDurationMinutes: 30,
+  },
+  {
+    name: 'Thái Cực Quyền (Tai Chi)',
+    slug: 'thai-cuc-quyen-tai-chi',
+    category: 'flexibility',
+    categoryName: 'Yoga & Thư giãn',
+    met: 3.0,
+    intensity: 'Nhẹ',
+    icon: 'bi-yin-yang',
+    description: 'Chuyển động chậm rãi, cân bằng tâm trí và cải thiện độ linh hoạt của khớp.',
+    defaultDurationMinutes: 40,
+  },
+  {
+    name: 'Pickleball',
+    slug: 'pickleball',
+    category: 'sports',
+    categoryName: 'Thể thao',
+    met: 6.0,
+    intensity: 'Trung bình',
+    icon: 'bi-dribbble',
+    description: 'Môn thể thao vợt đối kháng kết hợp tennis và bóng bàn, di chuyển phản xạ liên tục.',
+    defaultDurationMinutes: 45,
+  },
+  {
+    name: 'Quần vợt (Tennis)',
+    slug: 'quan-vot-tennis',
+    category: 'sports',
+    categoryName: 'Thể thao',
+    met: 7.3,
+    intensity: 'Cao',
+    icon: 'bi-dribbble',
+    description: 'Đánh tennis đơn hoặc đôi với những pha di chuyển bao sân và phát bóng mạnh mẽ.',
+    defaultDurationMinutes: 60,
+  },
+  {
+    name: 'Bóng bàn (Table Tennis)',
+    slug: 'bong-ban-table-tennis',
+    category: 'sports',
+    categoryName: 'Thể thao',
+    met: 4.0,
+    intensity: 'Trung bình',
+    icon: 'bi-dribbble',
+    description: 'Rèn luyện phản xạ tay mắt nhanh và bước di chuyển ngắn liên tục.',
+    defaultDurationMinutes: 45,
+  },
 ];
 
 /**
- * Tự động đồng bộ các bài tập mặc định nếu database trống
+ * Tự động đồng bộ các bài tập mặc định (upsert để luôn cập nhật danh mục mới nhất)
  */
 async function ensureDefaultExercises() {
-  const count = await Exercise.countDocuments();
-  if (count === 0) {
-    await Exercise.insertMany(DEFAULT_EXERCISES);
+  for (const ex of DEFAULT_EXERCISES) {
+    await Exercise.findOneAndUpdate(
+      { slug: ex.slug },
+      { $set: ex },
+      { upsert: true }
+    );
   }
 }
 

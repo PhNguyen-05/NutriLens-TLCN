@@ -1,47 +1,43 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
+import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 
-const CATEGORIES = [
-  { id: 'all', label: 'Tất cả bài tập', icon: 'bi-grid-fill' },
-  { id: 'cardio', label: 'Cardio & Vận động', icon: 'bi-lightning-charge-fill' },
-  { id: 'strength', label: 'Sức mạnh & Gym', icon: 'bi-trophy-fill' },
-  { id: 'flexibility', label: 'Yoga & Thư giãn', icon: 'bi-flower1' },
-  { id: 'sports', label: 'Thể thao đối kháng', icon: 'bi-dribbble' },
+const CATEGORY_TABS = [
+  { id: 'all',         label: 'Tất cả',          icon: 'bi-grid' },
+  { id: 'cardio',      label: 'Cardio',           icon: 'bi-lightning-charge' },
+  { id: 'strength',    label: 'Sức mạnh',         icon: 'bi-trophy' },
+  { id: 'flexibility', label: 'Yoga & Thư giãn',  icon: 'bi-flower1' },
+  { id: 'sports',      label: 'Thể thao',         icon: 'bi-dribbble' },
 ]
 
-const INTENSITY_COLORS = {
-  'Nhẹ': { bg: '#ecfdf5', color: '#047857', border: '#a7f3d0' },
-  'Trung bình': { bg: '#fef3c7', color: '#b45309', border: '#fde68a' },
-  'Cao': { bg: '#fff1f2', color: '#be123c', border: '#fecdd3' },
+const INTENSITY_CHIP = {
+  'Nhẹ':       { cls: 'ex-chip--low',    icon: 'bi-circle-fill' },
+  'Trung bình':{ cls: 'ex-chip--mid',    icon: 'bi-circle-fill' },
+  'Cao':       { cls: 'ex-chip--high',   icon: 'bi-circle-fill' },
 }
 
 function getTodayStr() {
   return new Date().toLocaleDateString('sv-SE')
 }
 
-function getCurrentTimeStr() {
-  return new Intl.DateTimeFormat('vi-VN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date())
+function getTimeStr() {
+  return new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
 }
 
-function formatDateDisplay(dateStr) {
+function formatDateShort(dateStr) {
   if (!dateStr) return '—'
   try {
-    return new Intl.DateTimeFormat('vi-VN', {
-      weekday: 'short',
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }).format(new Date(`${dateStr}T12:00:00`))
-  } catch {
-    return dateStr
-  }
+    return new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
+      .format(new Date(`${dateStr}T12:00:00`))
+  } catch { return dateStr }
+}
+
+function calcCalories(met, weightKg, minutes) {
+  if (!met || !weightKg || !minutes || minutes <= 0) return 0
+  return Math.round((met * 3.5 * weightKg * minutes) / 200)
 }
 
 export default function ExercisePage() {
@@ -50,443 +46,242 @@ export default function ExercisePage() {
   const firstName = user?.fullName?.split(' ')[0] || 'bạn'
   const [profileOpen, setProfileOpen] = useState(false)
 
-  // Tab: 'catalog' (UC21: Ghi nhận) | 'history' (UC22: Lịch sử)
-  const [activeTab, setActiveTab] = useState('catalog')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialTab = searchParams.get('tab') === 'history' ? 'history' : 'catalog'
 
-  // Data states
-  const [exercises, setExercises] = useState([])
-  const [loadingExercises, setLoadingExercises] = useState(true)
-  const [logs, setLogs] = useState([])
-  const [loadingLogs, setLoadingLogs] = useState(false)
-  const [userWeight, setUserWeight] = useState(null)
-  const [todaySummary, setTodaySummary] = useState({ totalCalories: 0, totalMinutes: 0, count: 0 })
+  // Tab chính
+  const [activeTab, setActiveTab] = useState(initialTab) // 'catalog' | 'history'
 
-  // Filters for Catalog (UC21 Luồng 4a)
-  const [catalogSearch, setCatalogSearch] = useState('')
-  const [catalogCategory, setCatalogCategory] = useState('all')
-
-  // Filters for History (UC22 Luồng chính bước 3)
-  const [historyPeriod, setHistoryPeriod] = useState('7d') // 'today' | '7d' | '30d' | 'all' | 'custom'
-  const [customStartDate, setCustomStartDate] = useState(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 7)
-    return d.toLocaleDateString('sv-SE')
-  })
-  const [customEndDate, setCustomEndDate] = useState(getTodayStr)
-  const [historyCategory, setHistoryCategory] = useState('all')
-
-  // Logging Modal (UC21)
-  const [loggingExercise, setLoggingExercise] = useState(null)
-  const [logForm, setLogForm] = useState({
-    durationMinutes: 30,
-    date: getTodayStr(),
-    time: getCurrentTimeStr(),
-    notes: '',
-  })
-  const [estimatedCalories, setEstimatedCalories] = useState(0)
-  const [logError, setLogError] = useState('')
-  const [savingLog, setSavingLog] = useState(false)
-
-  // Detail Modal (UC22 Luồng chính bước 5, 6)
-  const [detailLog, setDetailLog] = useState(null)
-
-  // Edit Modal (UC22 Luồng 5a)
-  const [editingLog, setEditingLog] = useState(null)
-  const [editForm, setEditForm] = useState({
-    exerciseId: '',
-    durationMinutes: 30,
-    date: '',
-    time: '',
-    notes: '',
-  })
-  const [editEstimatedCalories, setEditEstimatedCalories] = useState(0)
-  const [editError, setEditError] = useState('')
-  const [savingEdit, setSavingEdit] = useState(false)
-
-  // Delete Confirmation Modal (UC22 Luồng 5b)
-  const [deletingLog, setDeletingLog] = useState(null)
-  const [isDeleting, setIsDeleting] = useState(false)
-
-  // Feedback Toasts
-  const [toastMessage, setToastMessage] = useState(null) // { type: 'success' | 'error', text: '' }
-
-  // Load User Profile Weight & Exercises
   useEffect(() => {
-    let active = true
-
-    // Load profile to get weight
-    axiosInstance.get('/profile')
-      .then(({ data }) => {
-        if (!active) return
-        const weight = data.profile?.currentWeightKg || data.latestLog?.weightKg || null
-        setUserWeight(weight)
-      })
-      .catch((err) => {
-        console.warn('Không thể tải thông tin cân nặng hồ sơ:', err.message)
-      })
-
-    // Load exercises
-    setLoadingExercises(true)
-    axiosInstance.get('/exercises')
-      .then(({ data }) => {
-        if (!active) return
-        setExercises(data.exercises || [])
-      })
-      .catch((err) => {
-        console.error('Không thể tải bài tập:', err)
-        showToast('error', 'Không thể kết nối đến danh mục bài tập')
-      })
-      .finally(() => {
-        if (active) setLoadingExercises(false)
-      })
-
-    return () => {
-      active = false
+    const tabParam = searchParams.get('tab')
+    if (tabParam === 'history' || tabParam === 'catalog') {
+      setActiveTab(tabParam)
     }
-  }, [])
+  }, [searchParams])
 
-  // Load today's summary
-  const fetchTodaySummary = async () => {
-    try {
-      const today = getTodayStr()
-      const { data } = await axiosInstance.get('/exercises/logs', { params: { date: today } })
-      setTodaySummary({
-        totalCalories: data.summary?.totalCalories || 0,
-        totalMinutes: data.summary?.totalMinutes || 0,
-        count: data.logs?.length || 0,
-      })
-    } catch (err) {
-      console.warn('Không thể tải thống kê hôm nay:', err.message)
-    }
+  function switchTab(tab) {
+    setActiveTab(tab)
+    setSearchParams({ tab }, { replace: true })
   }
 
+  // Dữ liệu
+  const [exercises,       setExercises]       = useState([])
+  const [loadingEx,       setLoadingEx]        = useState(true)
+  const [logs,            setLogs]             = useState([])
+  const [loadingLogs,     setLoadingLogs]      = useState(false)
+  const [userWeight,      setUserWeight]       = useState(null)
+  const [todayStats,      setTodayStats]       = useState({ calories: 0, minutes: 0, count: 0 })
+  const [toastMsg,        setToastMsg]         = useState(null)
+
+  // Bộ lọc Catalog
+  const [searchQ,         setSearchQ]          = useState('')
+  const [catFilter,       setCatFilter]        = useState('all')
+
+  // Bộ lọc History
+  const [period,          setPeriod]           = useState('7d')
+  const [customStart,     setCustomStart]      = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 7); return d.toLocaleDateString('sv-SE')
+  })
+  const [customEnd,       setCustomEnd]        = useState(getTodayStr)
+  const [histCat,         setHistCat]          = useState('all')
+
+  // Modal Ghi nhận
+  const [logging,         setLogging]          = useState(null)  // exercise object
+  const [logForm,         setLogForm]          = useState({ duration: 30, date: getTodayStr(), time: getTimeStr(), notes: '' })
+  const [logCalories,     setLogCalories]      = useState(0)
+  const [logErr,          setLogErr]           = useState('')
+  const [saving,          setSaving]           = useState(false)
+
+  // Modal Chi tiết
+  const [detailLog,       setDetailLog]        = useState(null)
+
+  // Modal Sửa
+  const [editing,         setEditing]          = useState(null)
+  const [editForm,        setEditForm]         = useState({ exerciseId: '', duration: 30, date: '', time: '', notes: '' })
+  const [editCalories,    setEditCalories]     = useState(0)
+  const [editErr,         setEditErr]          = useState('')
+  const [savingEdit,      setSavingEdit]       = useState(false)
+
+  // Modal Xóa
+  const [deleting,        setDeleting]         = useState(null)
+  const [isDeleting,      setIsDeleting]       = useState(false)
+
+  // ─── Data loaders ──────────────────────────────────────────────────────────
+
   useEffect(() => {
-    fetchTodaySummary()
+    let alive = true
+    axiosInstance.get('/profile')
+      .then(({ data }) => { if (alive) setUserWeight(data.profile?.currentWeightKg || null) })
+      .catch(() => {})
+
+    setLoadingEx(true)
+    axiosInstance.get('/exercises')
+      .then(({ data }) => { if (alive) setExercises(data.exercises || []) })
+      .catch(() => toast('error', 'Không thể tải danh mục bài tập'))
+      .finally(() => { if (alive) setLoadingEx(false) })
+
+    return () => { alive = false }
   }, [])
 
-  // Load History Logs when filters change
+  const fetchTodayStats = async () => {
+    try {
+      const { data } = await axiosInstance.get('/exercises/logs', { params: { date: getTodayStr() } })
+      setTodayStats({
+        calories: data.summary?.totalCalories || 0,
+        minutes:  data.summary?.totalMinutes  || 0,
+        count:    data.logs?.length           || 0,
+      })
+    } catch (_) {}
+  }
+
+  useEffect(() => { fetchTodayStats() }, [])
+
   const fetchLogs = async () => {
     setLoadingLogs(true)
     try {
       const params = {}
-      if (historyCategory !== 'all') {
-        params.category = historyCategory
-      }
-
       const today = getTodayStr()
-      if (historyPeriod === 'today') {
-        params.date = today
-      } else if (historyPeriod === '7d') {
-        const d = new Date()
-        d.setDate(d.getDate() - 6)
-        params.startDate = d.toLocaleDateString('sv-SE')
-        params.endDate = today
-      } else if (historyPeriod === '30d') {
-        const d = new Date()
-        d.setDate(d.getDate() - 29)
-        params.startDate = d.toLocaleDateString('sv-SE')
-        params.endDate = today
-      } else if (historyPeriod === 'custom') {
-        if (customStartDate) params.startDate = customStartDate
-        if (customEndDate) params.endDate = customEndDate
-      }
-
+      if (histCat !== 'all') params.category = histCat
+      if      (period === 'today') { params.date = today }
+      else if (period === '7d')    { const d = new Date(); d.setDate(d.getDate()-6); params.startDate = d.toLocaleDateString('sv-SE'); params.endDate = today }
+      else if (period === '30d')   { const d = new Date(); d.setDate(d.getDate()-29); params.startDate = d.toLocaleDateString('sv-SE'); params.endDate = today }
+      else if (period === 'custom'){ if (customStart) params.startDate = customStart; if (customEnd) params.endDate = customEnd }
       const { data } = await axiosInstance.get('/exercises/logs', { params })
       setLogs(data.logs || [])
-      if (data.currentWeightKg && !userWeight) {
-        setUserWeight(data.currentWeightKg)
-      }
-    } catch (err) {
-      console.error('Lỗi tải lịch sử tập luyện:', err)
-      showToast('error', 'Không thể tải lịch sử tập luyện')
+      if (data.currentWeightKg && !userWeight) setUserWeight(data.currentWeightKg)
+    } catch (_) {
+      toast('error', 'Không thể tải lịch sử tập luyện')
     } finally {
       setLoadingLogs(false)
     }
   }
 
-  useEffect(() => {
-    fetchLogs()
-  }, [historyPeriod, customStartDate, customEndDate, historyCategory])
+  useEffect(() => { fetchLogs() }, [period, customStart, customEnd, histCat])
 
-  function showToast(type, text) {
-    setToastMessage({ type, text })
-    setTimeout(() => {
-      setToastMessage((prev) => (prev?.text === text ? null : prev))
-    }, 4000)
+  function toast(type, text) {
+    setToastMsg({ type, text })
+    setTimeout(() => setToastMsg(p => p?.text === text ? null : p), 4000)
   }
 
-  // Formula calculation utility: Calories = (MET * 3.5 * Weight * Minutes) / 200
-  function computeCalories(met, weight, duration) {
-    if (!met || !weight || !duration || duration <= 0) return 0
-    return Math.round((met * 3.5 * weight * duration) / 200)
+  // ─── Catalog ───────────────────────────────────────────────────────────────
+
+  const filteredEx = useMemo(() => exercises.filter(e => {
+    const inCat = catFilter === 'all' || e.category === catFilter
+    const q = searchQ.toLowerCase().trim()
+    const inQ = !q || e.name.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)
+    return inCat && inQ
+  }), [exercises, catFilter, searchQ])
+
+  function openLog(exercise) {
+    setLogging(exercise)
+    setLogErr('')
+    const dur = exercise.defaultDurationMinutes || 30
+    setLogForm({ duration: dur, date: getTodayStr(), time: getTimeStr(), notes: '' })
+    setLogCalories(userWeight ? calcCalories(exercise.met, userWeight, dur) : 0)
   }
 
-  // Filtered exercises for Catalog tab (UC21 Luồng 4a)
-  const filteredExercises = useMemo(() => {
-    return exercises.filter((item) => {
-      const matchesCategory = catalogCategory === 'all' || item.category === catalogCategory
-      const query = catalogSearch.toLowerCase().trim()
-      const matchesSearch = !query ||
-        item.name.toLowerCase().includes(query) ||
-        (item.description && item.description.toLowerCase().includes(query)) ||
-        (item.categoryName && item.categoryName.toLowerCase().includes(query))
-      return matchesCategory && matchesSearch
-    })
-  }, [exercises, catalogCategory, catalogSearch])
-
-  // UC21: Bắt đầu chọn bài tập để ghi nhận
-  function handleSelectExerciseToLog(exercise) {
-    setLoggingExercise(exercise)
-    setLogError('')
-    const initialDuration = exercise.defaultDurationMinutes || 30
-    setLogForm({
-      durationMinutes: initialDuration,
-      date: getTodayStr(),
-      time: getCurrentTimeStr(),
-      notes: '',
-    })
-
-    // Tính ngay lượng calories nếu đã có cân nặng
-    if (userWeight && userWeight > 0) {
-      const cals = computeCalories(exercise.met, userWeight, initialDuration)
-      setEstimatedCalories(cals)
-    } else {
-      setEstimatedCalories(0)
-    }
+  function onDurationChange(val) {
+    const d = Number(val)
+    setLogForm(p => ({ ...p, duration: val }))
+    setLogErr('')
+    if (!val || d <= 0) { setLogErr('Thời lượng tập luyện phải lớn hơn 0'); setLogCalories(0); return }
+    if (!userWeight) { setLogErr('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe'); setLogCalories(0); return }
+    setLogCalories(calcCalories(logging?.met, userWeight, d))
   }
 
-  // UC21 Luồng 6a: Thay đổi thời lượng tập luyện -> tự động tính lại calories
-  function handleDurationChange(val) {
-    const duration = Number(val)
-    setLogForm((prev) => ({ ...prev, durationMinutes: val }))
-
-    if (!val || duration <= 0) {
-      setLogError('Thời lượng tập luyện phải lớn hơn 0')
-      setEstimatedCalories(0)
-      return
-    }
-
-    if (!userWeight || userWeight <= 0) {
-      setLogError('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe')
-      setEstimatedCalories(0)
-      return
-    }
-
-    if (!loggingExercise?.met || loggingExercise.met <= 0) {
-      setLogError('Bài tập chưa có dữ liệu tính calories')
-      setEstimatedCalories(0)
-      return
-    }
-
-    setLogError('')
-    const cals = computeCalories(loggingExercise.met, userWeight, duration)
-    setEstimatedCalories(cals)
-  }
-
-  // UC21 Bước 6: Nút "Tính calories" thủ công
-  function handleManualCalculate() {
-    const duration = Number(logForm.durationMinutes)
-    // Ngoại lệ 5a
-    if (!duration || duration <= 0) {
-      setLogError('Thời lượng tập luyện phải lớn hơn 0')
-      setEstimatedCalories(0)
-      return
-    }
-    // Ngoại lệ 5b
-    if (!userWeight || userWeight <= 0) {
-      setLogError('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe')
-      setEstimatedCalories(0)
-      return
-    }
-    // Ngoại lệ 7c
-    if (!loggingExercise?.met || loggingExercise.met <= 0) {
-      setLogError('Bài tập chưa có dữ liệu tính calories')
-      setEstimatedCalories(0)
-      return
-    }
-
-    setLogError('')
-    const cals = computeCalories(loggingExercise.met, userWeight, duration)
-    setEstimatedCalories(cals)
-  }
-
-  // UC21 Bước 10: Lưu bài tập
-  async function handleSaveLog() {
-    const duration = Number(logForm.durationMinutes)
-    // Luồng ngoại lệ 5a
-    if (!duration || duration <= 0) {
-      setLogError('Thời lượng tập luyện phải lớn hơn 0')
-      return
-    }
-    // Luồng ngoại lệ 5b
-    if (!userWeight || userWeight <= 0) {
-      setLogError('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe')
-      return
-    }
-    // Luồng ngoại lệ 7c
-    if (!loggingExercise?.met || loggingExercise.met <= 0) {
-      setLogError('Bài tập chưa có dữ liệu tính calories')
-      return
-    }
-
-    setSavingLog(true)
-    setLogError('')
+  async function saveLog() {
+    const d = Number(logForm.duration)
+    if (!d || d <= 0)  { setLogErr('Thời lượng tập luyện phải lớn hơn 0'); return }
+    if (!userWeight)   { setLogErr('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe'); return }
+    if (!logging?.met) { setLogErr('Bài tập chưa có dữ liệu tính calories'); return }
+    setSaving(true); setLogErr('')
     try {
       const { data } = await axiosInstance.post('/exercises/logs', {
-        exerciseId: loggingExercise._id,
-        durationMinutes: duration,
-        date: logForm.date,
-        time: logForm.time,
-        notes: logForm.notes,
+        exerciseId: logging._id, durationMinutes: d,
+        date: logForm.date, time: logForm.time, notes: logForm.notes,
         customWeightKg: userWeight,
       })
-
-      showToast('success', data.message || 'Ghi nhận bài tập thành công')
-      setLoggingExercise(null)
-      fetchTodaySummary()
-      fetchLogs()
-    } catch (err) {
-      // Luồng ngoại lệ 11d
-      const msg = err.response?.data?.message || 'Không thể lưu thông tin bài tập, vui lòng thử lại'
-      setLogError(msg)
-      showToast('error', msg)
-    } finally {
-      setSavingLog(false)
-    }
+      toast('success', data.message || 'Ghi nhận bài tập thành công')
+      setLogging(null)
+      fetchTodayStats(); fetchLogs()
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Không thể lưu thông tin bài tập, vui lòng thử lại'
+      setLogErr(msg); toast('error', msg)
+    } finally { setSaving(false) }
   }
 
-  // UC22 Luồng 5a: Mở modal sửa
-  function handleOpenEdit(log) {
-    setEditingLog(log)
-    setEditError('')
-    setEditForm({
-      exerciseId: log.exerciseId,
-      durationMinutes: log.durationMinutes,
-      date: log.date,
-      time: log.time || '',
-      notes: log.notes || '',
-    })
+  // ─── Edit ──────────────────────────────────────────────────────────────────
 
-    const cals = computeCalories(log.met, log.weightKg, log.durationMinutes)
-    setEditEstimatedCalories(cals)
+  function openEdit(log) {
+    setEditing(log); setEditErr('')
+    setEditForm({ exerciseId: log.exerciseId, duration: log.durationMinutes, date: log.date, time: log.time || '', notes: log.notes || '' })
+    setEditCalories(calcCalories(log.met, log.weightKg, log.durationMinutes))
   }
 
-  // UC22 Luồng 5a & 9a: Đổi bài tập hoặc thời lượng khi sửa -> tính lại calo
-  function handleEditDurationChange(newDuration, newExerciseId = null) {
-    const duration = Number(newDuration)
-    const exId = newExerciseId || editForm.exerciseId
-    const targetExercise = exercises.find((e) => String(e._id) === String(exId))
-    const met = targetExercise ? targetExercise.met : editingLog.met
-
-    setEditForm((prev) => ({
-      ...prev,
-      durationMinutes: newDuration,
-      exerciseId: exId,
-    }))
-
-    if (!duration || duration <= 0) {
-      setEditError('Thông tin bài tập không hợp lệ: Thời lượng phải lớn hơn 0')
-      setEditEstimatedCalories(0)
-      return
-    }
-
-    if (!met || met <= 0) {
-      setEditError('Không tìm thấy dữ liệu bài tập để tính calories')
-      setEditEstimatedCalories(0)
-      return
-    }
-
-    setEditError('')
-    const cals = computeCalories(met, editingLog.weightKg, duration)
-    setEditEstimatedCalories(cals)
+  function onEditDuration(dur, exId = null) {
+    const d = Number(dur)
+    const eId = exId || editForm.exerciseId
+    const ex = exercises.find(e => String(e._id) === String(eId))
+    const met = ex ? ex.met : editing.met
+    setEditForm(p => ({ ...p, duration: dur, exerciseId: eId }))
+    setEditErr('')
+    if (!d || d <= 0) { setEditErr('Thời lượng phải lớn hơn 0'); setEditCalories(0); return }
+    setEditCalories(calcCalories(met, editing.weightKg, d))
   }
 
-  // UC22 Bước 7a & 10a: Lưu chỉnh sửa
-  async function handleSaveEdit() {
-    const duration = Number(editForm.durationMinutes)
-    // Luồng ngoại lệ 7b
-    if (!duration || duration <= 0) {
-      setEditError('Thông tin bài tập không hợp lệ')
-      return
-    }
-
-    setSavingEdit(true)
-    setEditError('')
+  async function saveEdit() {
+    if (!Number(editForm.duration) || Number(editForm.duration) <= 0) { setEditErr('Thời lượng phải lớn hơn 0'); return }
+    setSavingEdit(true); setEditErr('')
     try {
-      const { data } = await axiosInstance.patch(`/exercises/logs/${editingLog._id}`, {
-        exerciseId: editForm.exerciseId,
-        durationMinutes: duration,
-        date: editForm.date,
-        time: editForm.time,
-        notes: editForm.notes,
+      const { data } = await axiosInstance.patch(`/exercises/logs/${editing._id}`, {
+        exerciseId: editForm.exerciseId, durationMinutes: Number(editForm.duration),
+        date: editForm.date, time: editForm.time, notes: editForm.notes,
       })
-
-      showToast('success', data.message || 'Cập nhật bài tập thành công')
-      setEditingLog(null)
-      fetchTodaySummary()
-      fetchLogs()
-    } catch (err) {
-      // Ngoại lệ 8e, 9c, 8f
-      const msg = err.response?.data?.message || 'Không thể cập nhật dữ liệu, vui lòng thử lại'
-      setEditError(msg)
-      showToast('error', msg)
-      if (err.response?.status === 404) {
-        setEditingLog(null)
-        fetchLogs()
-      }
-    } finally {
-      setSavingEdit(false)
-    }
+      toast('success', data.message || 'Cập nhật bài tập thành công')
+      setEditing(null); fetchTodayStats(); fetchLogs()
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Không thể cập nhật dữ liệu, vui lòng thử lại'
+      setEditErr(msg); toast('error', msg)
+      if (e.response?.status === 404) { setEditing(null); fetchLogs() }
+    } finally { setSavingEdit(false) }
   }
 
-  // UC22 Luồng 5b: Xóa bản ghi
-  async function handleConfirmDelete() {
-    if (!deletingLog) return
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
+  async function confirmDelete() {
+    if (!deleting) return
     setIsDeleting(true)
     try {
-      const { data } = await axiosInstance.delete(`/exercises/logs/${deletingLog._id}`)
-      showToast('success', data.message || 'Xóa bài tập thành công')
-      setDeletingLog(null)
-      fetchTodaySummary()
-      fetchLogs()
-    } catch (err) {
-      // Luồng ngoại lệ 8e, 8f
-      const msg = err.response?.data?.message || 'Không thể cập nhật dữ liệu, vui lòng thử lại'
-      showToast('error', msg)
-      if (err.response?.status === 404) {
-        setDeletingLog(null)
-        fetchLogs()
-      }
-    } finally {
-      setIsDeleting(false)
-    }
+      const { data } = await axiosInstance.delete(`/exercises/logs/${deleting._id}`)
+      toast('success', data.message || 'Xóa bài tập thành công')
+      setDeleting(null); fetchTodayStats(); fetchLogs()
+    } catch (e) {
+      toast('error', e.response?.data?.message || 'Không thể cập nhật dữ liệu, vui lòng thử lại')
+      if (e.response?.status === 404) { setDeleting(null); fetchLogs() }
+    } finally { setIsDeleting(false) }
   }
 
-  // Summary of filtered logs
-  const historySummary = useMemo(() => {
-    const totalCalories = logs.reduce((sum, item) => sum + (item.caloriesBurned || 0), 0)
-    const totalMinutes = logs.reduce((sum, item) => sum + (item.durationMinutes || 0), 0)
-    return {
-      totalCalories,
-      totalMinutes,
-      totalSessions: logs.length,
-    }
-  }, [logs])
+  const histSummary = useMemo(() => ({
+    calories: logs.reduce((s, l) => s + (l.caloriesBurned || 0), 0),
+    minutes:  logs.reduce((s, l) => s + (l.durationMinutes || 0), 0),
+    sessions: logs.length,
+  }), [logs])
+
+  // ─── JSX ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="dashboard-shell foodscan-shell ex-page-shell">
-      {/* Toast Feedback */}
-      {toastMessage && (
-        <div className={`ex-toast ex-toast--${toastMessage.type}`} role="alert">
-          <i className={`bi ${toastMessage.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`} />
-          <span>{toastMessage.text}</span>
-          <button type="button" onClick={() => setToastMessage(null)} aria-label="Đóng thông báo">
-            <i className="bi bi-x" />
-          </button>
+    <div className="dashboard-shell foodscan-shell ex-shell">
+
+      {/* Toast */}
+      {toastMsg && (
+        <div className={`ex-toast ex-toast--${toastMsg.type}`} role="alert">
+          <i className={`bi ${toastMsg.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`} />
+          <span>{toastMsg.text}</span>
+          <button type="button" onClick={() => setToastMsg(null)}><i className="bi bi-x" /></button>
         </div>
       )}
 
-      {/* TOPBAR / HEADER NAVIGATION */}
+      {/* ── Header (đồng bộ với MealDiaryPage) ── */}
       <header className="dashboard-header">
         <Link className="dashboard-logo" to="/dashboard">
           <span><i className="bi bi-leaf-fill" /></span>NutriLens
@@ -494,14 +289,14 @@ export default function ExercisePage() {
         <nav className="dashboard-nav" aria-label="Điều hướng chính">
           <Link to="/dashboard">Tổng quan</Link>
           <FoodNavMenu />
-          <Link to="/exercise" className="active">Luyện tập</Link>
+          <ExerciseNavMenu />
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
           <Link to="/dashboard">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search">
-            <i className="bi bi-search" />Tra cứu bài tập, calo...
+            <i className="bi bi-search" />Tra cứu thực phẩm, món ăn...
           </span>
           <button className="foodscan-bell" type="button" aria-label="Thông báo">
             <i className="bi bi-bell" />
@@ -509,9 +304,8 @@ export default function ExercisePage() {
           <div className="profile-menu">
             <button
               className="dashboard-avatar"
-              onClick={() => setProfileOpen((o) => !o)}
-              aria-expanded={profileOpen}
-              aria-haspopup="menu"
+              onClick={() => setProfileOpen(o => !o)}
+              aria-expanded={profileOpen} aria-haspopup="menu"
               title="Mở menu tài khoản"
             >
               {user?.avatarUrl ? <img src={user.avatarUrl} alt="Avatar" /> : firstName.charAt(0).toUpperCase()}
@@ -534,276 +328,159 @@ export default function ExercisePage() {
         </div>
       </header>
 
-      {/* MAIN CONTAINER */}
-      <main className="ex-main-container">
-        {/* HERO BANNER */}
-        <section className="ex-hero">
-          <div className="ex-hero-content">
-            <div className="ex-hero-badge">
-              <i className="bi bi-fire" /> Module 5: Exercise &amp; Calorie Burn
-            </div>
-            <h1>Trung tâm Luyện tập &amp; Thể chất</h1>
+      <main className="ex-main">
+
+        {/* ── Page heading (tối giản, hiện đại, không có nút dư thừa) ── */}
+        <section className="fs-page-heading" style={{ marginBottom: 20 }}>
+          <span className="fs-page-icon"><i className="bi bi-activity" /></span>
+          <div>
+            <h1>Luyện Tập &amp; Vận Động</h1>
+            <p>Ghi nhận bài tập, ước tính lượng calories tiêu hao và theo dõi lịch sử rèn luyện thể chất.</p>
+          </div>
+        </section>
+
+        {/* ── Cân nặng chưa thiết lập ── */}
+        {(!userWeight || userWeight <= 0) && (
+          <div className="ex-missing-weight-bar">
+            <i className="bi bi-exclamation-circle-fill" />
             <p>
-              Ghi nhận các bài tập thể chất từ danh mục chuẩn hóa, ước tính lượng calories tiêu hao khoa học
-              dựa trên chỉ số MET (Metabolic Equivalent of Task) và theo dõi lịch sử vận động của bạn.
+              Hệ thống cần thông tin <strong>cân nặng</strong> để ước tính lượng calories tiêu hao.
             </p>
-
-            <div className="ex-hero-actions">
-              <button
-                type="button"
-                className={`ex-pill-btn ${activeTab === 'catalog' ? 'ex-pill-btn--primary' : 'ex-pill-btn--outline'}`}
-                onClick={() => setActiveTab('catalog')}
-              >
-                <i className="bi bi-plus-circle" /> Thêm bài tập (UC21)
-              </button>
-              <button
-                type="button"
-                className={`ex-pill-btn ${activeTab === 'history' ? 'ex-pill-btn--primary' : 'ex-pill-btn--outline'}`}
-                onClick={() => setActiveTab('history')}
-              >
-                <i className="bi bi-clock-history" /> Lịch sử tập luyện (UC22)
-              </button>
-            </div>
+            <Link to="/profile">Cập nhật hồ sơ sức khỏe →</Link>
           </div>
+        )}
 
-          {/* User Profile Weight Card Indicator */}
-          <div className="ex-hero-weight-card">
-            <div className="ex-weight-header">
-              <i className="bi bi-person-badge" />
-              <span>Cân nặng áp dụng tính Calo</span>
+        {/* ── KPI hôm nay ── */}
+        <section className="ex-kpi-row">
+          <article className="ex-kpi-card">
+            <div className="ex-kpi-icon ex-kpi-icon--fire"><i className="bi bi-fire" /></div>
+            <div>
+              <span className="ex-kpi-label">Calories tiêu hao hôm nay</span>
+              <strong className="ex-kpi-value">{todayStats.calories.toLocaleString('vi-VN')} <small>kcal</small></strong>
             </div>
-            {userWeight && userWeight > 0 ? (
-              <div className="ex-weight-body">
-                <div className="ex-weight-val">
-                  <strong>{userWeight}</strong> <small>kg</small>
-                </div>
-                <span className="ex-weight-tag ex-weight-tag--valid">
-                  <i className="bi bi-check-circle" /> Đồng bộ từ Hồ sơ sức khỏe
-                </span>
-                <Link to="/profile" className="ex-weight-link">
-                  Chỉnh sửa cân nặng →
-                </Link>
-              </div>
-            ) : (
-              <div className="ex-weight-body ex-weight-body--missing">
-                <div className="ex-weight-missing-alert">
-                  <i className="bi bi-exclamation-triangle-fill" /> Chưa có cân nặng
-                </div>
-                <p>Hệ thống cần thông tin cân nặng của bạn để ước tính chính xác lượng Calo tiêu hao.</p>
-                <Link to="/profile" className="ex-btn-update-weight">
-                  Cập nhật hồ sơ ngay
-                </Link>
-              </div>
-            )}
-          </div>
+          </article>
+          <article className="ex-kpi-card">
+            <div className="ex-kpi-icon ex-kpi-icon--time"><i className="bi bi-stopwatch" /></div>
+            <div>
+              <span className="ex-kpi-label">Thời gian tập hôm nay</span>
+              <strong className="ex-kpi-value">{todayStats.minutes} <small>phút</small></strong>
+            </div>
+          </article>
+          <article className="ex-kpi-card">
+            <div className="ex-kpi-icon ex-kpi-icon--count"><i className="bi bi-activity" /></div>
+            <div>
+              <span className="ex-kpi-label">Số bài tập đã hoàn thành</span>
+              <strong className="ex-kpi-value">{todayStats.count} <small>bài</small></strong>
+            </div>
+          </article>
+          <article className="ex-kpi-card ex-kpi-card--weight">
+            <div className="ex-kpi-icon ex-kpi-icon--weight"><i className="bi bi-person-badge" /></div>
+            <div>
+              <span className="ex-kpi-label">Cân nặng dùng tính calo</span>
+              {userWeight
+                ? <strong className="ex-kpi-value">{userWeight} <small>kg</small></strong>
+                : <span className="ex-kpi-missing">Chưa thiết lập</span>
+              }
+            </div>
+          </article>
         </section>
 
-        {/* METRICS HIGHLIGHT BAR */}
-        <section className="ex-stats-grid">
-          <div className="ex-stat-card">
-            <div className="ex-stat-icon ex-stat-icon--fire">
-              <i className="bi bi-fire" />
-            </div>
-            <div className="ex-stat-info">
-              <span className="ex-stat-label">Calo tiêu hao hôm nay</span>
-              <strong className="ex-stat-val">
-                {todaySummary.totalCalories.toLocaleString('vi-VN')} <small>kcal</small>
-              </strong>
-              <span className="ex-stat-sub">Mục tiêu khuyến nghị: ~350 - 500 kcal</span>
-            </div>
-          </div>
-
-          <div className="ex-stat-card">
-            <div className="ex-stat-icon ex-stat-icon--clock">
-              <i className="bi bi-stopwatch-fill" />
-            </div>
-            <div className="ex-stat-info">
-              <span className="ex-stat-label">Thời gian tập hôm nay</span>
-              <strong className="ex-stat-val">
-                {todaySummary.totalMinutes} <small>phút</small>
-              </strong>
-              <span className="ex-stat-sub">Khuyến nghị WHO: ≥ 30 phút/ngày</span>
-            </div>
-          </div>
-
-          <div className="ex-stat-card">
-            <div className="ex-stat-icon ex-stat-icon--run">
-              <i className="bi bi-activity" />
-            </div>
-            <div className="ex-stat-info">
-              <span className="ex-stat-label">Số bài tập hôm nay</span>
-              <strong className="ex-stat-val">
-                {todaySummary.count} <small>bài</small>
-              </strong>
-              <span className="ex-stat-sub">
-                {todaySummary.count > 0 ? 'Tuyệt vời! Duy trì phong độ' : 'Chưa có bài tập nào hôm nay'}
-              </span>
-            </div>
-          </div>
-
-          <div className="ex-stat-card ex-stat-card--formula">
-            <div className="ex-stat-icon ex-stat-icon--info">
-              <i className="bi bi-calculator" />
-            </div>
-            <div className="ex-stat-info">
-              <span className="ex-stat-label">Công thức ước tính (ACSM)</span>
-              <div className="ex-formula-preview">
-                <code>Calories = (MET × 3.5 × kg × phút) / 200</code>
-              </div>
-              <span className="ex-stat-sub">Chuẩn chuyển hóa năng lượng thể chất</span>
-            </div>
-          </div>
-        </section>
-
-        {/* TAB CONTROLS */}
+        {/* ── Tab nav ── */}
         <div className="ex-tab-nav" role="tablist">
           <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'catalog'}
-            className={`ex-tab-item ${activeTab === 'catalog' ? 'active' : ''}`}
-            onClick={() => setActiveTab('catalog')}
+            type="button" role="tab"
+            className={`ex-tab-btn ${activeTab === 'catalog' ? 'active' : ''}`}
+            onClick={() => switchTab('catalog')}
           >
-            <i className="bi bi-journal-plus" />
-            <span>Danh mục bài tập &amp; Ghi nhận (UC21)</span>
+            <i className="bi bi-journal-plus" /> Danh mục bài tập
           </button>
           <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'history'}
-            className={`ex-tab-item ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => setActiveTab('history')}
+            type="button" role="tab"
+            className={`ex-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => switchTab('history')}
           >
-            <i className="bi bi-list-check" />
-            <span>Lịch sử tập luyện (UC22)</span>
-            {logs.length > 0 && <span className="ex-tab-badge">{logs.length}</span>}
+            <i className="bi bi-clock-history" /> Lịch sử tập luyện
+            {logs.length > 0 && <span className="ex-tab-count">{logs.length}</span>}
           </button>
         </div>
 
-        {/* =========================================================================
-            TAB 1: GHI NHẬN BÀI TẬP (UC21)
-            ========================================================================= */}
+        {/* ══════════════════════════════════════════════════
+            TAB 1: DANH MỤC BÀI TẬP
+            ══════════════════════════════════════════════════ */}
         {activeTab === 'catalog' && (
-          <section className="ex-tab-pane" aria-label="Danh mục bài tập">
-            {/* Filter & Search Toolbar (UC21 Luồng 4a) */}
+          <section>
+            {/* Toolbar */}
             <div className="ex-catalog-toolbar">
-              <div className="ex-search-box">
+              <div className="ex-search-wrap">
                 <i className="bi bi-search" />
                 <input
                   type="text"
-                  placeholder="Tìm kiếm bài tập (vd: chạy bộ, nhảy dây, yoga, bơi lội, đạp xe...)"
-                  value={catalogSearch}
-                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  placeholder="Tìm bài tập (vd: chạy bộ, yoga, đạp xe...)"
+                  value={searchQ}
+                  onChange={e => setSearchQ(e.target.value)}
                 />
-                {catalogSearch && (
-                  <button type="button" onClick={() => setCatalogSearch('')} aria-label="Xóa từ khóa">
+                {searchQ && (
+                  <button type="button" className="ex-clear-btn" onClick={() => setSearchQ('')} aria-label="Xóa">
                     <i className="bi bi-x-circle-fill" />
                   </button>
                 )}
               </div>
-
-              <div className="ex-category-pills">
-                {CATEGORIES.map((cat) => (
+              <div className="ex-cat-tabs" role="group">
+                {CATEGORY_TABS.map(ct => (
                   <button
-                    key={cat.id}
-                    type="button"
-                    className={`ex-cat-pill ${catalogCategory === cat.id ? 'active' : ''}`}
-                    onClick={() => setCatalogCategory(cat.id)}
+                    key={ct.id} type="button"
+                    className={`ex-cat-tab ${catFilter === ct.id ? 'active' : ''}`}
+                    onClick={() => setCatFilter(ct.id)}
                   >
-                    <i className={`bi ${cat.icon}`} />
-                    <span>{cat.label}</span>
+                    <i className={`bi ${ct.icon}`} />{ct.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Precondition Notice (Ngoại lệ 5b) */}
-            {(!userWeight || userWeight <= 0) && (
-              <div className="ex-warning-banner">
-                <i className="bi bi-exclamation-triangle-fill" />
-                <div>
-                  <strong>Chưa có thông tin cân nặng trong hồ sơ sức khỏe!</strong>
-                  <p>Hệ thống cần cân nặng của bạn để tính lượng calories tiêu hao. Vui lòng cập nhật trước khi ghi nhận bài tập.</p>
-                </div>
-                <Link to="/profile" className="ex-banner-btn">
-                  Cập nhật cân nặng →
-                </Link>
-              </div>
-            )}
-
-            {/* Exercise Grid */}
-            {loadingExercises ? (
-              <div className="ex-loading-state">
-                <div className="spinner-border text-success" role="status" />
+            {/* Grid */}
+            {loadingEx ? (
+              <div className="ex-state-empty">
+                <span className="fs-mini-spinner" />
                 <p>Đang tải danh mục bài tập...</p>
               </div>
-            ) : filteredExercises.length === 0 ? (
-              <div className="ex-empty-state">
+            ) : filteredEx.length === 0 ? (
+              <div className="ex-state-empty">
                 <i className="bi bi-search" />
-                <h3>Không tìm thấy bài tập phù hợp</h3>
-                <p>Vui lòng thử từ khóa khác hoặc bỏ chọn bộ lọc để xem toàn bộ danh mục bài tập.</p>
-                <button
-                  type="button"
-                  className="ex-pill-btn ex-pill-btn--outline"
-                  onClick={() => {
-                    setCatalogSearch('')
-                    setCatalogCategory('all')
-                  }}
-                >
-                  Xóa bộ lọc tìm kiếm
+                <strong>Không tìm thấy bài tập phù hợp</strong>
+                <p>Thử từ khóa khác hoặc bỏ chọn bộ lọc để xem toàn bộ danh mục.</p>
+                <button className="ex-btn ex-btn--outline" onClick={() => { setSearchQ(''); setCatFilter('all') }}>
+                  Xóa bộ lọc
                 </button>
               </div>
             ) : (
               <div className="ex-exercise-grid">
-                {filteredExercises.map((ex) => {
-                  const intensityStyle = INTENSITY_COLORS[ex.intensity] || INTENSITY_COLORS['Trung bình']
-                  // Sample calorie estimate for standard 30 minutes
-                  const sampleCals = userWeight ? computeCalories(ex.met, userWeight, 30) : null
-
+                {filteredEx.map(ex => {
+                  const chip = INTENSITY_CHIP[ex.intensity] || INTENSITY_CHIP['Trung bình']
+                  const est  = userWeight ? calcCalories(ex.met, userWeight, 30) : null
                   return (
-                    <article key={ex._id} className="ex-card">
-                      <div className="ex-card-top">
+                    <article key={ex._id} className="fd-panel ex-card">
+                      <div className="ex-card-head">
                         <div className="ex-card-icon">
                           <i className={`bi ${ex.icon || 'bi-activity'}`} />
                         </div>
-                        <div className="ex-card-tags">
-                          <span
-                            className="ex-badge-intensity"
-                            style={{
-                              background: intensityStyle.bg,
-                              color: intensityStyle.color,
-                              borderColor: intensityStyle.border,
-                            }}
-                          >
-                            {ex.intensity}
+                        <div className="ex-card-badges">
+                          <span className={`ex-chip ${chip.cls}`}>
+                            <i className={`bi ${chip.icon}`} />{ex.intensity}
                           </span>
-                          <span className="ex-badge-met" title="Giá trị MET (Mức tiêu hao năng lượng thể chất)">
-                            MET: <b>{ex.met}</b>
-                          </span>
+                          <span className="ex-chip ex-chip--met">MET {ex.met}</span>
                         </div>
                       </div>
-
-                      <div className="ex-card-body">
-                        <h3>{ex.name}</h3>
-                        <p className="ex-card-desc">{ex.description || 'Bài tập tăng cường sức khỏe và đốt mỡ.'}</p>
-                      </div>
-
-                      <div className="ex-card-footer">
-                        <div className="ex-card-meta">
-                          <span className="ex-meta-est">
-                            {sampleCals != null ? (
-                              <>Đốt ~<strong>{sampleCals}</strong> kcal / 30'</>
-                            ) : (
-                              <>Tiêu chuẩn ~30 phút</>
-                            )}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          className="ex-btn-log"
-                          onClick={() => handleSelectExerciseToLog(ex)}
-                        >
-                          <i className="bi bi-plus-lg" /> Chọn bài tập
+                      <h3 className="ex-card-title">{ex.name}</h3>
+                      <p className="ex-card-desc">{ex.description || ''}</p>
+                      <div className="ex-card-foot">
+                        {est != null ? (
+                          <span className="ex-card-est"><i className="bi bi-fire" /> ~<strong>{est}</strong> kcal / 30 phút</span>
+                        ) : (
+                          <span className="ex-card-est ex-card-est--met"><i className="bi bi-lightning-charge" /> Tiêu chuẩn MET <strong>{ex.met}</strong></span>
+                        )}
+                        <button type="button" className="ex-btn ex-btn--primary" onClick={() => openLog(ex)}>
+                          <i className="bi bi-plus-lg" /> Ghi nhận
                         </button>
                       </div>
                     </article>
@@ -814,203 +491,121 @@ export default function ExercisePage() {
           </section>
         )}
 
-        {/* =========================================================================
-            TAB 2: LỊCH SỬ TẬP LUYỆN (UC22)
-            ========================================================================= */}
+        {/* ══════════════════════════════════════════════════
+            TAB 2: LỊCH SỬ TẬP LUYỆN
+            ══════════════════════════════════════════════════ */}
         {activeTab === 'history' && (
-          <section className="ex-tab-pane" aria-label="Lịch sử bài tập">
-            {/* History Filter Toolbar (UC22 Luồng chính bước 3) */}
-            <div className="ex-history-toolbar">
-              <div className="ex-period-selector">
-                <span className="ex-period-label">Khoảng thời gian:</span>
-                <button
-                  type="button"
-                  className={`ex-filter-btn ${historyPeriod === 'today' ? 'active' : ''}`}
-                  onClick={() => setHistoryPeriod('today')}
-                >
-                  Hôm nay
-                </button>
-                <button
-                  type="button"
-                  className={`ex-filter-btn ${historyPeriod === '7d' ? 'active' : ''}`}
-                  onClick={() => setHistoryPeriod('7d')}
-                >
-                  7 ngày qua
-                </button>
-                <button
-                  type="button"
-                  className={`ex-filter-btn ${historyPeriod === '30d' ? 'active' : ''}`}
-                  onClick={() => setHistoryPeriod('30d')}
-                >
-                  30 ngày qua
-                </button>
-                <button
-                  type="button"
-                  className={`ex-filter-btn ${historyPeriod === 'all' ? 'active' : ''}`}
-                  onClick={() => setHistoryPeriod('all')}
-                >
-                  Tất cả
-                </button>
-                <button
-                  type="button"
-                  className={`ex-filter-btn ${historyPeriod === 'custom' ? 'active' : ''}`}
-                  onClick={() => setHistoryPeriod('custom')}
-                >
-                  Tùy chọn ngày
-                </button>
+          <section>
+            {/* Toolbar lịch sử */}
+            <div className="ex-history-bar">
+              <div className="ex-period-btns">
+                {[
+                  { id: 'today', label: 'Hôm nay' },
+                  { id: '7d',    label: '7 ngày' },
+                  { id: '30d',   label: '30 ngày' },
+                  { id: 'all',   label: 'Tất cả' },
+                  { id: 'custom',label: 'Tùy chọn' },
+                ].map(p => (
+                  <button key={p.id} type="button"
+                    className={`ex-period-btn ${period === p.id ? 'active' : ''}`}
+                    onClick={() => setPeriod(p.id)}
+                  >{p.label}</button>
+                ))}
               </div>
-
-              {historyPeriod === 'custom' && (
-                <div className="ex-custom-dates">
+              {period === 'custom' && (
+                <div className="ex-date-range">
                   <label>
-                    <span>Từ ngày:</span>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      max={getTodayStr()}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                    />
+                    Từ&nbsp;<input type="date" value={customStart} max={getTodayStr()} onChange={e => setCustomStart(e.target.value)} />
                   </label>
+                  <span>—</span>
                   <label>
-                    <span>Đến ngày:</span>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      max={getTodayStr()}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                    />
+                    Đến&nbsp;<input type="date" value={customEnd} max={getTodayStr()} onChange={e => setCustomEnd(e.target.value)} />
                   </label>
                 </div>
               )}
+              <select
+                className="ex-cat-select"
+                value={histCat}
+                onChange={e => setHistCat(e.target.value)}
+              >
+                <option value="all">Tất cả nhóm</option>
+                <option value="cardio">Cardio &amp; Vận động</option>
+                <option value="strength">Sức mạnh &amp; Gym</option>
+                <option value="flexibility">Yoga &amp; Thư giãn</option>
+                <option value="sports">Thể thao</option>
+              </select>
+            </div>
 
-              <div className="ex-category-select-wrapper">
-                <select
-                  value={historyCategory}
-                  onChange={(e) => setHistoryCategory(e.target.value)}
-                  className="ex-select-category"
-                >
-                  <option value="all">Tất cả nhóm bài tập</option>
-                  <option value="cardio">Cardio &amp; Vận động</option>
-                  <option value="strength">Sức mạnh &amp; Gym</option>
-                  <option value="flexibility">Yoga &amp; Thư giãn</option>
-                  <option value="sports">Thể thao đối kháng</option>
-                </select>
+            {/* Tổng kết kỳ lọc */}
+            <div className="ex-summary-strip">
+              <div className="ex-sum-item">
+                <span>{histSummary.sessions}</span><small>Buổi tập</small>
+              </div>
+              <div className="ex-sum-sep" />
+              <div className="ex-sum-item">
+                <span>{histSummary.minutes}</span><small>Phút</small>
+              </div>
+              <div className="ex-sum-sep" />
+              <div className="ex-sum-item ex-sum-item--hi">
+                <span>{histSummary.calories.toLocaleString('vi-VN')}</span><small>kcal tiêu hao</small>
               </div>
             </div>
 
-            {/* Filter Summary Banner */}
-            <div className="ex-history-summary-box">
-              <div className="ex-summary-item">
-                <span>Số buổi tập</span>
-                <strong>{historySummary.totalSessions} <small>buổi</small></strong>
-              </div>
-              <div className="ex-summary-item">
-                <span>Tổng thời gian</span>
-                <strong>{historySummary.totalMinutes} <small>phút</small></strong>
-              </div>
-              <div className="ex-summary-item ex-summary-item--highlight">
-                <span>Tổng calories tiêu hao</span>
-                <strong>{historySummary.totalCalories.toLocaleString('vi-VN')} <small>kcal</small></strong>
-              </div>
-            </div>
-
-            {/* History Logs List / Table */}
+            {/* Danh sách */}
             {loadingLogs ? (
-              <div className="ex-loading-state">
-                <div className="spinner-border text-success" role="status" />
+              <div className="ex-state-empty">
+                <span className="fs-mini-spinner" />
                 <p>Đang tải lịch sử tập luyện...</p>
               </div>
             ) : logs.length === 0 ? (
-              /* Luồng ngoại lệ 3a & 4a */
-              <div className="ex-empty-state">
+              <div className="ex-state-empty">
                 <i className="bi bi-calendar-x" />
-                <h3>Không tìm thấy dữ liệu phù hợp</h3>
-                <p>Không có bản ghi bài tập nào trong khoảng thời gian hoặc điều kiện lọc này.</p>
-                <div className="ex-empty-actions">
-                  <button
-                    type="button"
-                    className="ex-pill-btn ex-pill-btn--outline"
-                    onClick={() => {
-                      setHistoryPeriod('all')
-                      setHistoryCategory('all')
-                    }}
-                  >
-                    Xem tất cả lịch sử
+                <strong>Không tìm thấy dữ liệu phù hợp</strong>
+                <p>Không có bản ghi nào trong khoảng thời gian hoặc điều kiện lọc này.</p>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button className="ex-btn ex-btn--outline" onClick={() => { setPeriod('all'); setHistCat('all') }}>
+                    Xem tất cả
                   </button>
-                  <button
-                    type="button"
-                    className="ex-pill-btn ex-pill-btn--primary"
-                    onClick={() => setActiveTab('catalog')}
-                  >
-                    Thêm bài tập ngay
+                  <button className="ex-btn ex-btn--primary" onClick={() => setActiveTab('catalog')}>
+                    Thêm bài tập
                   </button>
                 </div>
               </div>
             ) : (
               <div className="ex-log-list">
-                {logs.map((log) => (
-                  <article key={log._id} className="ex-log-card">
+                {logs.map(log => (
+                  <article key={log._id} className="fd-panel ex-log-row">
                     <div className="ex-log-left">
-                      <div className="ex-log-icon">
-                        <i className="bi bi-lightning-fill" />
-                      </div>
-                      <div className="ex-log-main">
-                        <div className="ex-log-title-row">
-                          <h4>{log.exerciseName}</h4>
+                      <div className="ex-log-icon"><i className="bi bi-lightning-fill" /></div>
+                      <div className="ex-log-info">
+                        <div className="ex-log-top">
+                          <strong>{log.exerciseName}</strong>
                           <span className="ex-log-date">
-                            <i className="bi bi-calendar3" /> {formatDateDisplay(log.date)} {log.time ? `· ${log.time}` : ''}
+                            <i className="bi bi-calendar3" /> {formatDateShort(log.date)}
+                            {log.time && <>&nbsp;·&nbsp;{log.time}</>}
                           </span>
                         </div>
-                        <div className="ex-log-meta-pills">
-                          <span className="ex-meta-badge">
-                            <i className="bi bi-stopwatch" /> <b>{log.durationMinutes}</b> phút
-                          </span>
-                          <span className="ex-meta-badge">
-                            <i className="bi bi-speedometer2" /> MET: <b>{log.met}</b>
-                          </span>
-                          <span className="ex-meta-badge">
-                            <i className="bi bi-person" /> Cân nặng mốc: <b>{log.weightKg} kg</b>
-                          </span>
-                          {log.notes && (
-                            <span className="ex-meta-notes" title={log.notes}>
-                              <i className="bi bi-chat-left-text" /> {log.notes}
-                            </span>
-                          )}
+                        <div className="ex-log-chips">
+                          <span className="ex-meta-chip"><i className="bi bi-stopwatch" /> {log.durationMinutes} phút</span>
+                          <span className="ex-meta-chip">MET {log.met}</span>
+                          <span className="ex-meta-chip"><i className="bi bi-person" /> {log.weightKg} kg</span>
+                          {log.notes && <span className="ex-meta-note" title={log.notes}><i className="bi bi-chat-left-text" /> {log.notes}</span>}
                         </div>
                       </div>
                     </div>
-
                     <div className="ex-log-right">
-                      <div className="ex-log-cal-burned">
-                        <strong>-{log.caloriesBurned}</strong>
-                        <span>kcal tiêu hao</span>
+                      <div className="ex-log-burn">
+                        <strong>−{log.caloriesBurned}</strong>
+                        <small>kcal</small>
                       </div>
                       <div className="ex-log-actions">
-                        {/* Bước 5: Xem chi tiết */}
-                        <button
-                          type="button"
-                          className="ex-action-btn"
-                          title="Xem chi tiết"
-                          onClick={() => setDetailLog(log)}
-                        >
+                        <button type="button" className="ex-icon-btn" title="Xem chi tiết" onClick={() => setDetailLog(log)}>
                           <i className="bi bi-eye" />
                         </button>
-                        {/* Luồng 5a: Sửa */}
-                        <button
-                          type="button"
-                          className="ex-action-btn"
-                          title="Sửa bản ghi"
-                          onClick={() => handleOpenEdit(log)}
-                        >
-                          <i className="bi bi-pencil-square" />
+                        <button type="button" className="ex-icon-btn" title="Chỉnh sửa" onClick={() => openEdit(log)}>
+                          <i className="bi bi-pencil" />
                         </button>
-                        {/* Luồng 5b: Xóa */}
-                        <button
-                          type="button"
-                          className="ex-action-btn ex-action-btn--delete"
-                          title="Xóa bài tập"
-                          onClick={() => setDeletingLog(log)}
-                        >
+                        <button type="button" className="ex-icon-btn ex-icon-btn--del" title="Xóa" onClick={() => setDeleting(log)}>
                           <i className="bi bi-trash3" />
                         </button>
                       </div>
@@ -1023,503 +618,306 @@ export default function ExercisePage() {
         )}
       </main>
 
-      {/* =========================================================================
-          MODAL 1: GHI NHẬN BÀI TẬP (UC21)
-          ========================================================================= */}
-      {loggingExercise && (
-        <div className="ex-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="ex-modal-box">
-            <div className="ex-modal-header">
+      {/* ══════════════════════════════════════════════════
+          MODAL: Ghi nhận bài tập
+          ══════════════════════════════════════════════════ */}
+      {logging && (
+        <div className="ex-overlay" role="dialog" aria-modal="true">
+          <div className="ex-dialog">
+            <div className="ex-dialog-head">
               <div>
-                <span className="ex-modal-eyebrow">
-                  <i className="bi bi-activity" /> Ghi nhận bài tập (UC21)
-                </span>
-                <h3>{loggingExercise.name}</h3>
+                <small>Ghi nhận bài tập</small>
+                <h3>{logging.name}</h3>
               </div>
-              <button
-                type="button"
-                className="ex-modal-close"
-                onClick={() => setLoggingExercise(null)}
-                aria-label="Đóng"
-              >
+              <button type="button" className="ex-dialog-close" onClick={() => setLogging(null)} aria-label="Đóng">
                 <i className="bi bi-x-lg" />
               </button>
             </div>
 
-            <div className="ex-modal-body">
-              {/* Exercise Meta Information */}
-              <div className="ex-modal-ex-info">
-                <div className="ex-info-chip">
-                  <span>Chỉ số MET:</span>
-                  <b>{loggingExercise.met}</b>
-                </div>
-                <div className="ex-info-chip">
-                  <span>Cường độ:</span>
-                  <b>{loggingExercise.intensity}</b>
-                </div>
-                <div className="ex-info-chip">
-                  <span>Cân nặng của bạn:</span>
-                  <b>{userWeight ? `${userWeight} kg` : 'Chưa thiết lập'}</b>
-                </div>
+            <div className="ex-dialog-body">
+              {/* Info chips */}
+              <div className="ex-info-chips">
+                <span>MET: <b>{logging.met}</b></span>
+                <span>Cường độ: <b>{logging.intensity}</b></span>
+                <span>Cân nặng: <b>{userWeight ? `${userWeight} kg` : '—'}</b></span>
               </div>
 
-              {/* Exception 5b Alert */}
+              {/* Cảnh báo thiếu cân nặng */}
               {(!userWeight || userWeight <= 0) && (
-                <div className="ex-modal-error">
-                  <i className="bi bi-exclamation-octagon-fill" />
+                <div className="ex-dialog-warn">
+                  <i className="bi bi-exclamation-triangle-fill" />
                   <div>
                     <strong>Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe</strong>
-                    <p>Hệ thống không thể ước tính calories nếu thiếu dữ liệu cân nặng.</p>
-                    <Link to="/profile" className="ex-link-inline">
+                    <Link to="/profile" style={{ display: 'block', marginTop: 4, fontSize: '0.82rem', color: '#2563eb' }}>
                       Đi đến Hồ sơ sức khỏe →
                     </Link>
                   </div>
                 </div>
               )}
 
-              {/* Form Inputs */}
+              {/* Ngày & Giờ */}
               <div className="ex-form-row">
-                <div className="ex-form-group">
-                  <label htmlFor="logDate">Ngày tập luyện:</label>
-                  <input
-                    id="logDate"
-                    type="date"
-                    max={getTodayStr()}
-                    value={logForm.date}
-                    onChange={(e) => setLogForm((p) => ({ ...p, date: e.target.value }))}
-                  />
+                <div className="ex-field">
+                  <label>Ngày tập</label>
+                  <input type="date" max={getTodayStr()} value={logForm.date}
+                    onChange={e => setLogForm(p => ({ ...p, date: e.target.value }))} />
                 </div>
-                <div className="ex-form-group">
-                  <label htmlFor="logTime">Giờ thực hiện:</label>
-                  <input
-                    id="logTime"
-                    type="time"
-                    value={logForm.time}
-                    onChange={(e) => setLogForm((p) => ({ ...p, time: e.target.value }))}
-                  />
+                <div className="ex-field">
+                  <label>Giờ thực hiện</label>
+                  <input type="time" value={logForm.time}
+                    onChange={e => setLogForm(p => ({ ...p, time: e.target.value }))} />
                 </div>
               </div>
 
-              {/* Duration Input & Quick Chips */}
-              <div className="ex-form-group">
-                <div className="ex-label-row">
-                  <label htmlFor="logDuration">Thời lượng tập (phút):</label>
-                  <span className="ex-label-hint">Thời lượng phải lớn hơn 0</span>
-                </div>
-                <input
-                  id="logDuration"
-                  type="number"
-                  min="1"
-                  max="1440"
-                  step="1"
-                  placeholder="Nhập số phút (ví dụ: 30)"
-                  value={logForm.durationMinutes}
-                  onChange={(e) => handleDurationChange(e.target.value)}
-                />
+              {/* Thời lượng */}
+              <div className="ex-field">
+                <label>Thời lượng tập (phút)</label>
+                <input type="number" min="1" max="1440" placeholder="Ví dụ: 30"
+                  value={logForm.duration} onChange={e => onDurationChange(e.target.value)} />
                 <div className="ex-quick-chips">
-                  {[15, 30, 45, 60, 90].map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      className={`ex-quick-chip ${Number(logForm.durationMinutes) === mins ? 'active' : ''}`}
-                      onClick={() => handleDurationChange(mins)}
-                    >
-                      +{mins} phút
+                  {[15, 30, 45, 60, 90].map(m => (
+                    <button key={m} type="button"
+                      className={`ex-qchip ${Number(logForm.duration) === m ? 'active' : ''}`}
+                      onClick={() => onDurationChange(m)}>
+                      {m} phút
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Notes Input */}
-              <div className="ex-form-group">
-                <label htmlFor="logNotes">Ghi chú buổi tập (tùy chọn):</label>
-                <input
-                  id="logNotes"
-                  type="text"
-                  maxLength={500}
-                  placeholder="Cảm nhận buổi tập, nhịp tim trung bình, quãng đường..."
-                  value={logForm.notes}
-                  onChange={(e) => setLogForm((p) => ({ ...p, notes: e.target.value }))}
-                />
+              {/* Ghi chú */}
+              <div className="ex-field">
+                <label>Ghi chú <span style={{ fontWeight: 400, color: '#94a3b8' }}>(tùy chọn)</span></label>
+                <input type="text" maxLength={500} placeholder="Cảm nhận buổi tập, nhịp tim..."
+                  value={logForm.notes} onChange={e => setLogForm(p => ({ ...p, notes: e.target.value }))} />
               </div>
 
-              {/* Formula & Calculation Box (UC21 Bước 8 & 9) */}
-              <div className="ex-calc-box">
-                <div className="ex-calc-header">
-                  <div className="ex-calc-title">
-                    <i className="bi bi-lightning-charge-fill" /> Ước tính Calories tiêu hao
-                  </div>
-                  <button
-                    type="button"
-                    className="ex-btn-calc-refresh"
-                    onClick={handleManualCalculate}
-                    title="Tính lại calories"
-                  >
-                    <i className="bi bi-arrow-clockwise" /> Tính calories
-                  </button>
+              {/* Kết quả tính */}
+              <div className="ex-result-box">
+                <div className="ex-result-label"><i className="bi bi-lightning-charge-fill" /> Ước tính calories tiêu hao</div>
+                <div className="ex-result-value">
+                  <strong>{logCalories}</strong> <span>kcal</span>
                 </div>
-
-                <div className="ex-calc-result-row">
-                  <div className="ex-calc-value">
-                    <strong>{estimatedCalories}</strong>
-                    <span>kcal tiêu hao</span>
-                  </div>
-                  <div className="ex-calc-formula-sub">
-                    <code>({loggingExercise.met} MET × 3.5 × {userWeight || 'kg'} × {logForm.durationMinutes || 0}') / 200</code>
-                  </div>
+                <div className="ex-result-formula">
+                  <code>({logging.met} × 3.5 × {userWeight || '?'} × {logForm.duration || 0}) / 200</code>
                 </div>
-
-                <p className="ex-calc-disclaimer">
-                  * Kết quả là lượng calories tiêu hao ước tính dựa trên chuẩn ACSM, không phải giá trị đo trực tiếp tuyệt đối.
-                </p>
+                <p className="ex-result-note">* Lượng calories tiêu hao được ước tính theo công thức MET chuẩn dựa trên cân nặng và thời lượng tập luyện.</p>
               </div>
 
-              {/* Inline Error (Ngoại lệ 5a, 5b, 7c) */}
-              {logError && (
-                <div className="ex-inline-error">
-                  <i className="bi bi-exclamation-circle" /> {logError}
-                </div>
+              {logErr && (
+                <div className="ex-inline-err"><i className="bi bi-exclamation-circle" /> {logErr}</div>
               )}
             </div>
 
-            <div className="ex-modal-footer">
-              <button
-                type="button"
-                className="ex-btn-secondary"
-                onClick={() => setLoggingExercise(null)}
-                disabled={savingLog}
-              >
-                Hủy thao tác
+            <div className="ex-dialog-foot">
+              <button type="button" className="ex-btn ex-btn--ghost" onClick={() => setLogging(null)} disabled={saving}>
+                Hủy
               </button>
-              <button
-                type="button"
-                className="ex-btn-primary"
-                onClick={handleSaveLog}
-                disabled={savingLog || !userWeight || userWeight <= 0 || Number(logForm.durationMinutes) <= 0}
+              <button type="button" className="ex-btn ex-btn--primary"
+                onClick={saveLog}
+                disabled={saving || !userWeight || Number(logForm.duration) <= 0}
               >
-                {savingLog ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" /> Đang lưu...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-check2-circle" /> Lưu vào lịch sử
-                  </>
-                )}
+                {saving
+                  ? <><span className="spinner-border spinner-border-sm me-1" /> Đang lưu...</>
+                  : <><i className="bi bi-check2-circle" /> Lưu bài tập</>
+                }
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 2: CHI TIẾT BÀI TẬP (UC22 Luồng chính bước 6)
-          ========================================================================= */}
+      {/* ══════════════════════════════════════════════════
+          MODAL: Chi tiết bản ghi
+          ══════════════════════════════════════════════════ */}
       {detailLog && (
-        <div className="ex-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="ex-modal-box">
-            <div className="ex-modal-header">
+        <div className="ex-overlay" role="dialog" aria-modal="true">
+          <div className="ex-dialog">
+            <div className="ex-dialog-head">
               <div>
-                <span className="ex-modal-eyebrow">
-                  <i className="bi bi-info-circle" /> Chi tiết bài tập đã ghi nhận
-                </span>
+                <small>Chi tiết bài tập</small>
                 <h3>{detailLog.exerciseName}</h3>
               </div>
-              <button
-                type="button"
-                className="ex-modal-close"
-                onClick={() => setDetailLog(null)}
-                aria-label="Đóng"
-              >
+              <button type="button" className="ex-dialog-close" onClick={() => setDetailLog(null)} aria-label="Đóng">
                 <i className="bi bi-x-lg" />
               </button>
             </div>
-
-            <div className="ex-modal-body">
-              <div className="ex-detail-grid">
+            <div className="ex-dialog-body">
+              <dl className="ex-detail-dl">
                 <div className="ex-detail-row">
-                  <span>Ngày thực hiện:</span>
-                  <b>{formatDateDisplay(detailLog.date)}</b>
+                  <dt>Ngày thực hiện</dt><dd>{formatDateShort(detailLog.date)}</dd>
                 </div>
                 <div className="ex-detail-row">
-                  <span>Thời gian:</span>
-                  <b>{detailLog.time || 'Không ghi nhận'}</b>
+                  <dt>Giờ</dt><dd>{detailLog.time || '—'}</dd>
                 </div>
                 <div className="ex-detail-row">
-                  <span>Thời lượng tập:</span>
-                  <b>{detailLog.durationMinutes} phút</b>
+                  <dt>Thời lượng</dt><dd>{detailLog.durationMinutes} phút</dd>
                 </div>
                 <div className="ex-detail-row">
-                  <span>Cân nặng lúc tính:</span>
-                  <b>{detailLog.weightKg} kg</b>
+                  <dt>Cân nặng (lúc ghi nhận)</dt><dd>{detailLog.weightKg} kg</dd>
                 </div>
                 <div className="ex-detail-row">
-                  <span>Chỉ số MET:</span>
-                  <b>{detailLog.met}</b>
+                  <dt>Chỉ số MET</dt><dd>{detailLog.met}</dd>
                 </div>
                 <div className="ex-detail-row ex-detail-row--highlight">
-                  <span>Calories tiêu hao ước tính:</span>
-                  <strong className="text-success">{detailLog.caloriesBurned} kcal</strong>
+                  <dt>Calories tiêu hao ước tính</dt>
+                  <dd><strong style={{ color: '#059669', fontSize: '1.2rem' }}>{detailLog.caloriesBurned} kcal</strong></dd>
                 </div>
                 {detailLog.notes && (
                   <div className="ex-detail-row">
-                    <span>Ghi chú:</span>
-                    <p className="mb-0">{detailLog.notes}</p>
+                    <dt>Ghi chú</dt><dd>{detailLog.notes}</dd>
                   </div>
                 )}
-              </div>
-
-              <div className="ex-detail-formula-box">
-                <div className="ex-detail-formula-title">
-                  <i className="bi bi-lightbulb" /> Công thức ước tính đã áp dụng:
+              </dl>
+              <div className="ex-result-box" style={{ marginTop: 0 }}>
+                <div className="ex-result-label"><i className="bi bi-calculator" /> Công thức đã áp dụng</div>
+                <div className="ex-result-formula" style={{ marginTop: 6 }}>
+                  <code>
+                    ({detailLog.met} × 3.5 × {detailLog.weightKg} kg × {detailLog.durationMinutes} phút) / 200 = <b>{detailLog.caloriesBurned} kcal</b>
+                  </code>
                 </div>
-                <code>
-                  Calories = ({detailLog.met} MET × 3.5 × {detailLog.weightKg} kg × {detailLog.durationMinutes} phút) / 200 = {detailLog.caloriesBurned} kcal
-                </code>
               </div>
             </div>
-
-            <div className="ex-modal-footer">
-              <button
-                type="button"
-                className="ex-btn-secondary"
-                onClick={() => setDetailLog(null)}
-              >
+            <div className="ex-dialog-foot">
+              <button type="button" className="ex-btn ex-btn--ghost" onClick={() => setDetailLog(null)}>
                 Đóng
               </button>
-              <button
-                type="button"
-                className="ex-btn-primary"
-                onClick={() => {
-                  const target = detailLog
-                  setDetailLog(null)
-                  handleOpenEdit(target)
-                }}
-              >
-                <i className="bi bi-pencil" /> Chỉnh sửa bài tập này
+              <button type="button" className="ex-btn ex-btn--primary" onClick={() => { const t = detailLog; setDetailLog(null); openEdit(t) }}>
+                <i className="bi bi-pencil" /> Chỉnh sửa
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 3: CHỈNH SỬA BÀI TẬP (UC22 Luồng 5a)
-          ========================================================================= */}
-      {editingLog && (
-        <div className="ex-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="ex-modal-box">
-            <div className="ex-modal-header">
+      {/* ══════════════════════════════════════════════════
+          MODAL: Chỉnh sửa
+          ══════════════════════════════════════════════════ */}
+      {editing && (
+        <div className="ex-overlay" role="dialog" aria-modal="true">
+          <div className="ex-dialog">
+            <div className="ex-dialog-head">
               <div>
-                <span className="ex-modal-eyebrow">
-                  <i className="bi bi-pencil" /> Chỉnh sửa bài tập (UC22)
-                </span>
-                <h3>Chỉnh sửa: {editingLog.exerciseName}</h3>
+                <small>Chỉnh sửa bài tập</small>
+                <h3>{editing.exerciseName}</h3>
               </div>
-              <button
-                type="button"
-                className="ex-modal-close"
-                onClick={() => setEditingLog(null)}
-                aria-label="Đóng"
-              >
+              <button type="button" className="ex-dialog-close" onClick={() => setEditing(null)} aria-label="Đóng">
                 <i className="bi bi-x-lg" />
               </button>
             </div>
-
-            <div className="ex-modal-body">
-              {/* Change Exercise Selector */}
-              <div className="ex-form-group">
-                <label htmlFor="editExerciseId">Bài tập:</label>
-                <select
-                  id="editExerciseId"
+            <div className="ex-dialog-body">
+              {/* Đổi bài tập */}
+              <div className="ex-field">
+                <label>Bài tập</label>
+                <select className="ex-select"
                   value={editForm.exerciseId}
-                  onChange={(e) => handleEditDurationChange(editForm.durationMinutes, e.target.value)}
-                  className="ex-select-full"
+                  onChange={e => onEditDuration(editForm.duration, e.target.value)}
                 >
-                  {exercises.map((ex) => (
+                  {exercises.map(ex => (
                     <option key={ex._id} value={ex._id}>
-                      {ex.name} (MET: {ex.met} - {ex.categoryName})
+                      {ex.name} (MET {ex.met})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Date & Time */}
               <div className="ex-form-row">
-                <div className="ex-form-group">
-                  <label htmlFor="editDate">Ngày tập:</label>
-                  <input
-                    id="editDate"
-                    type="date"
-                    max={getTodayStr()}
-                    value={editForm.date}
-                    onChange={(e) => setEditForm((p) => ({ ...p, date: e.target.value }))}
-                  />
+                <div className="ex-field">
+                  <label>Ngày tập</label>
+                  <input type="date" max={getTodayStr()} value={editForm.date}
+                    onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} />
                 </div>
-                <div className="ex-form-group">
-                  <label htmlFor="editTime">Giờ:</label>
-                  <input
-                    id="editTime"
-                    type="time"
-                    value={editForm.time}
-                    onChange={(e) => setEditForm((p) => ({ ...p, time: e.target.value }))}
-                  />
+                <div className="ex-field">
+                  <label>Giờ</label>
+                  <input type="time" value={editForm.time}
+                    onChange={e => setEditForm(p => ({ ...p, time: e.target.value }))} />
                 </div>
               </div>
 
-              {/* Duration Input */}
-              <div className="ex-form-group">
-                <div className="ex-label-row">
-                  <label htmlFor="editDuration">Thời lượng tập (phút):</label>
-                  <span className="ex-label-hint">Thời lượng phải lớn hơn 0</span>
-                </div>
-                <input
-                  id="editDuration"
-                  type="number"
-                  min="1"
-                  max="1440"
-                  step="1"
-                  value={editForm.durationMinutes}
-                  onChange={(e) => handleEditDurationChange(e.target.value)}
-                />
+              <div className="ex-field">
+                <label>Thời lượng (phút)</label>
+                <input type="number" min="1" max="1440"
+                  value={editForm.duration} onChange={e => onEditDuration(e.target.value)} />
                 <div className="ex-quick-chips">
-                  {[15, 30, 45, 60, 90].map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      className={`ex-quick-chip ${Number(editForm.durationMinutes) === mins ? 'active' : ''}`}
-                      onClick={() => handleEditDurationChange(mins)}
-                    >
-                      +{mins} phút
+                  {[15, 30, 45, 60, 90].map(m => (
+                    <button key={m} type="button"
+                      className={`ex-qchip ${Number(editForm.duration) === m ? 'active' : ''}`}
+                      onClick={() => onEditDuration(m)}>
+                      {m} phút
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Notes */}
-              <div className="ex-form-group">
-                <label htmlFor="editNotes">Ghi chú:</label>
-                <input
-                  id="editNotes"
-                  type="text"
-                  maxLength={500}
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))}
-                />
+              <div className="ex-field">
+                <label>Ghi chú</label>
+                <input type="text" maxLength={500} value={editForm.notes}
+                  onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} />
               </div>
 
-              {/* Auto Recalculated Calories Box (UC22 Luồng 9a) */}
-              <div className="ex-calc-box">
-                <div className="ex-calc-header">
-                  <div className="ex-calc-title">
-                    <i className="bi bi-arrow-repeat" /> Tự động tính lại Calories
-                  </div>
-                </div>
-
-                <div className="ex-calc-result-row">
-                  <div className="ex-calc-value">
-                    <strong>{editEstimatedCalories}</strong>
-                    <span>kcal tiêu hao sau cập nhật</span>
-                  </div>
-                  <div className="ex-calc-diff">
-                    (Ban đầu: <b>{editingLog.caloriesBurned} kcal</b>)
-                  </div>
+              {/* Calo sau chỉnh sửa */}
+              <div className="ex-result-box">
+                <div className="ex-result-label"><i className="bi bi-arrow-repeat" /> Calories sau cập nhật</div>
+                <div className="ex-result-value">
+                  <strong>{editCalories}</strong> <span>kcal</span>
+                  <em style={{ fontSize: '0.8rem', marginLeft: 8, color: '#64748b' }}>
+                    (ban đầu: {editing.caloriesBurned} kcal)
+                  </em>
                 </div>
               </div>
 
-              {/* Error Alert */}
-              {editError && (
-                <div className="ex-inline-error">
-                  <i className="bi bi-exclamation-circle" /> {editError}
-                </div>
-              )}
+              {editErr && <div className="ex-inline-err"><i className="bi bi-exclamation-circle" /> {editErr}</div>}
             </div>
-
-            <div className="ex-modal-footer">
-              <button
-                type="button"
-                className="ex-btn-secondary"
-                onClick={() => setEditingLog(null)}
-                disabled={savingEdit}
+            <div className="ex-dialog-foot">
+              <button type="button" className="ex-btn ex-btn--ghost" onClick={() => setEditing(null)} disabled={savingEdit}>Hủy</button>
+              <button type="button" className="ex-btn ex-btn--primary"
+                onClick={saveEdit}
+                disabled={savingEdit || Number(editForm.duration) <= 0}
               >
+                {savingEdit
+                  ? <><span className="spinner-border spinner-border-sm me-1" /> Đang lưu...</>
+                  : <><i className="bi bi-check-lg" /> Lưu thay đổi</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          MODAL: Xác nhận xóa
+          ══════════════════════════════════════════════════ */}
+      {deleting && (
+        <div className="ex-overlay" role="dialog" aria-modal="true">
+          <div className="ex-dialog ex-dialog--confirm">
+            <div className="ex-confirm-icon"><i className="bi bi-trash3" /></div>
+            <h3>Xóa bản ghi bài tập?</h3>
+            <p>
+              Xóa <strong>{deleting.exerciseName}</strong> ({deleting.durationMinutes} phút) ngày {formatDateShort(deleting.date)}?
+              Thao tác này sẽ cập nhật lại tổng calories tiêu hao và không thể hoàn tác.
+            </p>
+            <div className="ex-dialog-foot ex-dialog-foot--center">
+              <button type="button" className="ex-btn ex-btn--ghost" onClick={() => setDeleting(null)} disabled={isDeleting}>
                 Hủy
               </button>
-              <button
-                type="button"
-                className="ex-btn-primary"
-                onClick={handleSaveEdit}
-                disabled={savingEdit || Number(editForm.durationMinutes) <= 0}
-              >
-                {savingEdit ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" /> Đang cập nhật...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-check-lg" /> Lưu thay đổi
-                  </>
-                )}
+              <button type="button" className="ex-btn ex-btn--danger" onClick={confirmDelete} disabled={isDeleting}>
+                {isDeleting
+                  ? <><span className="spinner-border spinner-border-sm me-1" /> Đang xóa...</>
+                  : <><i className="bi bi-trash3" /> Xác nhận xóa</>
+                }
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 4: XÁC NHẬN XÓA (UC22 Luồng 5b)
-          ========================================================================= */}
-      {deletingLog && (
-        <div className="ex-modal-backdrop" role="dialog" aria-modal="true">
-          <div className="ex-modal-box ex-modal-box--delete">
-            <div className="ex-delete-icon">
-              <i className="bi bi-exclamation-circle" />
-            </div>
-            <h3>Xác nhận xóa bài tập?</h3>
-            <p>
-              Bạn có chắc chắn muốn xóa bản ghi <strong>{deletingLog.exerciseName}</strong> ({deletingLog.durationMinutes} phút, {deletingLog.caloriesBurned} kcal) vào ngày {formatDateDisplay(deletingLog.date)}?
-            </p>
-            <p className="ex-delete-subtext">
-              Thao tác này sẽ xóa bản ghi khỏi lịch sử và tự động cập nhật lại tổng lượng calories tiêu hao tương ứng.
-            </p>
 
-            <div className="ex-modal-footer ex-modal-footer--center">
-              <button
-                type="button"
-                className="ex-btn-secondary"
-                onClick={() => setDeletingLog(null)}
-                disabled={isDeleting}
-              >
-                Hủy thao tác
-              </button>
-              <button
-                type="button"
-                className="ex-btn-danger"
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" /> Đang xóa...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-trash3" /> Xác nhận xóa
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* FOOTER */}
       <footer className="dashboard-footer">
         <span className="footer-copy">
-          <b><i className="bi bi-leaf-fill" /></b> © 2026 NutriLens Health Inc. Đồng hành dinh dưỡng &amp; vận động thông minh.
+          <b><i className="bi bi-leaf-fill" /></b> © 2026 NutriLens Health Inc. Đồng hành dinh dưỡng thông minh.
         </span>
-        <span className="footer-links">
-          Điều khoản dịch vụ · Chính sách bảo mật y tế · Chuẩn hóa MET (ACSM)
-        </span>
+        <span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span>
       </footer>
     </div>
   )

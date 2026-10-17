@@ -8,6 +8,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
+import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1150,7 +1151,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
         <nav className="dashboard-nav" aria-label="Điều hướng chính">
           <Link to="/dashboard">Tổng quan</Link>
           <FoodNavMenu />
-          <Link to="/exercise">Luyện tập</Link>
+          <ExerciseNavMenu />
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
           <Link to="/dashboard">Bài viết &amp; Mẹo</Link>
