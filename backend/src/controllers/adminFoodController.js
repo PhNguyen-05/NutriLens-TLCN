@@ -198,8 +198,11 @@ async function updateFood(req, res) {
     const svNum = servingSize !== undefined && servingSize !== '' ? Number(servingSize) : food.servingSize;
     if (!Number.isFinite(svNum) || svNum <= 0) return res.status(400).json({ message: 'Đơn vị định lượng phải là số dương' });
 
-    const existing = await Food.findOne({ _id: { $ne: food._id }, name: { $regex: `^${escapeRegex(trimmedName)}$`, $options: 'i' } });
-    if (existing) return res.status(409).json({ message: 'Tên món ăn đã tồn tại' });
+    const isNameChanged = food.name.trim().toLowerCase() !== trimmedName.toLowerCase();
+    if (isNameChanged) {
+      const existing = await Food.findOne({ _id: { $ne: food._id }, name: { $regex: `^${escapeRegex(trimmedName)}$`, $options: 'i' } });
+      if (existing) return res.status(409).json({ message: 'Tên món ăn đã tồn tại' });
+    }
 
     food.name = trimmedName;
     food.calories = Number(calories); food.protein = Number(protein);

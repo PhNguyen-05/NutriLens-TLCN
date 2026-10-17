@@ -506,43 +506,57 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
           {/* ── Dinh dưỡng ── */}
           <div className="fm-nutrition-card">
             <div className="fm-nutrition-head">
-              <span className="fm-nutrition-emoji">🥗</span>
-              <div>
-                <strong>THÀNH PHẦN DINH DƯỠNG CHUẨN</strong>
-                <span>trên 100g thực phẩm (1g Đạm = 4kcal · 1g Đường = 4kcal · 1g Béo = 9kcal)</span>
+              <div className="fm-nutrition-title-wrap">
+                <i className="bi bi-pie-chart-fill" />
+                <span className="fm-nutrition-title">Thành phần dinh dưỡng</span>
+                <span className="fm-nutrition-tag">Chuẩn 100g</span>
               </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                {calcMacroKcal.kcal > 0 && (
+
+              <div className="fm-nutrition-actions">
+                {/* Chỉ hiển thị Quy đổi khi khẩu phần thực tế KHÁC 100g */}
+                {servingKcal !== null && Number(form.servingSize) !== 100 && (
+                  <span className="fm-serving-tag" title={`Năng lượng cho ${form.servingSize}g thực tế`}>
+                    Khẩu phần {form.servingSize}g: <b>~{servingKcal} kcal</b>
+                  </span>
+                )}
+                {/* Nút tính lại calo: chỉ hiện khi có chênh lệch đáng kể */}
+                {calcMacroKcal.kcal > 0 && Math.abs((Number(form.calories) || 0) - calcMacroKcal.kcal) >= 5 && (
                   <button
                     type="button"
                     className="fm-calc-btn"
                     onClick={autoFillCalories}
                     title="Tự động tính năng lượng = Protein*4 + Carbs*4 + Fat*9"
                   >
-                    <i className="bi bi-lightning-charge-fill" /> Tính Calo (~{calcMacroKcal.kcal} kcal)
+                    <i className="bi bi-magic" /> Tự tính Calo (~{calcMacroKcal.kcal})
                   </button>
-                )}
-                {servingKcal !== null && (
-                  <div className="fm-kcal-badge">
-                    Quy đổi cho {form.servingSize}g<b> ~{servingKcal} kcal</b>
-                  </div>
                 )}
               </div>
             </div>
 
             <div className="fm-nutrients">
               {[
-                { key: 'calories', label: 'Năng lượng (Calo)', unit: 'kcal', color: 'cal', icon: '🔥', ph: 'VD: 250' },
-                { key: 'protein',  label: 'Chất đạm (Protein)', unit: 'g',    color: 'pro', icon: '💪', ph: 'VD: 15' },
-                { key: 'carbs',    label: 'Đường bột (Carbs)',  unit: 'g',    color: 'carb', icon: '🌾', ph: 'VD: 30' },
-                { key: 'fat',      label: 'Chất béo (Fat)',     unit: 'g',    color: 'fat', icon: '🫒', ph: 'VD: 8' },
+                { key: 'calories', label: 'Năng lượng (Calo)', unit: 'kcal', color: 'cal', icon: 'bi-fire', ph: 'VD: 250' },
+                { key: 'protein',  label: 'Chất đạm (Protein)', unit: 'g',    color: 'pro', icon: 'bi-droplet-fill', ph: 'VD: 15' },
+                { key: 'carbs',    label: 'Đường bột (Carbs)',  unit: 'g',    color: 'carb', icon: 'bi-basket2-fill', ph: 'VD: 30' },
+                { key: 'fat',      label: 'Chất béo (Fat)',     unit: 'g',    color: 'fat', icon: 'bi-egg-fried', ph: 'VD: 8' },
               ].map(({ key, label, unit, color, icon, ph }) => (
                 <div key={key} className={`fm-nutrient fm-nutrient--${color}`}>
-                  <div className="fm-nutrient-label"><span>{icon}</span>{label}</div>
+                  <div className="fm-nutrient-label">
+                    <i className={`bi ${icon}`} />
+                    <span>{label}</span>
+                  </div>
                   <div className="fm-nutrient-input-wrap">
-                    <input id={`fm-${key}`} name={key} type="number" min="0" step="0.1"
+                    <input
+                      id={`fm-${key}`}
+                      name={key}
+                      type="number"
+                      min="0"
+                      step="0.1"
                       className={`fm-nutrient-input ${errors[key] ? 'fm-input--err' : ''}`}
-                      value={form[key]} onChange={change} placeholder={ph} />
+                      value={form[key]}
+                      onChange={change}
+                      placeholder={ph}
+                    />
                     <span className="fm-nutrient-unit">{unit}</span>
                   </div>
                   {errors[key] && <span className="fm-err-msg">{errors[key]}</span>}
@@ -554,25 +568,25 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
             {(pct.p + pct.c + pct.f) > 0 && (
               <div className="fm-macro-bar-wrap">
                 <div className="fm-macro-bar">
-                  <div className="fm-macro-seg fm-macro-seg--pro" style={{ width: `${pct.p}%` }} title={`Protein ${pct.p}%`} />
+                  <div className="fm-macro-seg fm-macro-seg--pro" style={{ width: `${pct.p}%` }} title={`Đạm ${pct.p}%`} />
                   <div className="fm-macro-seg fm-macro-seg--carb" style={{ width: `${pct.c}%` }} title={`Carbs ${pct.c}%`} />
-                  <div className="fm-macro-seg fm-macro-seg--fat" style={{ width: `${pct.f}%` }} title={`Fat ${pct.f}%`} />
+                  <div className="fm-macro-seg fm-macro-seg--fat" style={{ width: `${pct.f}%` }} title={`Béo ${pct.f}%`} />
                 </div>
                 <div className="fm-macro-legend">
-                  <span><i style={{ background: '#1a5fa0' }} />Protein {pct.p}% ({Math.round((parseFloat(form.protein) || 0) * 4)} kcal)</span>
-                  <span><i style={{ background: '#a06010' }} />Carbs {pct.c}% ({Math.round((parseFloat(form.carbs) || 0) * 4)} kcal)</span>
-                  <span><i style={{ background: '#a01f1f' }} />Fat {pct.f}% ({Math.round((parseFloat(form.fat) || 0) * 9)} kcal)</span>
-                  <span style={{ marginLeft: 'auto', color: '#0b734e', fontWeight: 600 }}>
-                    Năng lượng từ 3 chất: ~{calcMacroKcal.kcal} kcal
+                  <span><i style={{ background: '#2563eb' }} />Đạm <b>{pct.p}%</b></span>
+                  <span><i style={{ background: '#d97706' }} />Carbs <b>{pct.c}%</b></span>
+                  <span><i style={{ background: '#dc2626' }} />Béo <b>{pct.f}%</b></span>
+                  <span style={{ marginLeft: 'auto', color: '#64748b' }}>
+                    Tổng 3 chất: <b>{calcMacroKcal.totalGrams}g</b> / 100g
                   </span>
                 </div>
 
-                {/* Cảnh báo lệch nếu calo nhập lệch đáng kể so với P/C/F */}
+                {/* Cảnh báo nếu calo nhập lệch đáng kể so với P/C/F (> 40 kcal) */}
                 {form.calories !== '' && calcMacroKcal.kcal > 0 && Math.abs(Number(form.calories) - calcMacroKcal.kcal) > 40 && (
                   <div className="fm-macro-hint">
                     <i className="bi bi-info-circle-fill" />
                     <span>
-                      Năng lượng từ Đạm + Đường + Béo ước tính là <strong>~{calcMacroKcal.kcal} kcal</strong> (bạn đang nhập <strong>{form.calories} kcal</strong>).
+                      Calo theo 3 chất ước tính là <strong>~{calcMacroKcal.kcal} kcal</strong> (bạn đang nhập <strong>{form.calories} kcal</strong>).
                     </span>
                     <button type="button" onClick={autoFillCalories} className="fm-hint-apply-btn">
                       Áp dụng {calcMacroKcal.kcal} kcal
@@ -585,7 +599,7 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
                   <div className="fm-macro-hint fm-macro-hint--warn">
                     <i className="bi bi-exclamation-triangle-fill" />
                     <span>
-                      Tổng khối lượng 3 chất (Đạm + Đường + Béo) là <strong>{calcMacroKcal.totalGrams}g</strong>, vượt quá 100g thực phẩm chuẩn! Vui lòng kiểm tra lại.
+                      Tổng khối lượng 3 chất là <strong>{calcMacroKcal.totalGrams}g</strong>, vượt quá 100g thực phẩm chuẩn! Vui lòng kiểm tra lại.
                     </span>
                   </div>
                 )}
@@ -710,13 +724,11 @@ function FoodGroupManagementModal({
   isOpen,
   onClose,
   onGroupsChanged,
-  onFilterByGroup,
 }) {
   const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
   const [actionSuccessMsg, setActionSuccessMsg] = useState('')
-  const [expandedGroupId, setExpandedGroupId] = useState(null)
 
   // Create new group
   const [newGroupName, setNewGroupName] = useState('')
@@ -943,10 +955,10 @@ function FoodGroupManagementModal({
             <table className="fgm-table">
               <thead>
                 <tr>
-                  <th style={{ width: '25%' }}>Tên nhóm</th>
-                  <th style={{ width: '12%' }}>Số lượng món</th>
-                  <th style={{ width: '43%' }}>Món tiêu biểu &amp; Mô tả</th>
-                  <th style={{ width: '20%', textAlign: 'right' }}>Thao tác</th>
+                  <th style={{ width: '28%' }}>Tên nhóm</th>
+                  <th style={{ width: '16%' }}>Số lượng món</th>
+                  <th style={{ width: '38%' }}>Mô tả</th>
+                  <th style={{ width: '18%', textAlign: 'right' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -978,35 +990,18 @@ function FoodGroupManagementModal({
                               style={{ height: 32, fontSize: 13 }}
                             />
                           ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <strong style={{ color: '#102a43', fontSize: 13.5 }}>{group.name}</strong>
-                              {group.isStandard && (
-                                <span className="fgm-badge fgm-badge--standard" title="Nhóm chuẩn hóa hệ thống">Chuẩn</span>
-                              )}
-                            </div>
+                            <strong style={{ color: '#102a43', fontSize: 13.5 }}>{group.name}</strong>
                           )}
                         </td>
 
                         {/* Số lượng món */}
                         <td>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            <span className="fgm-count-pill" title={`${group.foodCount} món ăn thuộc nhóm này`}>
-                              <b>{group.foodCount}</b> món
-                            </span>
-                            {onFilterByGroup && group.foodCount > 0 && (
-                              <button
-                                type="button"
-                                className="fgm-filter-btn"
-                                onClick={() => onFilterByGroup(group.name)}
-                                title={`Lọc xem danh sách đầy đủ ${group.foodCount} món của nhóm "${group.name}"`}
-                              >
-                                <i className="bi bi-box-arrow-up-right" />
-                              </button>
-                            )}
-                          </div>
+                          <span className="fgm-count-pill" title={`${group.foodCount} món ăn thuộc nhóm này`}>
+                            <b>{group.foodCount}</b> món
+                          </span>
                         </td>
 
-                        {/* Món tiêu biểu & Mô tả */}
+                        {/* Mô tả nhóm */}
                         <td>
                           {isEditing ? (
                             <input
@@ -1017,42 +1012,8 @@ function FoodGroupManagementModal({
                               style={{ height: 32, fontSize: 12.5 }}
                             />
                           ) : (
-                            <div style={{ fontSize: 12, color: '#557288' }}>
-                              {group.description && <div style={{ marginBottom: 4, color: '#243b53', fontWeight: 500 }}>{group.description}</div>}
-                              {(() => {
-                                const isExpanded = expandedGroupId === group._id
-                                const allList = group.allFoods && group.allFoods.length > 0 ? group.allFoods : (group.sampleFoods || [])
-                                const foodsToDisplay = isExpanded ? allList : (group.sampleFoods || [])
-                                const totalCount = allList.length || group.foodCount || 0
-                                const remaining = totalCount - foodsToDisplay.length
-
-                                return (
-                                  <div className="fgm-sample-pills">
-                                    {foodsToDisplay.map((s, idx) => (
-                                      <span key={idx} className="fgm-sample-pill">{s}</span>
-                                    ))}
-                                    {remaining > 0 && !isExpanded && (
-                                      <button
-                                        type="button"
-                                        className="fgm-expand-pill"
-                                        onClick={() => setExpandedGroupId(group._id)}
-                                        title="Bấm để xem tất cả món ăn trong nhóm này"
-                                      >
-                                        +{remaining} món khác <i className="bi bi-chevron-down" style={{ fontSize: 10 }} />
-                                      </button>
-                                    )}
-                                    {isExpanded && allList.length > 5 && (
-                                      <button
-                                        type="button"
-                                        className="fgm-expand-pill fgm-expand-pill--collapse"
-                                        onClick={() => setExpandedGroupId(null)}
-                                      >
-                                        Thu gọn <i className="bi bi-chevron-up" style={{ fontSize: 10 }} />
-                                      </button>
-                                    )}
-                                  </div>
-                                )
-                              })()}
+                            <div style={{ fontSize: 12.5, color: '#475569', lineHeight: 1.45 }}>
+                              {group.description || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Chưa có mô tả</span>}
                             </div>
                           )}
                         </td>
@@ -1409,7 +1370,7 @@ export default function FoodManagementPage() {
                       <td className="fdm-td-center">
                         <div className="fdm-actions fdm-actions--center">
                           <button className="fdm-btn fdm-btn--view" onClick={() => setDetailTarget(food)} title="Xem chi tiết">
-                            <i className="bi bi-card-text" />
+                            <i className="bi bi-eye" />
                           </button>
                           <button className="fdm-btn fdm-btn--edit" onClick={() => { setEditTarget(food); setFormMode('edit') }} title="Chỉnh sửa">
                             <i className="bi bi-pencil-fill" />
@@ -1530,11 +1491,6 @@ export default function FoodManagementPage() {
           onGroupsChanged={() => {
             loadGroups()
             refresh()
-          }}
-          onFilterByGroup={(groupName) => {
-            setGroupFilter(groupName)
-            setPage(1)
-            setShowGroupModal(false)
           }}
         />
       )}
