@@ -68,6 +68,8 @@ const exerciseSchema = new mongoose.Schema(
     defaultDurationMinutes: {
       type: Number,
       default: 30,
+      min: 1,
+      max: 720,
     },
   },
   { timestamps: true }

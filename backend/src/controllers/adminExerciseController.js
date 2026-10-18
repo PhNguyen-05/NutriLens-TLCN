@@ -11,6 +11,14 @@ const CATEGORY_NAMES = {
   other: 'Khác',
 };
 
+const DEFAULT_CATEGORY_ICONS = {
+  cardio: 'bi-person-running',
+  strength: 'bi-hammer',
+  sports: 'bi-dribbble',
+  flexibility: 'bi-yin-yang',
+  other: 'bi-activity',
+};
+
 function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -217,7 +225,7 @@ async function createExercise(req, res) {
       met,
       description = '',
       icon = 'bi-activity',
-      defaultDurationMinutes = 30,
+      defaultDurationMinutes = 0,
       isActive = true,
     } = req.body;
 
@@ -229,8 +237,11 @@ async function createExercise(req, res) {
 
     // 4b. Kiểm tra giá trị MET
     const metNum = Number(met);
-    if (met === undefined || met === null || met === '' || !Number.isFinite(metNum) || metNum <= 0 || metNum > 30) {
+    if (met === undefined || met === null || met === '' || !Number.isFinite(metNum) || metNum <= 0) {
       return res.status(400).json({ message: 'Giá trị MET không hợp lệ' });
+    }
+    if (metNum > 30) {
+      return res.status(400).json({ message: 'Giá trị MET không được vượt quá 30.0' });
     }
 
     // 4c. Kiểm tra trùng lặp tên bài tập hệ thống
@@ -249,8 +260,20 @@ async function createExercise(req, res) {
 
     const validIntensity = ['Nhẹ', 'Trung bình', 'Cao'].includes(intensity) ? intensity : 'Trung bình';
 
-    const durationNum = Number(defaultDurationMinutes);
-    const validDuration = Number.isFinite(durationNum) && durationNum > 0 ? durationNum : 30;
+    // Ràng buộc thời lượng gợi ý (defaultDurationMinutes): Bắt buộc > 0 và <= 720
+    const durationNum = Number(defaultDurationMinutes !== undefined ? defaultDurationMinutes : 30);
+    if (!Number.isFinite(durationNum) || durationNum <= 0) {
+      return res.status(400).json({ message: 'Thời lượng gợi ý phải lớn hơn 0 phút' });
+    }
+    if (durationNum > 720) {
+      return res.status(400).json({ message: 'Thời lượng gợi ý tối đa không quá 720 phút (12 giờ)' });
+    }
+    const validDuration = Math.round(durationNum);
+
+    // Xử lý icon: nếu để trống hoặc "default" -> tự động lấy icon mặc định của thể loại
+    const validIcon = icon && String(icon).trim() && String(icon).trim() !== 'default'
+      ? String(icon).trim()
+      : (DEFAULT_CATEGORY_ICONS[validCategory] || 'bi-activity');
 
     // Sinh slug duy nhất
     let baseSlug = slugify(trimmedName) || 'bai-tap';
@@ -270,7 +293,7 @@ async function createExercise(req, res) {
       met: Math.round(metNum * 10) / 10,
       intensity: validIntensity,
       description: String(description || '').trim(),
-      icon: String(icon || 'bi-activity').trim(),
+      icon: validIcon,
       defaultDurationMinutes: validDuration,
       isActive: Boolean(isActive),
     });
@@ -355,8 +378,37 @@ async function updateExercise(req, res) {
 
     const validIntensity = ['Nhẹ', 'Trung bình', 'Cao'].includes(intensity) ? intensity : exercise.intensity;
 
-    const durationNum = Number(defaultDurationMinutes);
-    const validDuration = Number.isFinite(durationNum) && durationNum > 0 ? durationNum : exercise.defaultDurationMinutes;
+    // Ràng buộc thời lượng gợi ý (defaultDurationMinutes): Bắt buộc > 0 và <= 720
+    let validDuration = exercise.defaultDurationMinutes;
+    if (defaultDurationMinutes !== undefined) {
+      const durationNum = Number(defaultDurationMinutes);
+      if (!Number.isFinite(durationNum) || durationNum <= 0) {
+        return res.status(400).json({ message: 'Thời lượng gợi ý phải lớn hơn 0 phút' });
+      }
+      if (durationNum > 720) {
+        return res.status(400).json({ message: 'Thời lượng gợi ý tối đa không quá 720 phút (12 giờ)' });
+      }
+      validDuration = Math.round(durationNum);
+    }
+
+    // Xử lý icon: nếu để trống hoặc "default" -> tự động lấy icon mặc định của thể loại
+    let validIcon = exercise.icon;
+    if (icon !== undefined) {
+      const cleanIcon = String(icon || '').trim();
+      validIcon = (!cleanIcon || cleanIcon === 'default')
+        ? (DEFAULT_CATEGORY_ICONS[validCategory] || 'bi-activity')
+        : cleanIcon;
+    }
+
+    if (isNameChanged) {
+      let baseSlug = slugify(trimmedName) || 'bai-tap';
+      let candidateSlug = baseSlug;
+      let counter = 1;
+      while (await Exercise.exists({ _id: { $ne: exercise._id }, slug: candidateSlug })) {
+        candidateSlug = `${baseSlug}-${counter++}`;
+      }
+      exercise.slug = candidateSlug;
+    }
 
     exercise.name = trimmedName;
     exercise.category = validCategory;
@@ -364,7 +416,7 @@ async function updateExercise(req, res) {
     exercise.met = Math.round(metNum * 10) / 10;
     exercise.intensity = validIntensity;
     if (description !== undefined) exercise.description = String(description || '').trim();
-    if (icon !== undefined) exercise.icon = String(icon || 'bi-activity').trim();
+    exercise.icon = validIcon;
     exercise.defaultDurationMinutes = validDuration;
     if (isActive !== undefined) exercise.isActive = Boolean(isActive);
 
