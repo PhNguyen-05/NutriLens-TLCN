@@ -7,6 +7,8 @@ const {
   createExerciseLog,
   updateExerciseLog,
   deleteExerciseLog,
+  createCustomExercise,
+  deleteCustomExercise,
 } = require('../controllers/exerciseController');
 
 const router = express.Router();
@@ -17,6 +19,8 @@ router.use(requireAuth);
 // UC21: Danh mục bài tập & ước tính calories
 router.get('/', getExercises);
 router.post('/calculate', calculateCalories);
+router.post('/custom', createCustomExercise);
+router.delete('/custom/:id', deleteCustomExercise);
 
 // UC21 & UC22: Nhật ký bài tập (Thêm, Xem, Sửa, Xóa)
 router.get('/logs', getExerciseLogs);

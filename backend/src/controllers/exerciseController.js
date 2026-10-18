@@ -411,23 +411,41 @@ async function getExercises(req, res) {
   try {
     await ensureDefaultExercises();
 
-    const { search, category } = req.query;
-    const filter = { isActive: true };
+    const { search, category, filterCustom } = req.query;
+    const currentUserId = req.user?.id;
+
+    const conditions = [
+      { isActive: true },
+      {
+        $or: [
+          { userId: null },
+          { userId: { $exists: false } },
+          ...(currentUserId ? [{ userId: currentUserId }] : []),
+        ],
+      },
+    ];
+
+    if (filterCustom === 'true' && currentUserId) {
+      conditions.push({ userId: currentUserId, isCustom: true });
+    }
 
     if (category && category !== 'all') {
-      filter.category = category;
+      conditions.push({ category });
     }
 
     if (search && search.trim()) {
       const term = search.trim();
-      filter.$or = [
-        { name: { $regex: term, $options: 'i' } },
-        { description: { $regex: term, $options: 'i' } },
-        { categoryName: { $regex: term, $options: 'i' } },
-      ];
+      conditions.push({
+        $or: [
+          { name: { $regex: term, $options: 'i' } },
+          { description: { $regex: term, $options: 'i' } },
+          { categoryName: { $regex: term, $options: 'i' } },
+        ],
+      });
     }
 
-    const exercises = await Exercise.find(filter).sort({ category: 1, name: 1 }).lean();
+    const filter = conditions.length > 1 ? { $and: conditions } : conditions[0];
+    const exercises = await Exercise.find(filter).sort({ isCustom: -1, category: 1, name: 1 }).lean();
     return res.status(200).json({ exercises });
   } catch (err) {
     console.error('[getExercises] Lỗi:', err.message);
@@ -750,6 +768,125 @@ async function deleteExerciseLog(req, res) {
   }
 }
 
+/**
+ * POST /api/exercises/custom
+ * Tạo bài tập cá nhân tùy chỉnh
+ */
+async function createCustomExercise(req, res) {
+  try {
+    const {
+      name,
+      category = 'cardio',
+      intensity = 'Trung bình',
+      met,
+      description = '',
+      defaultDurationMinutes = 30,
+    } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Vui lòng nhập tên bài tập' });
+    }
+
+    const cleanName = name.trim();
+    if (cleanName.length < 2 || cleanName.length > 100) {
+      return res.status(400).json({ message: 'Tên bài tập từ 2 đến 100 ký tự' });
+    }
+
+    // Kiểm tra xem người dùng đã tạo bài tập trùng tên này chưa
+    const existing = await Exercise.findOne({
+      userId: req.user.id,
+      isActive: true,
+      name: { $regex: `^${cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' },
+    });
+    if (existing) {
+      return res.status(400).json({ message: 'Bạn đã có bài tập mang tên này trong danh mục cá nhân' });
+    }
+
+    const categoryMap = {
+      cardio:      { name: 'Cardio & Vận động', icon: 'bi-lightning-charge' },
+      strength:    { name: 'Sức mạnh & Gym',   icon: 'bi-trophy' },
+      flexibility: { name: 'Yoga & Thư giãn', icon: 'bi-flower1' },
+      sports:      { name: 'Thể thao',        icon: 'bi-dribbble' },
+    };
+
+    const targetCat = categoryMap[category] ? category : 'cardio';
+    const catInfo = categoryMap[targetCat];
+
+    // Xác định MET mặc định theo cường độ
+    const defaultMetByIntensity = {
+      'Nhẹ': 3.5,
+      'Trung bình': 6.0,
+      'Cao': 8.5,
+    };
+    const validIntensity = ['Nhẹ', 'Trung bình', 'Cao'].includes(intensity) ? intensity : 'Trung bình';
+    let targetMet = Number(met);
+    if (!targetMet || targetMet <= 0 || targetMet > 30) {
+      targetMet = defaultMetByIntensity[validIntensity];
+    }
+
+    const duration = Number(defaultDurationMinutes) > 0 ? Number(defaultDurationMinutes) : 30;
+
+    // Tạo slug an toàn
+    const baseSlug = cleanName
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[đĐ]/g, 'd')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'bai-tap';
+
+    const uniqueSlug = `${baseSlug}-${req.user.id.slice(-6)}-${Date.now().toString(36)}`;
+
+    const newExercise = await Exercise.create({
+      userId: req.user.id,
+      isCustom: true,
+      name: cleanName,
+      slug: uniqueSlug,
+      category: targetCat,
+      categoryName: catInfo.name,
+      met: targetMet,
+      intensity: validIntensity,
+      description: description.trim(),
+      icon: catInfo.icon,
+      isActive: true,
+      defaultDurationMinutes: duration,
+    });
+
+    return res.status(201).json({
+      message: 'Tạo bài tập cá nhân thành công',
+      exercise: newExercise,
+    });
+  } catch (err) {
+    console.error('[createCustomExercise] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tạo bài tập, vui lòng thử lại' });
+  }
+}
+
+/**
+ * DELETE /api/exercises/custom/:id
+ * Xóa bài tập cá nhân tùy chỉnh
+ */
+async function deleteCustomExercise(req, res) {
+  try {
+    const { id } = req.params;
+    const exercise = await Exercise.findOne({
+      _id: id,
+      userId: req.user.id,
+      isCustom: true,
+    });
+
+    if (!exercise) {
+      return res.status(404).json({ message: 'Bài tập cá nhân không tồn tại hoặc bạn không có quyền xóa' });
+    }
+
+    await Exercise.deleteOne({ _id: id });
+    return res.status(200).json({ message: 'Xóa bài tập cá nhân thành công' });
+  } catch (err) {
+    console.error('[deleteCustomExercise] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể xóa bài tập, vui lòng thử lại' });
+  }
+}
+
 module.exports = {
   getExercises,
   calculateCalories,
@@ -758,4 +895,6 @@ module.exports = {
   updateExerciseLog,
   deleteExerciseLog,
   calculateEstimatedCalories,
+  createCustomExercise,
+  deleteCustomExercise,
 };

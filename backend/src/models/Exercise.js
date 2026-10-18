@@ -7,11 +7,21 @@ const mongoose = require('mongoose');
  */
 const exerciseSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
+    isCustom: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     name: {
       type: String,
       required: true,
       trim: true,
-      unique: true,
     },
     slug: {
       type: String,

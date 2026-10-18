@@ -7,6 +7,7 @@ import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 
 const CATEGORY_TABS = [
   { id: 'all',         label: 'Tất cả',          icon: 'bi-grid' },
+  { id: 'my',          label: 'Bài tập của tôi', icon: 'bi-person-heart' },
   { id: 'cardio',      label: 'Cardio',           icon: 'bi-lightning-charge' },
   { id: 'strength',    label: 'Sức mạnh',         icon: 'bi-trophy' },
   { id: 'flexibility', label: 'Yoga & Thư giãn',  icon: 'bi-flower1' },
@@ -125,11 +126,39 @@ export default function ExercisePage() {
   const [editErr,         setEditErr]          = useState('')
   const [savingEdit,      setSavingEdit]       = useState(false)
 
-  // Modal Xóa
+  // Modal Xóa bản ghi lịch sử
   const [deleting,        setDeleting]         = useState(null)
   const [isDeleting,      setIsDeleting]       = useState(false)
 
+  // Modal Tạo bài tập cá nhân
+  const [creatingCustom,  setCreatingCustom]   = useState(false)
+  const [customForm,      setCustomForm]       = useState({
+    name: '',
+    category: 'cardio',
+    intensity: 'Trung bình',
+    description: '',
+    defaultDurationMinutes: 30,
+  })
+  const [customErr,       setCustomErr]        = useState('')
+  const [savingCustom,    setSavingCustom]     = useState(false)
+
+  // Xóa bài tập cá nhân
+  const [deletingCustom,  setDeletingCustom]   = useState(null)
+  const [isDeletingCustom,setIsDeletingCustom] = useState(false)
+
   // ─── Data loaders ──────────────────────────────────────────────────────────
+
+  const fetchExercises = async () => {
+    setLoadingEx(true)
+    try {
+      const { data } = await axiosInstance.get('/exercises')
+      setExercises(data.exercises || [])
+    } catch {
+      toast('error', 'Không thể tải danh mục bài tập')
+    } finally {
+      setLoadingEx(false)
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -137,12 +166,7 @@ export default function ExercisePage() {
       .then(({ data }) => { if (alive) setUserWeight(data.profile?.currentWeightKg || null) })
       .catch(() => {})
 
-    setLoadingEx(true)
-    axiosInstance.get('/exercises')
-      .then(({ data }) => { if (alive) setExercises(data.exercises || []) })
-      .catch(() => toast('error', 'Không thể tải danh mục bài tập'))
-      .finally(() => { if (alive) setLoadingEx(false) })
-
+    fetchExercises()
     return () => { alive = false }
   }, [])
 
@@ -211,9 +235,15 @@ export default function ExercisePage() {
 
   // ─── Catalog ───────────────────────────────────────────────────────────────
 
+  const myCustomCount = useMemo(() => exercises.filter(e => e.isCustom).length, [exercises])
+
   const filteredEx = useMemo(() => {
     let list = exercises.filter(e => {
-      const inCat = catFilter === 'all' || e.category === catFilter
+      const inCat = catFilter === 'all'
+        ? true
+        : catFilter === 'my'
+        ? Boolean(e.isCustom)
+        : e.category === catFilter
       const inIntensity = intensityFilter === 'all' || e.intensity === intensityFilter
       const q = searchQ.toLowerCase().trim()
       const inQ = !q || e.name.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)
@@ -384,6 +414,58 @@ export default function ExercisePage() {
       toast('error', e.response?.data?.message || 'Không thể cập nhật dữ liệu, vui lòng thử lại')
       if (e.response?.status === 404) { setDeleting(null); fetchLogs() }
     } finally { setIsDeleting(false) }
+  }
+
+  // ─── Custom Exercise handlers ──────────────────────────────────────────────
+
+  function openCreateModal(initialName = '') {
+    setCustomForm({
+      name: initialName || '',
+      category: 'cardio',
+      intensity: 'Trung bình',
+      description: '',
+      defaultDurationMinutes: 30,
+    })
+    setCustomErr('')
+    setCreatingCustom(true)
+  }
+
+  async function saveCustomExercise() {
+    if (!customForm.name || !customForm.name.trim()) {
+      setCustomErr('Vui lòng nhập tên bài tập')
+      return
+    }
+    setSavingCustom(true)
+    setCustomErr('')
+    try {
+      const { data } = await axiosInstance.post('/exercises/custom', customForm)
+      toast('success', data.message || 'Tạo bài tập cá nhân thành công')
+      setCreatingCustom(false)
+      await fetchExercises()
+      if (data.exercise) {
+        openLog(data.exercise)
+      }
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Không thể tạo bài tập, vui lòng thử lại'
+      setCustomErr(msg)
+    } finally {
+      setSavingCustom(false)
+    }
+  }
+
+  async function confirmDeleteCustom() {
+    if (!deletingCustom) return
+    setIsDeletingCustom(true)
+    try {
+      const { data } = await axiosInstance.delete(`/exercises/custom/${deletingCustom._id}`)
+      toast('success', data.message || 'Xóa bài tập cá nhân thành công')
+      setDeletingCustom(null)
+      fetchExercises()
+    } catch (e) {
+      toast('error', e.response?.data?.message || 'Không thể xóa bài tập, vui lòng thử lại')
+    } finally {
+      setIsDeletingCustom(false)
+    }
   }
 
   const histSummary = useMemo(() => ({
@@ -560,19 +642,31 @@ export default function ExercisePage() {
                     <option value="name-asc">Tên bài tập: A → Z</option>
                     <option value="name-desc">Tên bài tập: Z → A</option>
                   </select>
+
+                  <button
+                    type="button"
+                    className="ex-btn ex-btn--primary"
+                    onClick={() => openCreateModal()}
+                    title="Tạo bài tập mới vào danh mục cá nhân"
+                  >
+                    <i className="bi bi-plus-circle" /> Thêm bài tập
+                  </button>
                 </div>
               </div>
 
               <div className="ex-cat-tabs" role="group" aria-label="Lọc theo thể loại">
-                {CATEGORY_TABS.map(ct => (
-                  <button
-                    key={ct.id} type="button"
-                    className={`ex-cat-tab ${catFilter === ct.id ? 'active' : ''}`}
-                    onClick={() => setCatFilter(ct.id)}
-                  >
-                    <i className={`bi ${ct.icon}`} />{ct.label}
-                  </button>
-                ))}
+                {CATEGORY_TABS.map(ct => {
+                  const badge = ct.id === 'my' && myCustomCount > 0 ? ` (${myCustomCount})` : ''
+                  return (
+                    <button
+                      key={ct.id} type="button"
+                      className={`ex-cat-tab ${catFilter === ct.id ? 'active' : ''}`}
+                      onClick={() => setCatFilter(ct.id)}
+                    >
+                      <i className={`bi ${ct.icon}`} />{ct.label}{badge}
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
@@ -584,12 +678,30 @@ export default function ExercisePage() {
               </div>
             ) : filteredEx.length === 0 ? (
               <div className="ex-state-empty">
-                <i className="bi bi-search" />
-                <strong>Không tìm thấy bài tập phù hợp</strong>
-                <p>Thử từ khóa khác hoặc bỏ chọn bộ lọc để xem toàn bộ danh mục.</p>
-                <button className="ex-btn ex-btn--outline" onClick={() => { setSearchQ(''); setCatFilter('all'); setIntensityFilter('all'); setSortBy('default'); }}>
-                  Xóa bộ lọc
-                </button>
+                {catFilter === 'my' ? (
+                  <>
+                    <i className="bi bi-person-heart" style={{ fontSize: '2.5rem', color: '#10b981' }} />
+                    <strong>Bạn chưa có bài tập cá nhân nào</strong>
+                    <p>Hãy thêm bài tập yêu thích hoặc môn thể thao đặc thù của riêng bạn để ghi nhận nhanh chóng.</p>
+                    <button className="ex-btn ex-btn--primary" onClick={() => openCreateModal()}>
+                      <i className="bi bi-plus-circle" /> Tạo bài tập đầu tiên
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-search" />
+                    <strong>Không tìm thấy bài tập phù hợp</strong>
+                    <p>Bạn có thể tự tạo bài tập mới vào danh mục cá nhân hoặc xóa bộ lọc để tìm lại.</p>
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                      <button className="ex-btn ex-btn--primary" onClick={() => openCreateModal(searchQ)}>
+                        <i className="bi bi-plus-circle" /> Tạo bài tập "{searchQ || 'mới'}"
+                      </button>
+                      <button className="ex-btn ex-btn--outline" onClick={() => { setSearchQ(''); setCatFilter('all'); setIntensityFilter('all'); setSortBy('default'); }}>
+                        Xóa bộ lọc
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
               <div className="ex-exercise-grid">
@@ -603,6 +715,11 @@ export default function ExercisePage() {
                           <i className={`bi ${ex.icon || 'bi-activity'}`} />
                         </div>
                         <div className="ex-card-badges">
+                          {ex.isCustom && (
+                            <span className="ex-chip ex-chip--custom" title="Bài tập cá nhân">
+                              <i className="bi bi-person-fill" /> Cá nhân
+                            </span>
+                          )}
                           <span className={`ex-chip ${chip.cls}`}>
                             <i className={`bi ${chip.icon}`} />{ex.intensity}
                           </span>
@@ -610,16 +727,28 @@ export default function ExercisePage() {
                         </div>
                       </div>
                       <h3 className="ex-card-title">{ex.name}</h3>
-                      <p className="ex-card-desc">{ex.description || ''}</p>
+                      <p className="ex-card-desc">{ex.description || (ex.isCustom ? 'Bài tập cá nhân do bạn tạo' : '')}</p>
                       <div className="ex-card-foot">
                         {est != null ? (
                           <span className="ex-card-est"><i className="bi bi-fire" /> ~<strong>{est}</strong> kcal / 30 phút</span>
                         ) : (
                           <span className="ex-card-est ex-card-est--met"><i className="bi bi-lightning-charge" /> Tiêu chuẩn MET <strong>{ex.met}</strong></span>
                         )}
-                        <button type="button" className="ex-btn ex-btn--primary" onClick={() => openLog(ex)}>
-                          <i className="bi bi-plus-lg" /> Ghi nhận
-                        </button>
+                        <div className="ex-card-actions">
+                          {ex.isCustom && (
+                            <button
+                              type="button"
+                              className="ex-icon-btn ex-icon-btn--del ex-icon-btn--sm"
+                              title="Xóa bài tập cá nhân này"
+                              onClick={() => setDeletingCustom(ex)}
+                            >
+                              <i className="bi bi-trash3" />
+                            </button>
+                          )}
+                          <button type="button" className="ex-btn ex-btn--primary" onClick={() => openLog(ex)}>
+                            <i className="bi bi-plus-lg" /> Ghi nhận
+                          </button>
+                        </div>
                       </div>
                     </article>
                   )
@@ -1031,6 +1160,172 @@ export default function ExercisePage() {
                 {isDeleting
                   ? <><span className="spinner-border spinner-border-sm me-1" /> Đang xóa...</>
                   : <><i className="bi bi-trash3" /> Xác nhận xóa</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ══════════════════════════════════════════════════
+          MODAL: Xác nhận xóa bài tập cá nhân
+          ══════════════════════════════════════════════════ */}
+      {deletingCustom && (
+        <div className="ex-overlay" role="dialog" aria-modal="true">
+          <div className="ex-dialog ex-dialog--confirm">
+            <div className="ex-confirm-icon"><i className="bi bi-trash3" /></div>
+            <h3>Xóa bài tập cá nhân?</h3>
+            <p>
+              Bạn có chắc chắn muốn xóa bài tập <strong>"{deletingCustom.name}"</strong> khỏi danh mục cá nhân?
+            </p>
+            <p style={{ fontSize: '0.82rem', color: '#64748b', marginTop: 4 }}>
+              Lưu ý: Các bản ghi bạn đã tập bài này trước đó trong lịch sử vẫn sẽ được giữ nguyên.
+            </p>
+            <div className="ex-dialog-foot ex-dialog-foot--center">
+              <button type="button" className="ex-btn ex-btn--ghost" onClick={() => setDeletingCustom(null)} disabled={isDeletingCustom}>
+                Hủy
+              </button>
+              <button type="button" className="ex-btn ex-btn--danger" onClick={confirmDeleteCustom} disabled={isDeletingCustom}>
+                {isDeletingCustom
+                  ? <><span className="spinner-border spinner-border-sm me-1" /> Đang xóa...</>
+                  : <><i className="bi bi-trash3" /> Xác nhận xóa</>
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          MODAL: Tạo bài tập cá nhân
+          ══════════════════════════════════════════════════ */}
+      {creatingCustom && (
+        <div className="ex-overlay" role="dialog" aria-modal="true">
+          <div className="ex-dialog">
+            <div className="ex-dialog-head">
+              <div>
+                <small>Danh mục cá nhân</small>
+                <h3>Thêm bài tập mới</h3>
+              </div>
+              <button type="button" className="ex-dialog-close" onClick={() => setCreatingCustom(false)} aria-label="Đóng">
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className="ex-dialog-body">
+              {/* Tên bài tập */}
+              <div className="ex-field">
+                <label>Tên bài tập <span style={{ color: '#ef4444' }}>*</span></label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Đá cầu, Nhảy hiện đại, Pilates, Leo núi..."
+                  maxLength={100}
+                  value={customForm.name}
+                  onChange={e => { setCustomForm(p => ({ ...p, name: e.target.value })); setCustomErr('') }}
+                  autoFocus
+                />
+              </div>
+
+              {/* Thể loại */}
+              <div className="ex-field">
+                <label>Thể loại</label>
+                <select
+                  className="ex-select"
+                  value={customForm.category}
+                  onChange={e => setCustomForm(p => ({ ...p, category: e.target.value }))}
+                >
+                  <option value="cardio">Cardio &amp; Vận động</option>
+                  <option value="strength">Sức mạnh &amp; Gym</option>
+                  <option value="flexibility">Yoga &amp; Thư giãn</option>
+                  <option value="sports">Thể thao</option>
+                </select>
+              </div>
+
+              {/* Mức độ cường độ */}
+              <div className="ex-field">
+                <label>Cường độ vận động</label>
+                <div className="ex-custom-intensities">
+                  {[
+                    { id: 'Nhẹ', label: 'Nhẹ', met: 3.5, desc: 'Vận động nhẹ nhàng, thư thả' },
+                    { id: 'Trung bình', label: 'Trung bình', met: 6.0, desc: 'Vừa phải, toát mồ hôi' },
+                    { id: 'Cao', label: 'Cao', met: 8.5, desc: 'Vận động nặng, đốt nhiều calo' },
+                  ].map(lvl => (
+                    <button
+                      key={lvl.id}
+                      type="button"
+                      className={`ex-intensity-btn ${customForm.intensity === lvl.id ? 'active' : ''}`}
+                      onClick={() => setCustomForm(p => ({ ...p, intensity: lvl.id }))}
+                    >
+                      <div className="ex-intensity-title">
+                        <strong>{lvl.label}</strong>
+                        <small>~{lvl.met} MET</small>
+                      </div>
+                      <span>{lvl.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Thời lượng mặc định */}
+              <div className="ex-field">
+                <label>Thời lượng gợi ý (phút)</label>
+                <input
+                  type="number"
+                  min="5"
+                  max="360"
+                  value={customForm.defaultDurationMinutes}
+                  onChange={e => setCustomForm(p => ({ ...p, defaultDurationMinutes: e.target.value }))}
+                />
+              </div>
+
+              {/* Mô tả */}
+              <div className="ex-field">
+                <label>Mô tả / Lưu ý <span style={{ fontWeight: 400, color: '#94a3b8' }}>(tùy chọn)</span></label>
+                <input
+                  type="text"
+                  maxLength={300}
+                  placeholder="Ghi chú thêm về dụng cụ, cách tập..."
+                  value={customForm.description}
+                  onChange={e => setCustomForm(p => ({ ...p, description: e.target.value }))}
+                />
+              </div>
+
+              {/* Calo ước tính */}
+              <div className="ex-result-simple">
+                <i className="bi bi-fire" />
+                <span>
+                  Ước tính tiêu hao: <strong>
+                    {calcCalories(
+                      customForm.intensity === 'Nhẹ' ? 3.5 : customForm.intensity === 'Cao' ? 8.5 : 6.0,
+                      userWeight || 60,
+                      Number(customForm.defaultDurationMinutes) || 30
+                    )} kcal
+                  </strong> / {Number(customForm.defaultDurationMinutes) || 30} phút
+                </span>
+              </div>
+
+              {customErr && (
+                <div className="ex-inline-err"><i className="bi bi-exclamation-circle" /> {customErr}</div>
+              )}
+            </div>
+
+            <div className="ex-dialog-foot">
+              <button
+                type="button"
+                className="ex-btn ex-btn--ghost"
+                onClick={() => setCreatingCustom(false)}
+                disabled={savingCustom}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                className="ex-btn ex-btn--primary"
+                onClick={saveCustomExercise}
+                disabled={savingCustom || !customForm.name.trim()}
+              >
+                {savingCustom
+                  ? <><span className="spinner-border spinner-border-sm me-1" /> Đang lưu...</>
+                  : <><i className="bi bi-check2-circle" /> Lưu &amp; Thêm vào danh mục</>
                 }
               </button>
             </div>

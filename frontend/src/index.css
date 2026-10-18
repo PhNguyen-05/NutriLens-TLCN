@@ -6820,7 +6820,7 @@ td.fdm-td-center { text-align: center !important; }
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 18px !important;
+  padding: 16px !important;
   transition: transform 0.18s, box-shadow 0.18s;
 }
 .ex-card:hover {
@@ -6852,24 +6852,130 @@ td.fdm-td-center { text-align: center !important; }
   font-weight: 700;
 }
 .ex-chip i { font-size: 0.45rem; }
-.ex-chip--low  { background: #ecfdf5; color: #047857; }
-.ex-chip--mid  { background: #fef9c3; color: #a16207; }
-.ex-chip--high { background: #fff1f2; color: #be123c; }
-.ex-chip--met  { background: #f1f5f9; color: #334155; }
+.ex-chip--low    { background: #ecfdf5; color: #047857; }
+.ex-chip--mid    { background: #fef9c3; color: #a16207; }
+.ex-chip--high   { background: #fff1f2; color: #be123c; }
+.ex-chip--met    { background: #f1f5f9; color: #334155; }
+.ex-chip--custom { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 700; }
+.ex-chip--custom i { font-size: 0.65rem; }
 
-.ex-card-title { font-size: 1rem; font-weight: 700; color: #0f172a; margin: 0 0 6px; line-height: 1.3; }
-.ex-card-desc  { font-size: 0.8rem; color: #64748b; line-height: 1.55; margin: 0 0 14px; flex: 1; min-height: 38px; }
-.ex-card-foot  {
+.ex-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.ex-card-actions .ex-icon-btn,
+.ex-icon-btn--sm {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  font-size: 0.68rem;
+  border-radius: 5px;
+  padding: 0;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+.ex-card-actions .ex-icon-btn:hover,
+.ex-icon-btn--sm:hover {
+  color: #dc2626;
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+
+
+.ex-custom-intensities {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.ex-intensity-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 9px 10px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.ex-intensity-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+.ex-intensity-btn.active {
+  background: #ecfdf5;
+  border-color: #10b981;
+}
+.ex-intensity-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-top: 12px;
+  width: 100%;
+  margin-bottom: 3px;
+}
+.ex-intensity-title strong {
+  font-size: 0.82rem;
+  color: #0f172a;
+}
+.ex-intensity-btn.active .ex-intensity-title strong {
+  color: #065f46;
+}
+.ex-intensity-title small {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #059669;
+  background: rgba(16,185,129,0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.ex-intensity-btn span {
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+.ex-card-title { font-size: 1rem; font-weight: 700; color: #0f172a; margin: 0 0 6px; line-height: 1.3; }
+.ex-card-desc  { font-size: 0.8rem; color: #64748b; line-height: 1.55; margin: 0 0 14px; flex: 1; min-height: 38px; }
+.ex-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: nowrap;
+  padding-top: 10px;
   border-top: 1px dashed #e2e8f0;
 }
-.ex-card-est { font-size: 0.72rem; color: #059669; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
-.ex-card-est strong { font-size: 0.85rem; }
+.ex-card-est {
+  font-size: 0.68rem;
+  color: #059669;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ex-card-est strong { font-size: 0.8rem; }
 .ex-card-est--met { color: #64748b; }
-.ex-card-est--met strong { font-size: 0.82rem; color: #334155; }
+.ex-card-est--met strong { font-size: 0.78rem; color: #334155; }
+.ex-card-foot .ex-btn {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  border-radius: 6px;
+  gap: 3px;
+  flex-shrink: 0;
+}
 
 /* ── Buttons ── */
 .ex-btn {
