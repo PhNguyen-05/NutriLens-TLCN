@@ -5,6 +5,7 @@ import AdminActionLogsModal from './AdminActionLogsModal'
 import UserManagementPage from './UserManagementPage'
 import FoodManagementPage from './FoodManagementPage'
 import FoodRequestManagementPage from './FoodRequestManagementPage'
+import ExerciseManagementPage from './ExerciseManagementPage'
 
 const reviewItems = [
   ['🍲', 'Bún chả Hà Nội', 'CNN 98.4%', '#REQ-8491', 'Người gửi: ThuTrang98 (Hôm nay 09:15)', '585 kcal / 1 suất tiêu chuẩn', 'green'],
@@ -61,7 +62,12 @@ export default function AdminDashboardPage() {
           {pendingRequestsCount > 0 && <b className="sidebar-badge coral">{pendingRequestsCount}</b>}
         </button>
         <div className="admin-section-label">VẬN ĐỘNG</div>
-        <button onClick={() => setActiveItem('Bài tập')}><i className="bi bi-person-walking" /> Quản lý bài tập</button>
+        <button
+          className={activeItem === 'Bài tập' ? 'active' : ''}
+          onClick={() => { setActiveItem('Bài tập'); setShowActionLogs(false) }}
+        >
+          <i className="bi bi-person-walking" /> Quản lý bài tập
+        </button>
         <div className="admin-section-label">CỘNG ĐỒNG & TIN TỨC</div>
         <button onClick={() => setActiveItem('Community')}><i className="bi bi-chat-left-text" /> Kiểm duyệt Community <b className="sidebar-badge amber">5</b></button>
         <button onClick={() => setActiveItem('Blog')}><i className="bi bi-journal-text" /> Blog y khoa</button>
@@ -82,6 +88,8 @@ export default function AdminDashboardPage() {
                   ? 'Quản lý danh mục món ăn'
                   : activeItem === 'Bổ sung món'
                   ? 'Duyệt yêu cầu bổ sung món ăn'
+                  : activeItem === 'Bài tập'
+                  ? 'Quản lý danh mục bài tập'
                   : 'Bảng điều khiển Vận hành NutriLes'}
               </h1>
               <p>
@@ -93,6 +101,8 @@ export default function AdminDashboardPage() {
                   ? 'Thêm, chỉnh sửa, ẩn/hiển thị hoặc xóa món ăn trong danh mục hệ thống.'
                   : activeItem === 'Bổ sung món'
                   ? 'Xem xét, chuẩn hóa thành phần dinh dưỡng và phê duyệt hoặc từ chối các yêu cầu món ăn do người dùng đề xuất.'
+                  : activeItem === 'Bài tập'
+                  ? 'Thêm, chỉnh sửa, ẩn hoặc hiển thị thông tin bài tập và chỉ số MET làm cơ sở tính calories cho người dùng.'
                   : 'Giám sát thời gian thực hoạt động các microservices, hàng đợi phê duyệt AI Lens và chỉ số an toàn sức khỏe người dùng trong ngày.'}
               </p>
             </div>
@@ -113,6 +123,8 @@ export default function AdminDashboardPage() {
             <FoodManagementPage />
           ) : activeItem === 'Bổ sung món' ? (
             <FoodRequestManagementPage />
+          ) : activeItem === 'Bài tập' ? (
+            <ExerciseManagementPage />
           ) : (
             <>
               <section className="admin-kpis">

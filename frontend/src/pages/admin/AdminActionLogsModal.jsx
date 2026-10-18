@@ -10,6 +10,11 @@ const actionLabels = {
   hide_food: 'Ẩn món ăn',
   show_food: 'Hiển thị món ăn',
   delete_food: 'Xóa món ăn',
+  create_exercise: 'Thêm bài tập',
+  update_exercise: 'Cập nhật bài tập',
+  hide_exercise: 'Ẩn bài tập',
+  show_exercise: 'Hiển thị bài tập',
+  delete_exercise: 'Xóa bài tập',
   hide_post: 'Ẩn bài viết',
   remove_post: 'Gỡ bài viết',
   reject_request: 'Từ chối yêu cầu',
@@ -31,17 +36,31 @@ function getActionTypeAndIcon(actionType) {
   switch (actionType) {
     case 'lock_user':
     case 'delete_food':
-      return { type: 'lock', icon: actionType === 'delete_food' ? 'bi-trash-fill' : 'bi-lock-fill' }
+    case 'delete_exercise':
+      return { type: 'lock', icon: ['delete_food', 'delete_exercise'].includes(actionType) ? 'bi-trash-fill' : 'bi-lock-fill' }
     case 'unlock_user':
     case 'create_food':
+    case 'create_exercise':
     case 'show_food':
+    case 'show_exercise':
     case 'approve_request':
-      return { type: 'unlock', icon: actionType === 'approve_request' ? 'bi-check-circle-fill' : actionType === 'create_food' ? 'bi-plus-circle-fill' : actionType === 'show_food' ? 'bi-eye-fill' : 'bi-unlock-fill' }
+      return {
+        type: 'unlock',
+        icon: actionType === 'approve_request'
+          ? 'bi-check-circle-fill'
+          : ['create_food', 'create_exercise'].includes(actionType)
+          ? 'bi-plus-circle-fill'
+          : ['show_food', 'show_exercise'].includes(actionType)
+          ? 'bi-eye-fill'
+          : 'bi-unlock-fill',
+      }
     case 'reject_request':
       return { type: 'lock', icon: 'bi-x-circle-fill' }
     case 'hide_food':
+    case 'hide_exercise':
       return { type: 'lock', icon: 'bi-eye-slash-fill' }
     case 'update_food':
+    case 'update_exercise':
       return { type: 'update', icon: 'bi-pencil-square' }
     default:
       return { type: 'update', icon: 'bi-gear-fill' }
