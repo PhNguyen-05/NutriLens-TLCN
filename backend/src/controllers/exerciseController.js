@@ -498,8 +498,15 @@ async function getExerciseLogs(req, res) {
       filter.date = date;
     } else if (startDate || endDate) {
       filter.date = {};
-      if (startDate) filter.date.$gte = startDate;
-      if (endDate) filter.date.$lte = endDate;
+      let s = startDate;
+      let e = endDate;
+      if (s && e && s > e) {
+        const temp = s;
+        s = e;
+        e = temp;
+      }
+      if (s) filter.date.$gte = s;
+      if (e) filter.date.$lte = e;
     }
 
     if (category && category !== 'all') {
@@ -547,9 +554,32 @@ async function createExerciseLog(req, res) {
     } = req.body;
 
     const duration = Number(durationMinutes);
-    // Luồng ngoại lệ 5a: Thời lượng <= 0
+    // Luồng ngoại lệ 5a: Thời lượng <= 0 hoặc vượt quá 24h
     if (!duration || duration <= 0) {
       return res.status(400).json({ message: 'Thời lượng tập luyện phải lớn hơn 0' });
+    }
+    if (duration > 1440) {
+      return res.status(400).json({ message: 'Thời lượng tập không thể vượt quá 24 giờ (1440 phút)' });
+    }
+
+    const todayStr = new Date().toLocaleDateString('sv-SE');
+    const nowTimeStr = new Intl.DateTimeFormat('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date());
+
+    const logDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? date
+      : todayStr;
+
+    if (logDate > todayStr) {
+      return res.status(400).json({ message: 'Ngày tập không thể ở thời điểm tương lai' });
+    }
+
+    const logTime = time || nowTimeStr;
+    if (logDate === todayStr && logTime > nowTimeStr) {
+      return res.status(400).json({ message: 'Giờ bắt đầu tập không thể ở thời điểm tương lai' });
     }
 
     // Luồng ngoại lệ 5b: Người dùng chưa có thông tin cân nặng trong hồ sơ
@@ -569,16 +599,6 @@ async function createExerciseLog(req, res) {
 
     // Tính lượng calories tiêu hao ước tính theo công thức
     const caloriesBurned = calculateEstimatedCalories(exercise.met, weight, duration);
-
-    const logDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
-      ? date
-      : new Date().toLocaleDateString('sv-SE');
-
-    const logTime = time || new Intl.DateTimeFormat('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date());
 
     const newLog = await ExerciseLog.create({
       userId: req.user.id,
@@ -630,9 +650,29 @@ async function updateExerciseLog(req, res) {
     if (durationMinutes !== undefined) {
       const parsedDuration = Number(durationMinutes);
       if (!parsedDuration || parsedDuration <= 0) {
-        return res.status(400).json({ message: 'Thông tin bài tập không hợp lệ' });
+        return res.status(400).json({ message: 'Thời lượng tập luyện phải lớn hơn 0' });
+      }
+      if (parsedDuration > 1440) {
+        return res.status(400).json({ message: 'Thời lượng tập không thể vượt quá 24 giờ (1440 phút)' });
       }
       nextDuration = parsedDuration;
+    }
+
+    const todayStr = new Date().toLocaleDateString('sv-SE');
+    const nowTimeStr = new Intl.DateTimeFormat('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date());
+
+    const nextDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : log.date;
+    const nextTime = time !== undefined ? time : log.time;
+
+    if (nextDate > todayStr) {
+      return res.status(400).json({ message: 'Ngày tập không thể ở thời điểm tương lai' });
+    }
+    if (nextDate === todayStr && nextTime && nextTime > nowTimeStr) {
+      return res.status(400).json({ message: 'Giờ bắt đầu tập không thể ở thời điểm tương lai' });
     }
 
     let nextMet = log.met;
@@ -657,10 +697,7 @@ async function updateExerciseLog(req, res) {
     // Tự động tính toán lại calories tiêu hao tương ứng
     log.durationMinutes = nextDuration;
     log.caloriesBurned = calculateEstimatedCalories(nextMet, log.weightKg, nextDuration);
-
-    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      log.date = date;
-    }
+    log.date = nextDate;
     if (time !== undefined) {
       log.time = time;
     }

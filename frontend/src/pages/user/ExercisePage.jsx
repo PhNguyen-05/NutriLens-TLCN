@@ -19,12 +19,33 @@ const INTENSITY_CHIP = {
   'Cao':       { cls: 'ex-chip--high',   icon: 'bi-circle-fill' },
 }
 
-function getTodayStr() {
-  return new Date().toLocaleDateString('sv-SE')
+function getTodayStr(d = new Date()) {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-function getTimeStr() {
-  return new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
+function getTimeStr(d = new Date()) {
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+function validateDateTime(date, time) {
+  const today = getTodayStr()
+  const nowTime = getTimeStr()
+
+  if (!date) {
+    return 'Vui lòng chọn ngày tập'
+  }
+  if (date > today) {
+    return 'Ngày tập không thể ở thời điểm tương lai'
+  }
+  if (date === today && time && time > nowTime) {
+    return 'Giờ bắt đầu tập không thể ở thời điểm tương lai'
+  }
+  return null
 }
 
 function formatDateShort(dateStr) {
@@ -76,6 +97,8 @@ export default function ExercisePage() {
   // Bộ lọc Catalog
   const [searchQ,         setSearchQ]          = useState('')
   const [catFilter,       setCatFilter]        = useState('all')
+  const [intensityFilter, setIntensityFilter]  = useState('all')
+  const [sortBy,          setSortBy]           = useState('default')
 
   // Bộ lọc History
   const [period,          setPeriod]           = useState('7d')
@@ -144,8 +167,17 @@ export default function ExercisePage() {
       if (histCat !== 'all') params.category = histCat
       if      (period === 'today') { params.date = today }
       else if (period === '7d')    { const d = new Date(); d.setDate(d.getDate()-6); params.startDate = d.toLocaleDateString('sv-SE'); params.endDate = today }
+      else if (period === '14d')   { const d = new Date(); d.setDate(d.getDate()-13); params.startDate = d.toLocaleDateString('sv-SE'); params.endDate = today }
       else if (period === '30d')   { const d = new Date(); d.setDate(d.getDate()-29); params.startDate = d.toLocaleDateString('sv-SE'); params.endDate = today }
-      else if (period === 'custom'){ if (customStart) params.startDate = customStart; if (customEnd) params.endDate = customEnd }
+      else if (period === 'custom'){
+        let s = customStart
+        let e = customEnd
+        if (s && e && s > e) {
+          const t = s; s = e; e = t;
+        }
+        if (s) params.startDate = s
+        if (e) params.endDate = e
+      }
       const { data } = await axiosInstance.get('/exercises/logs', { params })
       setLogs(data.logs || [])
       if (data.currentWeightKg && !userWeight) setUserWeight(data.currentWeightKg)
@@ -158,6 +190,20 @@ export default function ExercisePage() {
 
   useEffect(() => { fetchLogs() }, [period, customStart, customEnd, histCat])
 
+  function handleCustomStartChange(val) {
+    setCustomStart(val)
+    if (val && customEnd && val > customEnd) {
+      setCustomEnd(val)
+    }
+  }
+
+  function handleCustomEndChange(val) {
+    setCustomEnd(val)
+    if (val && customStart && val < customStart) {
+      setCustomStart(val)
+    }
+  }
+
   function toast(type, text) {
     setToastMsg({ type, text })
     setTimeout(() => setToastMsg(p => p?.text === text ? null : p), 4000)
@@ -165,12 +211,26 @@ export default function ExercisePage() {
 
   // ─── Catalog ───────────────────────────────────────────────────────────────
 
-  const filteredEx = useMemo(() => exercises.filter(e => {
-    const inCat = catFilter === 'all' || e.category === catFilter
-    const q = searchQ.toLowerCase().trim()
-    const inQ = !q || e.name.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)
-    return inCat && inQ
-  }), [exercises, catFilter, searchQ])
+  const filteredEx = useMemo(() => {
+    let list = exercises.filter(e => {
+      const inCat = catFilter === 'all' || e.category === catFilter
+      const inIntensity = intensityFilter === 'all' || e.intensity === intensityFilter
+      const q = searchQ.toLowerCase().trim()
+      const inQ = !q || e.name.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)
+      return inCat && inIntensity && inQ
+    })
+
+    if (sortBy === 'met-desc') {
+      list.sort((a, b) => (b.met || 0) - (a.met || 0))
+    } else if (sortBy === 'met-asc') {
+      list.sort((a, b) => (a.met || 0) - (b.met || 0))
+    } else if (sortBy === 'name-asc') {
+      list.sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+    } else if (sortBy === 'name-desc') {
+      list.sort((a, b) => b.name.localeCompare(a.name, 'vi'))
+    }
+    return list
+  }, [exercises, catFilter, intensityFilter, searchQ, sortBy])
 
   function openLog(exercise) {
     setLogging(exercise)
@@ -185,13 +245,45 @@ export default function ExercisePage() {
     setLogForm(p => ({ ...p, duration: val }))
     setLogErr('')
     if (!val || d <= 0) { setLogErr('Thời lượng tập luyện phải lớn hơn 0'); setLogCalories(0); return }
+    if (d > 1440) { setLogErr('Thời lượng tập không thể vượt quá 24 giờ (1440 phút)'); setLogCalories(0); return }
     if (!userWeight) { setLogErr('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe'); setLogCalories(0); return }
     setLogCalories(calcCalories(logging?.met, userWeight, d))
   }
 
+  function onLogDateChange(val) {
+    const today = getTodayStr()
+    const nowTime = getTimeStr()
+    setLogForm(p => {
+      let nextTime = p.time
+      if (val === today && p.time > nowTime) {
+        nextTime = nowTime
+      }
+      return { ...p, date: val, time: nextTime }
+    })
+    if (val > today) {
+      setLogErr('Ngày tập không thể ở thời điểm tương lai')
+    } else {
+      setLogErr('')
+    }
+  }
+
+  function onLogTimeChange(val) {
+    const today = getTodayStr()
+    const nowTime = getTimeStr()
+    if (logForm.date === today && val > nowTime) {
+      setLogErr('Giờ bắt đầu tập không thể ở thời điểm tương lai')
+    } else {
+      setLogErr('')
+    }
+    setLogForm(p => ({ ...p, time: val }))
+  }
+
   async function saveLog() {
+    const dtErr = validateDateTime(logForm.date, logForm.time)
+    if (dtErr) { setLogErr(dtErr); return }
     const d = Number(logForm.duration)
     if (!d || d <= 0)  { setLogErr('Thời lượng tập luyện phải lớn hơn 0'); return }
+    if (d > 1440)      { setLogErr('Thời lượng tập không thể vượt quá 24 giờ (1440 phút)'); return }
     if (!userWeight)   { setLogErr('Vui lòng cập nhật cân nặng trong hồ sơ sức khỏe'); return }
     if (!logging?.met) { setLogErr('Bài tập chưa có dữ liệu tính calories'); return }
     setSaving(true); setLogErr('')
@@ -218,6 +310,34 @@ export default function ExercisePage() {
     setEditCalories(calcCalories(log.met, log.weightKg, log.durationMinutes))
   }
 
+  function onEditDateChange(val) {
+    const today = getTodayStr()
+    const nowTime = getTimeStr()
+    setEditForm(p => {
+      let nextTime = p.time
+      if (val === today && p.time > nowTime) {
+        nextTime = nowTime
+      }
+      return { ...p, date: val, time: nextTime }
+    })
+    if (val > today) {
+      setEditErr('Ngày tập không thể ở thời điểm tương lai')
+    } else {
+      setEditErr('')
+    }
+  }
+
+  function onEditTimeChange(val) {
+    const today = getTodayStr()
+    const nowTime = getTimeStr()
+    if (editForm.date === today && val > nowTime) {
+      setEditErr('Giờ bắt đầu tập không thể ở thời điểm tương lai')
+    } else {
+      setEditErr('')
+    }
+    setEditForm(p => ({ ...p, time: val }))
+  }
+
   function onEditDuration(dur, exId = null) {
     const d = Number(dur)
     const eId = exId || editForm.exerciseId
@@ -226,15 +346,20 @@ export default function ExercisePage() {
     setEditForm(p => ({ ...p, duration: dur, exerciseId: eId }))
     setEditErr('')
     if (!d || d <= 0) { setEditErr('Thời lượng phải lớn hơn 0'); setEditCalories(0); return }
+    if (d > 1440) { setEditErr('Thời lượng tập không thể vượt quá 24 giờ (1440 phút)'); setEditCalories(0); return }
     setEditCalories(calcCalories(met, editing.weightKg, d))
   }
 
   async function saveEdit() {
-    if (!Number(editForm.duration) || Number(editForm.duration) <= 0) { setEditErr('Thời lượng phải lớn hơn 0'); return }
+    const dtErr = validateDateTime(editForm.date, editForm.time)
+    if (dtErr) { setEditErr(dtErr); return }
+    const d = Number(editForm.duration)
+    if (!d || d <= 0) { setEditErr('Thời lượng phải lớn hơn 0'); return }
+    if (d > 1440) { setEditErr('Thời lượng tập không thể vượt quá 24 giờ (1440 phút)'); return }
     setSavingEdit(true); setEditErr('')
     try {
       const { data } = await axiosInstance.patch(`/exercises/logs/${editing._id}`, {
-        exerciseId: editForm.exerciseId, durationMinutes: Number(editForm.duration),
+        exerciseId: editForm.exerciseId, durationMinutes: d,
         date: editForm.date, time: editForm.time, notes: editForm.notes,
       })
       toast('success', data.message || 'Cập nhật bài tập thành công')
@@ -385,24 +510,7 @@ export default function ExercisePage() {
           </article>
         </section>
 
-        {/* ── Tab nav ── */}
-        <div className="ex-tab-nav" role="tablist">
-          <button
-            type="button" role="tab"
-            className={`ex-tab-btn ${activeTab === 'catalog' ? 'active' : ''}`}
-            onClick={() => switchTab('catalog')}
-          >
-            <i className="bi bi-journal-plus" /> Danh mục bài tập
-          </button>
-          <button
-            type="button" role="tab"
-            className={`ex-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
-            onClick={() => switchTab('history')}
-          >
-            <i className="bi bi-clock-history" /> Lịch sử tập luyện
-            {logs.length > 0 && <span className="ex-tab-count">{logs.length}</span>}
-          </button>
-        </div>
+
 
         {/* ══════════════════════════════════════════════════
             TAB 1: DANH MỤC BÀI TẬP
@@ -411,21 +519,51 @@ export default function ExercisePage() {
           <section>
             {/* Toolbar */}
             <div className="ex-catalog-toolbar">
-              <div className="ex-search-wrap">
-                <i className="bi bi-search" />
-                <input
-                  type="text"
-                  placeholder="Tìm bài tập (vd: chạy bộ, yoga, đạp xe...)"
-                  value={searchQ}
-                  onChange={e => setSearchQ(e.target.value)}
-                />
-                {searchQ && (
-                  <button type="button" className="ex-clear-btn" onClick={() => setSearchQ('')} aria-label="Xóa">
-                    <i className="bi bi-x-circle-fill" />
-                  </button>
-                )}
+              <div className="ex-catalog-toolbar-row">
+                <div className="ex-search-wrap">
+                  <i className="bi bi-search" />
+                  <input
+                    type="text"
+                    placeholder="Tìm bài tập (vd: chạy bộ, yoga, đạp xe...)"
+                    value={searchQ}
+                    onChange={e => setSearchQ(e.target.value)}
+                  />
+                  {searchQ && (
+                    <button type="button" className="ex-clear-btn" onClick={() => setSearchQ('')} aria-label="Xóa">
+                      <i className="bi bi-x-circle-fill" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="ex-filter-group">
+                  <select
+                    className="ex-cat-select"
+                    value={intensityFilter}
+                    onChange={e => setIntensityFilter(e.target.value)}
+                    aria-label="Lọc theo cường độ"
+                  >
+                    <option value="all">Tất cả cường độ</option>
+                    <option value="Nhẹ">Cường độ: Nhẹ</option>
+                    <option value="Trung bình">Cường độ: Trung bình</option>
+                    <option value="Cao">Cường độ: Cao</option>
+                  </select>
+
+                  <select
+                    className="ex-cat-select"
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value)}
+                    aria-label="Sắp xếp"
+                  >
+                    <option value="default">Sắp xếp: Mặc định</option>
+                    <option value="met-desc">Calo tiêu hao: Cao → Thấp</option>
+                    <option value="met-asc">Calo tiêu hao: Thấp → Cao</option>
+                    <option value="name-asc">Tên bài tập: A → Z</option>
+                    <option value="name-desc">Tên bài tập: Z → A</option>
+                  </select>
+                </div>
               </div>
-              <div className="ex-cat-tabs" role="group">
+
+              <div className="ex-cat-tabs" role="group" aria-label="Lọc theo thể loại">
                 {CATEGORY_TABS.map(ct => (
                   <button
                     key={ct.id} type="button"
@@ -449,7 +587,7 @@ export default function ExercisePage() {
                 <i className="bi bi-search" />
                 <strong>Không tìm thấy bài tập phù hợp</strong>
                 <p>Thử từ khóa khác hoặc bỏ chọn bộ lọc để xem toàn bộ danh mục.</p>
-                <button className="ex-btn ex-btn--outline" onClick={() => { setSearchQ(''); setCatFilter('all') }}>
+                <button className="ex-btn ex-btn--outline" onClick={() => { setSearchQ(''); setCatFilter('all'); setIntensityFilter('all'); setSortBy('default'); }}>
                   Xóa bộ lọc
                 </button>
               </div>
@@ -502,6 +640,7 @@ export default function ExercisePage() {
                 {[
                   { id: 'today', label: 'Hôm nay' },
                   { id: '7d',    label: '7 ngày' },
+                  { id: '14d',   label: '14 ngày' },
                   { id: '30d',   label: '30 ngày' },
                   { id: 'all',   label: 'Tất cả' },
                   { id: 'custom',label: 'Tùy chọn' },
@@ -515,11 +654,11 @@ export default function ExercisePage() {
               {period === 'custom' && (
                 <div className="ex-date-range">
                   <label>
-                    Từ&nbsp;<input type="date" value={customStart} max={getTodayStr()} onChange={e => setCustomStart(e.target.value)} />
+                    Từ&nbsp;<input type="date" value={customStart} max={customEnd || getTodayStr()} onChange={e => handleCustomStartChange(e.target.value)} />
                   </label>
                   <span>—</span>
                   <label>
-                    Đến&nbsp;<input type="date" value={customEnd} max={getTodayStr()} onChange={e => setCustomEnd(e.target.value)} />
+                    Đến&nbsp;<input type="date" value={customEnd} min={customStart} max={getTodayStr()} onChange={e => handleCustomEndChange(e.target.value)} />
                   </label>
                 </div>
               )}
@@ -660,12 +799,14 @@ export default function ExercisePage() {
                 <div className="ex-field">
                   <label>Ngày tập</label>
                   <input type="date" max={getTodayStr()} value={logForm.date}
-                    onChange={e => setLogForm(p => ({ ...p, date: e.target.value }))} />
+                    onChange={e => onLogDateChange(e.target.value)} />
                 </div>
                 <div className="ex-field">
-                  <label>Giờ thực hiện</label>
-                  <input type="time" value={logForm.time}
-                    onChange={e => setLogForm(p => ({ ...p, time: e.target.value }))} />
+                  <label>Giờ bắt đầu tập</label>
+                  <input type="time"
+                    max={logForm.date === getTodayStr() ? getTimeStr() : undefined}
+                    value={logForm.time}
+                    onChange={e => onLogTimeChange(e.target.value)} />
                 </div>
               </div>
 
@@ -693,15 +834,9 @@ export default function ExercisePage() {
               </div>
 
               {/* Kết quả tính */}
-              <div className="ex-result-box">
-                <div className="ex-result-label"><i className="bi bi-lightning-charge-fill" /> Ước tính calories tiêu hao</div>
-                <div className="ex-result-value">
-                  <strong>{logCalories}</strong> <span>kcal</span>
-                </div>
-                <div className="ex-result-formula">
-                  <code>({logging.met} × 3.5 × {userWeight || '?'} × {logForm.duration || 0}) / 200</code>
-                </div>
-                <p className="ex-result-note">* Lượng calories tiêu hao được ước tính theo công thức MET chuẩn dựa trên cân nặng và thời lượng tập luyện.</p>
+              <div className="ex-result-simple">
+                <i className="bi bi-fire" />
+                <span>Ước tính tiêu hao: <strong>{logCalories} kcal</strong></span>
               </div>
 
               {logErr && (
@@ -748,7 +883,7 @@ export default function ExercisePage() {
                   <dt>Ngày thực hiện</dt><dd>{formatDateShort(detailLog.date)}</dd>
                 </div>
                 <div className="ex-detail-row">
-                  <dt>Giờ</dt><dd>{detailLog.time || '—'}</dd>
+                  <dt>Giờ bắt đầu tập</dt><dd>{detailLog.time || '—'}</dd>
                 </div>
                 <div className="ex-detail-row">
                   <dt>Thời lượng</dt><dd>{detailLog.durationMinutes} phút</dd>
@@ -769,14 +904,6 @@ export default function ExercisePage() {
                   </div>
                 )}
               </dl>
-              <div className="ex-result-box" style={{ marginTop: 0 }}>
-                <div className="ex-result-label"><i className="bi bi-calculator" /> Công thức đã áp dụng</div>
-                <div className="ex-result-formula" style={{ marginTop: 6 }}>
-                  <code>
-                    ({detailLog.met} × 3.5 × {detailLog.weightKg} kg × {detailLog.durationMinutes} phút) / 200 = <b>{detailLog.caloriesBurned} kcal</b>
-                  </code>
-                </div>
-              </div>
             </div>
             <div className="ex-dialog-foot">
               <button type="button" className="ex-btn ex-btn--ghost" onClick={() => setDetailLog(null)}>
@@ -825,12 +952,14 @@ export default function ExercisePage() {
                 <div className="ex-field">
                   <label>Ngày tập</label>
                   <input type="date" max={getTodayStr()} value={editForm.date}
-                    onChange={e => setEditForm(p => ({ ...p, date: e.target.value }))} />
+                    onChange={e => onEditDateChange(e.target.value)} />
                 </div>
                 <div className="ex-field">
-                  <label>Giờ</label>
-                  <input type="time" value={editForm.time}
-                    onChange={e => setEditForm(p => ({ ...p, time: e.target.value }))} />
+                  <label>Giờ bắt đầu tập</label>
+                  <input type="time"
+                    max={editForm.date === getTodayStr() ? getTimeStr() : undefined}
+                    value={editForm.time}
+                    onChange={e => onEditTimeChange(e.target.value)} />
                 </div>
               </div>
 
@@ -856,14 +985,12 @@ export default function ExercisePage() {
               </div>
 
               {/* Calo sau chỉnh sửa */}
-              <div className="ex-result-box">
-                <div className="ex-result-label"><i className="bi bi-arrow-repeat" /> Calories sau cập nhật</div>
-                <div className="ex-result-value">
-                  <strong>{editCalories}</strong> <span>kcal</span>
-                  <em style={{ fontSize: '0.8rem', marginLeft: 8, color: '#64748b' }}>
-                    (ban đầu: {editing.caloriesBurned} kcal)
-                  </em>
-                </div>
+              <div className="ex-result-simple">
+                <i className="bi bi-fire" />
+                <span>Calories sau cập nhật: <strong>{editCalories} kcal</strong></span>
+                <span style={{ fontSize: '0.8rem', marginLeft: 6, color: '#64748b' }}>
+                  (ban đầu: {editing.caloriesBurned} kcal)
+                </span>
               </div>
 
               {editErr && <div className="ex-inline-err"><i className="bi bi-exclamation-circle" /> {editErr}</div>}
