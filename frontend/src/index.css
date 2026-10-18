@@ -725,6 +725,75 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .action-log-heading h2 { color: #203d58; font-size: 19px; }
 .action-log-heading p { margin: 3px 0 0; color: #7790a9; font-size: 11px; line-height: 1.4; }
 .action-log-heading > button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #57718b; }
+/* ══════════ ACTION LOG QUICK SUBSYSTEM TABS ══════════ */
+.action-log-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 12px 10px;
+}
+.admin-action-log-panel .action-log-tabs {
+  margin: 0 0 12px;
+}
+.action-log-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 9px;
+  border: 1.5px solid #dce8f2;
+  background: #ffffff;
+  color: #4b6680;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .16s ease;
+  user-select: none;
+  white-space: nowrap;
+}
+.action-log-tab-btn:hover {
+  border-color: #cbdbe9;
+  background: #f7fafc;
+  color: #1e3a56;
+}
+.action-log-tab-btn i {
+  font-size: 13.5px;
+  color: #64829d;
+  transition: color .16s ease;
+}
+.action-log-tab-btn:hover i {
+  color: #00875f;
+}
+.action-log-tab-btn.active {
+  background: #00875f;
+  border-color: #00875f;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 135, 95, 0.22);
+}
+.action-log-tab-btn.active i {
+  color: #ffffff;
+}
+.action-log-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 19px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #edf4fa;
+  color: #44617d;
+  font-size: 11px;
+  font-weight: 700;
+  transition: all .16s ease;
+}
+.action-log-tab-btn.active .action-log-tab-badge {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+}
+
 .action-log-filters { display: grid; grid-template-columns: 1.35fr 1fr 1.1fr 1.5fr; gap: 8px; margin: 0 12px 10px; padding: 8px; border: 1px solid #dce8f2; border-radius: 7px; background: #f8fbfe; }
 .admin-action-log-panel .action-log-filters { grid-template-columns: 1.2fr 1fr 1.1fr 1.5fr; gap: 8px; margin: 0; padding: 8px; }
 .admin-action-log-panel .action-log-date, .admin-action-log-panel .action-log-select, .admin-action-log-panel .action-log-search { height: 40px; }
@@ -795,6 +864,8 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   .action-log-heading { padding: 10px; }
   .action-log-heading h2 { font-size: 16px; }
   .action-log-heading p { font-size: 10px; }
+  .action-log-tabs { margin: 0 8px 8px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .action-log-tab-btn { height: 33px; padding: 0 11px; font-size: 11.5px; }
   .action-log-filters { grid-template-columns: 1fr 1fr; margin: 0 8px 8px; }
   .action-log-date { grid-column: 1 / -1; }
   .action-log-table-wrap { margin: 0 8px; }
