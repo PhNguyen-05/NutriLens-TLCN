@@ -302,11 +302,26 @@ async function addMealLog(req, res, next) {
     const {
       foodSlug, foodName, confidence,
       imageUrl, servings = 1,
-      date, mealType = 'lunch',
+      date, mealType, timezoneOffsetMinutes = 0,
     } = req.body;
 
     if (!foodSlug || !foodName || !date) {
       return res.status(400).json({ message: 'Thiếu thông tin bắt buộc: foodSlug, foodName, date' });
+    }
+    const parsedDate = new Date(`${date}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+      return res.status(400).json({ message: 'Ngày ghi nhận không hợp lệ' });
+    }
+    if (!['breakfast', 'lunch', 'dinner', 'snack'].includes(mealType)) {
+      return res.status(400).json({ message: 'Vui lòng chọn loại bữa ăn' });
+    }
+    const timezoneOffset = Number(timezoneOffsetMinutes);
+    if (!Number.isInteger(timezoneOffset) || Math.abs(timezoneOffset) > 840) {
+      return res.status(400).json({ message: 'Múi giờ không hợp lệ' });
+    }
+    const localToday = new Date(Date.now() - timezoneOffset * 60_000).toISOString().slice(0, 10);
+    if (date > localToday) {
+      return res.status(400).json({ message: 'Không thể thêm món ăn vào ngày trong tương lai' });
     }
 
     // Lấy snapshot dinh dưỡng từ DB

@@ -945,7 +945,15 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
   }
 
   const handleAddLog = async () => {
-    if (!result?.recognized || !mealType) return
+    if (!result?.recognized) return
+    if (!mealType) {
+      setSaveMsg({ type: 'error', text: 'Vui lòng chọn bữa ăn trước khi thêm vào nhật ký.' })
+      return
+    }
+    if (date > todayString()) {
+      setSaveMsg({ type: 'error', text: 'Không thể thêm món ăn vào ngày trong tương lai.' })
+      return
+    }
     const pred = result.predictions[selectedPred]
     setSaving(true); setSaveMsg(null)
     try {
@@ -956,6 +964,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
       payload.append('servings', String(Number(servings)))
       payload.append('date', date)
       payload.append('mealType', mealType)
+      payload.append('timezoneOffsetMinutes', String(new Date().getTimezoneOffset()))
       if (fileObj) payload.append('image', fileObj)
       else if (result.nutrition?.imageUrl) payload.append('imageUrl', result.nutrition.imageUrl)
 
@@ -1226,8 +1235,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <span className="fs-system-status"><i className="bi bi-cpu-fill" /><span><strong>CÔNG NGHỆ AI (CNN)</strong><small>Nhận diện chính xác · Nhanh chóng · Đáng tin cậy</small></span></span>
         </section>
 
-        {(scanError || saveMsg?.type === 'error') && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{scanError || saveMsg?.text}</div>}
-        {saveMsg?.type === 'success' && <div className="fs-alert success" role="status"><i className="bi bi-check-circle-fill" />{saveMsg.text}</div>}
+        {scanError && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{scanError}</div>}
 
         <section className="fs-workspace">
           <article className="fs-panel fs-upload-panel">
@@ -1310,17 +1318,18 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
               <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div></div>
               {result?.recognized && result.nutrition ? <>
                 <div className="fs-nutrition-controls">
-                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} onClick={() => setMealType(value)}>{label}</button>)}</div></fieldset>
-                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} onClick={() => { setMealType(value); setSaveMsg(null) }}>{label}</button>)}</div></fieldset>
+                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} max={todayString()} onChange={(event) => { setDate(event.target.value); setSaveMsg(null) }} /></label>
                   <label className="fs-nutrition-field"><span>Khẩu phần ăn</span><select value={servings} onChange={(event) => setServings(Number(event.target.value))}>{[0.5, 1, 1.5, 2, 3].map((value) => <option key={value} value={value}>{value} khẩu phần ({Math.round((result.nutrition.servingSize || 0) * value)}g)</option>)}</select></label>
                 </div>
                 <NutritionTable nutrition={result.nutrition} servings={servings} />
                 {result.nutrition.fiber != null && <div className="fs-nutrition-note"><i className="bi bi-lightbulb-fill" /><span><strong>Đánh giá dinh dưỡng</strong>Món ăn cung cấp năng lượng và các nhóm chất theo khẩu phần đã chọn.</span></div>}
               </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
             </article>
+            {saveMsg && <div className={`fs-alert ${saveMsg.type} fs-save-feedback`} role={saveMsg.type === 'error' ? 'alert' : 'status'}><i className={`bi ${saveMsg.type === 'error' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill'}`} />{saveMsg.text}</div>}
             {result?.recognized && result.nutrition && <div className="fs-nutrition-actions">
               <button type="button" className="fs-request-food-button" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
-              <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving || !mealType}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
+              <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
             </div>}
 
             <article className="fs-panel fs-recent-meals">

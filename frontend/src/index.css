@@ -3175,6 +3175,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-request-food-button:hover { background: #f0fbf6; }
 .fs-no-match-request { margin-top: 10px; }
 .fs-nutrition-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.fs-save-feedback { margin-top: -4px; }
 .fs-nutrition-actions .fs-button.primary { flex: 0 1 auto; min-width: 190px; }
 .fs-nutrition-empty { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 10px; border-radius: 6px; background: #f8fbfa; color: #879792; font-size: 0.9rem; }
 .fs-nutrition-empty i { color: #62b393; font-size: 16px; }
