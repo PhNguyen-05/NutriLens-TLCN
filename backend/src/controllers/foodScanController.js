@@ -467,6 +467,17 @@ async function getMealLogs(req, res, next) {
 
     const logs = await MealLog.find({ userId, date }).sort({ createdAt: 1 }).lean();
 
+    // Keep historical logs visible while exposing the food's current catalog status.
+    const foodSlugs = [...new Set(logs.map((log) => log.foodSlug).filter(Boolean))];
+    const foods = foodSlugs.length
+      ? await Food.find({ slug: { $in: foodSlugs } }).select('slug status').lean()
+      : [];
+    const foodStatusBySlug = new Map(foods.map((food) => [food.slug, food.status || 'active']));
+    const logsWithFoodStatus = logs.map((log) => ({
+      ...log,
+      foodHidden: foodStatusBySlug.get(log.foodSlug) === 'hidden',
+    }));
+
     // Tính tổng dinh dưỡng trong ngày
     const totals = logs.reduce(
       (acc, log) => {
@@ -483,7 +494,7 @@ async function getMealLogs(req, res, next) {
     // Làm tròn 1 chữ số thập phân
     Object.keys(totals).forEach((k) => { totals[k] = Math.round(totals[k] * 10) / 10; });
 
-    return res.status(200).json({ date, logs, totals });
+    return res.status(200).json({ date, logs: logsWithFoodStatus, totals });
   } catch (err) {
     next(err);
   }
@@ -491,6 +502,16 @@ async function getMealLogs(req, res, next) {
 
 async function updateMealLog(req, res, next) {
   try {
+    const mealLog = await MealLog.findOne({ _id: req.params.id, userId: req.user.id }).select('foodSlug').lean();
+    if (!mealLog) {
+      return res.status(404).json({ message: 'Không tìm thấy nhật ký hoặc bạn không có quyền cập nhật' });
+    }
+
+    const food = await Food.findOne({ slug: mealLog.foodSlug }).select('status').lean();
+    if (food?.status === 'hidden') {
+      return res.status(409).json({ message: 'Món ăn đã bị ẩn khỏi danh mục, bạn không thể chỉnh sửa bản ghi này' });
+    }
+
     const updates = {};
     const { date, mealType, servings } = req.body;
 

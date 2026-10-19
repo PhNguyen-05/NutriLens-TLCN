@@ -5175,6 +5175,8 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fd-food-image > i { font-size: 19px; }
 .fd-food-copy { min-width: 0; }
 .fd-food-copy h3 { margin: 0 0 4px; overflow: hidden; color: #304b45; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.fd-food-row.is-food-hidden { background: linear-gradient(90deg, #fffaf1, #fff 38%); }
+.fd-hidden-food-badge { display: inline-flex; align-items: center; gap: 4px; margin: 0 0 6px; padding: 3px 7px; border-radius: 10px; background: #fff2dc; color: #a66b13; font-size: 10px; font-weight: 700; }
 .fd-food-copy > p { display: flex; align-items: center; gap: 6px; margin: 0 0 7px; color: #8b9a96; font-size: 12px; }
 .fd-food-macros { display: flex; flex-wrap: wrap; gap: 5px; }
 .fd-food-macros span { display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 10px; background: #f0f6ff; color: #4278c2; font-size: 11px; white-space: nowrap; }
@@ -5235,6 +5237,17 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fd-edit-dialog > footer button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid #dfe8e5; border-radius: 5px; background: #fff; color: #526a64; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .fd-edit-dialog > footer button[type="submit"] { border-color: #078d64; background: #07966c; color: #fff; }
 .fd-edit-dialog > footer button:disabled { opacity: .7; cursor: wait; }
+.fd-detail-dialog { width: min(480px, 100%); }
+.fd-hidden-food-alert { display: flex; align-items: flex-start; gap: 8px; padding: 10px 11px; border: 1px solid #f0d7a7; border-radius: 6px; background: #fff8e9; color: #8d6018; font-size: 12px; line-height: 1.5; }
+.fd-hidden-food-alert > i { margin-top: 1px; }
+.fd-detail-food { display: flex; align-items: center; gap: 10px; color: #304b45; font-size: 15px; }
+.fd-detail-food .fd-food-image { width: 64px; height: 56px; flex: 0 0 64px; }
+.fd-detail-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.fd-detail-values > div { padding: 8px 9px; border-radius: 5px; background: #f6f9f8; }
+.fd-detail-values dt { color: #7c8c87; font-size: 10px; }
+.fd-detail-values dd { margin: 3px 0 0; color: #36544c; font-size: 12px; font-weight: 700; }
+.fd-detail-dialog > footer .fd-detail-delete { border-color: #f3aaa6; color: #da5148; }
+.fd-detail-dialog > footer .fd-detail-delete:hover { background: #fff5f4; }
 
 @media (max-width: 1000px) {
   .fd-content-grid { grid-template-columns: minmax(0, 2.55fr) minmax(250px, 1fr); }
