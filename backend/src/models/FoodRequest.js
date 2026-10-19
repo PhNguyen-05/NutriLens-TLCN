@@ -16,6 +16,9 @@ const foodRequestSchema = new Schema(
     // serving-based nutrition fields.
     requestedBy: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    requestType: { type: String, enum: ['addition', 'reopen'], default: 'addition', index: true },
+    targetFoodId: { type: Schema.Types.ObjectId, ref: 'Food', default: null, index: true },
+    feedbackReason: { type: String, trim: true, default: null },
     name: { type: String, trim: true },
     foodName: { type: String, required: true, trim: true, index: true },
     imageUrl: { type: String, trim: true, default: null },

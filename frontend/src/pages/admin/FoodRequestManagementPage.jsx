@@ -153,6 +153,20 @@ function FoodRequestReviewModal({
 
   const handleApprove = async () => {
     setErrorMsg('')
+    if (requestDetail?.requestType === 'reopen') {
+      setSubmitting(true)
+      try {
+        const res = await axiosInstance.post(`/admin/food-requests/${requestId}/approve`, {
+          adminNote: form.adminNote.trim() || null,
+        })
+        onApproved(res.data.message || 'Đã kích hoạt lại món ăn')
+      } catch (err) {
+        setErrorMsg(err.response?.data?.message || 'Không thể kích hoạt lại món ăn')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
     // Ràng buộc Luồng ngoại lệ 7c: Thiếu Calo/100g khi Admin nhấn Duyệt
     if (
       form.calories === '' ||
@@ -203,7 +217,7 @@ function FoodRequestReviewModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18, color: '#009b6d' }}><i className="bi bi-patch-check-fill" /></span>
             <div>
-              <h2>Xem xét &amp; Phê duyệt yêu cầu món ăn</h2>
+              <h2>{requestDetail?.requestType === 'reopen' ? 'Xem xét đề nghị mở lại món ăn' : 'Xem xét & Phê duyệt yêu cầu món ăn'}</h2>
               {requestDetail && (
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 2 }}>
                   <span className="frm-code-tag">{requestDetail.requestCode || 'REQ-NEW'}</span>
@@ -254,7 +268,18 @@ function FoodRequestReviewModal({
                 </div>
               )}
 
-              <div className="frm-review-grid">
+              {requestDetail?.requestType === 'reopen' && <section style={{ display: 'grid', gap: 12, padding: 16, border: '1px solid #e2e9ec', borderRadius: 8, background: '#f8fafb' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {(requestDetail.targetFoodId?.imageUrl || requestDetail.imageUrl) && <img src={getImageUrl(requestDetail.targetFoodId?.imageUrl || requestDetail.imageUrl)} alt={requestDetail.foodName} style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover' }} />}
+                  <div><strong style={{ color: '#243c43', fontSize: 16 }}>{requestDetail.targetFoodId?.name || requestDetail.foodName}</strong><div style={{ marginTop: 4, color: '#b66b18', fontSize: 12, fontWeight: 700 }}>Món hiện đang ẩn</div></div>
+                </div>
+                <div style={{ color: '#526a64', fontSize: 13 }}><strong>Lý do:</strong> {{ reopen: 'Đề nghị mở lại món ăn', nutrition: 'Thông tin dinh dưỡng chưa chính xác', name_image: 'Tên món ăn hoặc hình ảnh chưa chính xác', other: 'Khác' }[requestDetail.feedbackReason] || 'Khác'}</div>
+                <div style={{ color: '#526a64', fontSize: 13 }}><strong>Nội dung phản hồi:</strong> {requestDetail.note || 'Không có nội dung bổ sung.'}</div>
+                <label className="frm-field"><span>Ghi chú Admin (nội bộ)</span><input value={form.adminNote} onChange={(event) => setForm({ ...form, adminNote: event.target.value })} placeholder="Ghi chú khi xử lý đề nghị" /></label>
+                <p style={{ margin: 0, color: '#71837e', fontSize: 12 }}>Chỉ thao tác duyệt mới kích hoạt lại món trong danh mục.</p>
+              </section>}
+
+              <div className="frm-review-grid" style={requestDetail?.requestType === 'reopen' ? { display: 'none' } : undefined}>
                 {/* Left Column: User's original request proposal */}
                 <div className="frm-proposal-card">
                   <h3 className="frm-proposal-title">
@@ -535,7 +560,7 @@ function FoodRequestReviewModal({
                 </>
               ) : (
                 <>
-                  <i className="bi bi-check2-circle" /> Phê duyệt &amp; Thêm vào danh mục
+                  <i className="bi bi-check2-circle" /> {requestDetail?.requestType === 'reopen' ? 'Kích hoạt lại món ăn' : 'Phê duyệt & Thêm vào danh mục'}
                 </>
               )}
             </button>
@@ -552,6 +577,7 @@ function FoodRequestRejectModal({
   onClose,
   onRejected,
 }) {
+  const isReopenRequest = request.requestType === 'reopen'
   const [reason, setReason] = useState('')
   const [adminNote, setAdminNote] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
@@ -577,7 +603,9 @@ function FoodRequestRejectModal({
         reason: trimmed,
         adminNote: adminNote.trim() || null,
       })
-      onRejected('Đã từ chối yêu cầu bổ sung món ăn thành công')
+      onRejected(isReopenRequest
+        ? 'Đã từ chối đề nghị mở lại món ăn thành công'
+        : 'Đã từ chối yêu cầu bổ sung món ăn thành công')
     } catch (err) {
       // Ngoại lệ 7d, 8d
       setErrorMsg(err.response?.data?.message || 'Thao tác thất bại, vui lòng thử lại')
@@ -593,7 +621,7 @@ function FoodRequestRejectModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18, color: '#dc2626' }}><i className="bi bi-x-circle-fill" /></span>
             <div>
-              <h2>Từ chối yêu cầu bổ sung món</h2>
+              <h2>{isReopenRequest ? 'Từ chối đề nghị mở lại món' : 'Từ chối yêu cầu bổ sung món'}</h2>
               <small style={{ color: '#7a92a8' }}>
                 Món: <strong>{request.foodName}</strong> ({request.requestCode || 'REQ'})
               </small>
@@ -680,12 +708,20 @@ function FoodRequestRejectModal({
 
 // ─── Detail Modal for Approved / Rejected Requests ──────────────────────────
 function FoodRequestDetailModal({ request, onClose }) {
+  const isReopenRequest = request.requestType === 'reopen'
+  const feedbackReasons = {
+    reopen: 'Đề nghị mở lại món ăn',
+    nutrition: 'Thông tin dinh dưỡng chưa chính xác',
+    name_image: 'Tên món ăn hoặc hình ảnh chưa chính xác',
+    other: 'Khác',
+  }
+
   return (
     <div className="user-modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <section className="user-modal" style={{ width: 'min(580px, calc(100vw - 32px))' }} role="dialog" aria-modal="true">
         <header>
           <div>
-            <h2>Chi tiết yêu cầu món ăn</h2>
+            <h2>{isReopenRequest ? 'Chi tiết đề nghị mở lại món' : 'Chi tiết yêu cầu món ăn'}</h2>
             <small style={{ color: '#7a92a8' }}>
               Mã: <strong>{request.requestCode || 'REQ'}</strong> • Trạng thái:{' '}
               {request.status === 'approved' ? 'Đã duyệt' : request.status === 'rejected' ? 'Đã từ chối' : 'Chờ duyệt'}
@@ -709,12 +745,21 @@ function FoodRequestDetailModal({ request, onClose }) {
             )}
             <div>
               <h3 style={{ margin: '0 0 4px', fontSize: 16, color: '#162e43' }}>{request.foodName}</h3>
-              <div style={{ fontSize: 12, color: '#688297' }}>
-                Nhóm: <b>{request.foodGroup || 'Chưa phân loại'}</b> • Khẩu phần: <b>{request.servingLabel || `${request.servingSize || 100}g`}</b>
-              </div>
-              <div style={{ fontSize: 12, color: '#00875f', fontWeight: 700, marginTop: 2 }}>
-                {request.calories !== null ? `${request.calories} kcal / 100g` : 'Chưa có thông tin Calo'}
-              </div>
+              {isReopenRequest ? (
+                <div style={{ fontSize: 12, color: '#688297' }}>
+                  Lý do: <b>{feedbackReasons[request.feedbackReason] || 'Khác'}</b>
+                  {request.note && <div style={{ marginTop: 3 }}>Nội dung: {request.note}</div>}
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12, color: '#688297' }}>
+                    Nhóm: <b>{request.foodGroup || 'Chưa phân loại'}</b> • Khẩu phần: <b>{request.servingLabel || `${request.servingSize || 100}g`}</b>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#00875f', fontWeight: 700, marginTop: 2 }}>
+                    {request.calories !== null ? `${request.calories} kcal / 100g` : 'Chưa có thông tin Calo'}
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -741,7 +786,7 @@ function FoodRequestDetailModal({ request, onClose }) {
             <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '12px 14px', borderRadius: 8 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#065f46', marginBottom: 4 }}>
                 <i className="bi bi-check-circle-fill" style={{ marginRight: 6 }} />
-                Món ăn chính thức trong danh mục:
+                {isReopenRequest ? 'Món ăn đã được kích hoạt lại:' : 'Món ăn chính thức trong danh mục:'}
               </div>
               <div style={{ fontSize: 12.5, color: '#047857' }}>
                 Mã món: <strong>{request.approvedFoodId.foodCode}</strong> — {request.approvedFoodId.name} ({request.approvedFoodId.calories} kcal)
@@ -1020,7 +1065,7 @@ export default function FoodRequestManagementPage() {
                           )}
                           <div className="fdm-food-info">
                             <strong>{item.foodName}</strong>
-                            <small>{item.foodGroup || 'Chưa phân loại'}</small>
+                            <small>{item.requestType === 'reopen' ? 'Đề nghị mở lại món' : item.foodGroup || 'Chưa phân loại'}</small>
                           </div>
                         </div>
                       </td>
@@ -1049,7 +1094,9 @@ export default function FoodRequestManagementPage() {
 
                       {/* Dinh dưỡng sơ bộ */}
                       <td className="fdm-td-center">
-                        {item.calories !== null && item.calories !== undefined ? (
+                        {item.requestType === 'reopen' ? (
+                          <span style={{ fontSize: 11.5, color: '#b66b18', fontWeight: 700 }}>Đề nghị mở lại món đang ẩn</span>
+                        ) : item.calories !== null && item.calories !== undefined ? (
                           <div style={{ fontSize: 12 }}>
                             <strong style={{ color: '#00875f' }}>{item.calories} kcal</strong>
                             <div style={{ fontSize: 11, color: '#7a92a8' }}>
