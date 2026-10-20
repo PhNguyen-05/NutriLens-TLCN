@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 
 const STATUS_OPTIONS = ['Nháp', 'Đã xuất bản', 'Đã ẩn', 'Đã xóa']
 const PAGE_SIZE = 6
+const CUSTOM_CATEGORY_VALUE = '__custom_category__'
 
 const EMPTY_FORM = { title: '', content: '', imageUrl: '', category: '', tags: [] }
 
@@ -97,6 +98,7 @@ export default function BlogManagementPage() {
   const [detailTarget, setDetailTarget] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [isCustomCategory, setIsCustomCategory] = useState(false)
   const [tagInput, setTagInput] = useState('')
   const [formError, setFormError] = useState('')
   const [imageError, setImageError] = useState('')
@@ -159,15 +161,19 @@ export default function BlogManagementPage() {
     setFormTarget(null)
     setIsFormOpen(true)
     setForm(EMPTY_FORM)
+    setIsCustomCategory(false)
     setTagInput('')
     setFormError('')
     setImageError('')
   }
 
   function openEdit(post) {
+    const category = getPostCategory(post)
+    const matchedCategory = categories.find((item) => item.toLocaleLowerCase('vi') === category.toLocaleLowerCase('vi'))
     setFormTarget(post)
     setIsFormOpen(true)
-    setForm({ title: post.title, content: post.content, imageUrl: post.imageUrl || '', category: getPostCategory(post), tags: [...getPostTags(post)] })
+    setIsCustomCategory(Boolean(category && !matchedCategory))
+    setForm({ title: post.title, content: post.content, imageUrl: post.imageUrl || '', category: matchedCategory || category, tags: [...getPostTags(post)] })
     setTagInput('')
     setFormError('')
     setImageError('')
@@ -177,6 +183,7 @@ export default function BlogManagementPage() {
     setIsFormOpen(false)
     setFormTarget(null)
     setForm(EMPTY_FORM)
+    setIsCustomCategory(false)
     setTagInput('')
     setFormError('')
     setImageError('')
@@ -184,7 +191,7 @@ export default function BlogManagementPage() {
 
   function addTag(rawTag = tagInput) {
     const tag = formatCategoryLabel(rawTag.trim().replace(/^#/, ''))
-    if (!tag || [form.category, ...form.tags].some((existing) => existing.toLocaleLowerCase('vi') === tag.toLocaleLowerCase('vi'))) {
+    if (!tag || form.tags.some((existing) => existing.toLocaleLowerCase('vi') === tag.toLocaleLowerCase('vi'))) {
       setTagInput('')
       return
     }
@@ -446,8 +453,25 @@ export default function BlogManagementPage() {
                 <div className="bm-composer-panel-body">
                   <div className="bm-field">
                     <span>Chuyên mục</span>
-                    <div className="bm-tag-input-wrap">
-                      <input aria-label="Chuyên mục" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} />
+                    <div className="bm-category-control">
+                      <div className="bm-tag-input-wrap">
+                        <select
+                          className="bm-category-picker"
+                          aria-label="Chuyên mục"
+                          value={isCustomCategory ? CUSTOM_CATEGORY_VALUE : form.category}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            const isCustom = value === CUSTOM_CATEGORY_VALUE
+                            setIsCustomCategory(isCustom)
+                            setForm((current) => ({ ...current, category: isCustom ? '' : value }))
+                          }}
+                        >
+                          <option value="">Chọn chuyên mục</option>
+                          {categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                          <option value={CUSTOM_CATEGORY_VALUE}>Khác</option>
+                        </select>
+                      </div>
+                      {isCustomCategory && <input className="bm-category-custom-input" aria-label="Nhập chuyên mục khác" placeholder="Nhập tên chuyên mục..." value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} />}
                     </div>
                   </div>
                   <div className="bm-field">

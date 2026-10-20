@@ -70,7 +70,7 @@ function validatePostInput(body = {}, current = null) {
   if (!BLOG_STATUSES.includes(status)) return { error: 'Trạng thái bài viết không hợp lệ' };
 
   const normalizedTags = [];
-  const seenTags = new Set(category ? [category.toLocaleLowerCase('vi')] : []);
+  const seenTags = new Set();
   for (const rawTag of rawTags) {
     const tag = rawTag.trim();
     const key = tag.toLocaleLowerCase('vi');
