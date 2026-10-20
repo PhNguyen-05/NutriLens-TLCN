@@ -44,4 +44,10 @@ async function requireAuth(req, res, next) {
   }
 }
 
+function optionalAuth(req, res, next) {
+  if (!req.headers.authorization) return next();
+  return requireAuth(req, res, next);
+}
+
 module.exports = requireAuth;
+module.exports.optionalAuth = optionalAuth;

@@ -3,9 +3,18 @@ const BlogPost = require('../models/BlogPost');
 
 const BLOG_STATUSES = ['Nháp', 'Đã xuất bản', 'Đã ẩn', 'Đã xóa'];
 const AUTHOR_FIELDS = 'fullName role';
+const VIEWER_ID_PATTERN = /^guest:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function getLikeViewerId(req, guestViewerId) {
+  if (req.user?.id) return `user:${req.user.id}`;
+  const viewerId = String(guestViewerId || '').trim();
+  return VIEWER_ID_PATTERN.test(viewerId) ? viewerId : '';
+}
 
 function serializeBlogPost(post) {
   const raw = typeof post.toObject === 'function' ? post.toObject() : post;
+  const publicPost = { ...raw };
+  delete publicPost.likedBy;
   const author = raw.authorId && raw.authorId.fullName !== undefined ? raw.authorId : null;
   const legacyCategoryTags = Array.isArray(raw.categoryTags) ? raw.categoryTags : [];
   const category = String(raw.category || legacyCategoryTags[0] || '');
@@ -14,7 +23,7 @@ function serializeBlogPost(post) {
     : legacyCategoryTags.slice(category ? 1 : 0);
 
   return {
-    ...raw,
+    ...publicPost,
     _id: String(raw._id),
     authorId: String(author?._id || raw.authorId || ''),
     authorName: author?.fullName || 'Admin NutriLens',
@@ -106,6 +115,95 @@ async function listBlogPosts(_req, res) {
   } catch (err) {
     console.error('[listBlogPosts] Lỗi:', err.message);
     return res.status(500).json({ message: 'Không thể tải danh sách bài viết' });
+  }
+}
+
+async function listPublishedBlogPosts(_req, res) {
+  try {
+    const posts = await BlogPost.find({ status: 'Đã xuất bản' })
+      .populate('authorId', AUTHOR_FIELDS)
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .lean();
+    return res.status(200).json({ data: posts.map(serializeBlogPost) });
+  } catch (err) {
+    console.error('[listPublishedBlogPosts] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải bài viết' });
+  }
+}
+
+async function getPublishedBlogPost(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return invalidId(res);
+
+    const viewerId = getLikeViewerId(req, req.query.viewerId);
+    const post = await BlogPost.findOne({ _id: id, status: 'Đã xuất bản' })
+      .select(viewerId ? '+likedBy' : '')
+      .lean();
+    if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
+    return res.status(200).json({
+      data: { ...serializeBlogPost(post), isLiked: Boolean(viewerId && post.likedBy?.includes(viewerId)) },
+    });
+  } catch (err) {
+    console.error('[getPublishedBlogPost] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải chi tiết bài viết' });
+  }
+}
+
+async function incrementPublishedBlogView(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return invalidId(res);
+
+    const post = await BlogPost.findOneAndUpdate(
+      { _id: id, status: 'Đã xuất bản' },
+      { $inc: { viewCount: 1 } },
+      { new: true, timestamps: false }
+    ).select('viewCount').lean();
+    if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
+    return res.status(200).json({ data: { viewCount: Number(post.viewCount || 0) } });
+  } catch (err) {
+    console.error('[incrementPublishedBlogView] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể cập nhật lượt xem' });
+  }
+}
+
+async function togglePublishedBlogPostLike(req, res) {
+  try {
+    const { id } = req.params;
+    const viewerId = getLikeViewerId(req, req.body?.viewerId);
+    if (!mongoose.Types.ObjectId.isValid(id)) return invalidId(res);
+    if (!viewerId) {
+      return res.status(400).json({ message: 'Không thể xác định thiết bị yêu thích' });
+    }
+
+    const publishedPost = { _id: id, status: 'Đã xuất bản' };
+    const alreadyLiked = await BlogPost.exists({ ...publishedPost, likedBy: viewerId });
+    if (alreadyLiked) {
+      await BlogPost.updateOne(
+        { ...publishedPost, likedBy: viewerId },
+        { $pull: { likedBy: viewerId }, $inc: { likeCount: -1 } },
+        { timestamps: false }
+      );
+    } else {
+      await BlogPost.updateOne(
+        { ...publishedPost, likedBy: { $ne: viewerId } },
+        { $addToSet: { likedBy: viewerId }, $inc: { likeCount: 1 } },
+        { timestamps: false }
+      );
+    }
+
+    const post = await BlogPost.findOne(publishedPost).select('likeCount +likedBy').lean();
+    if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
+    return res.status(200).json({
+      data: {
+        likeCount: Number(post.likeCount || 0),
+        isLiked: Boolean(post.likedBy?.includes(viewerId)),
+      },
+    });
+  } catch (err) {
+    console.error('[togglePublishedBlogPostLike] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể cập nhật lượt yêu thích' });
   }
 }
 
@@ -247,6 +345,10 @@ async function deleteBlogPost(req, res) {
 
 module.exports = {
   listBlogPosts,
+  listPublishedBlogPosts,
+  getPublishedBlogPost,
+  incrementPublishedBlogView,
+  togglePublishedBlogPostLike,
   getBlogPost,
   createBlogPost,
   updateBlogPost,

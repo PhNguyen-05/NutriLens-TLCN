@@ -37,6 +37,7 @@ const blogPostSchema = new mongoose.Schema(
     status: { type: String, enum: BLOG_STATUSES, default: 'Nháp' },
     viewCount: { type: Number, min: 0, default: 0 },
     likeCount: { type: Number, min: 0, default: 0 },
+    likedBy: { type: [{ type: String }], default: [], select: false },
     publishedAt: { type: Date, default: null },
   },
   { timestamps: true }

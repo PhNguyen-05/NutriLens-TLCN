@@ -1233,7 +1233,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <Link to="/dashboard">Luyện tập</Link>
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
-          <Link to="/dashboard">Bài viết &amp; Mẹo</Link>
+          <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
