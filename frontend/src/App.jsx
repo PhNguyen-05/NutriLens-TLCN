@@ -77,6 +77,10 @@ export default function App() {
         element={<PrivateRoute><DashboardPage /></PrivateRoute>}
       />
       <Route
+        path="/articles/favorites"
+        element={<ArticlesPage favoritesOnly />}
+      />
+      <Route
         path="/articles"
         element={<ArticlesPage />}
       />

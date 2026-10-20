@@ -10,7 +10,7 @@ const {
 const router = express.Router();
 const optionalAuth = requireAuth.optionalAuth;
 
-router.get('/', listPublishedBlogPosts);
+router.get('/', optionalAuth, listPublishedBlogPosts);
 router.post('/:id/view', incrementPublishedBlogView);
 router.post('/:id/favorite', optionalAuth, togglePublishedBlogPostLike);
 router.get('/:id', optionalAuth, getPublishedBlogPost);

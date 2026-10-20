@@ -5,6 +5,7 @@ import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 
 const PAGE_SIZE = 7
+const FAVORITES_PAGE_SIZE = 6
 const BLOG_VIEWER_STORAGE_KEY = 'nutrilens:blog-viewer-id'
 let fallbackBlogViewerId = ''
 
@@ -107,9 +108,10 @@ function UserHeader({ user, onLogout, isActive = false }) {
   )
 }
 
-export default function ArticlesPage() {
-  const { user, handleLogout } = useAuth()
+export default function ArticlesPage({ favoritesOnly = false }) {
+  const { user, accessToken, handleLogout } = useAuth()
   const navigate = useNavigate()
+  const [viewerId] = useState(getBlogViewerId)
   const [articles, setArticles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -123,7 +125,7 @@ export default function ArticlesPage() {
 
   useEffect(() => {
     let cancelled = false
-    axiosInstance.get('/blog')
+    axiosInstance.get('/blog', { params: accessToken ? undefined : { viewerId } })
       .then(({ data }) => {
         if (!cancelled) setArticles(Array.isArray(data.data) ? data.data : [])
       })
@@ -134,7 +136,7 @@ export default function ArticlesPage() {
         if (!cancelled) setIsLoading(false)
       })
     return () => { cancelled = true }
-  }, [reloadToken])
+  }, [accessToken, reloadToken, viewerId])
 
   function retryLoading() {
     setIsLoading(true)
@@ -157,7 +159,7 @@ export default function ArticlesPage() {
       const label = formatCategory(tag)
       if (label) counts.set(label, (counts.get(label) || 0) + 1)
     }))
-    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b, 'vi')).slice(0, 12)
+    return [...counts.entries()].sort(([a], [b]) => a.localeCompare(b, 'vi'))
   }, [articles])
 
   const filteredArticles = useMemo(() => {
@@ -169,19 +171,22 @@ export default function ArticlesPage() {
       const matchesQuery = !query || searchable.includes(query)
       const matchesCategory = !selectedCategory || formatCategory(category) === selectedCategory
       const matchesTag = !selectedTag || tags.some((tag) => formatCategory(tag) === selectedTag)
-      return matchesQuery && matchesCategory && matchesTag
+      const matchesFavorite = !favoritesOnly || article.isLiked
+      return matchesQuery && matchesCategory && matchesTag && matchesFavorite
     }).sort((a, b) => {
       if (sortOrder === 'oldest') return new Date(a.publishedAt || a.createdAt) - new Date(b.publishedAt || b.createdAt)
       if (sortOrder === 'popular') return Number(b.viewCount || 0) - Number(a.viewCount || 0)
       return new Date(b.publishedAt || b.createdAt) - new Date(a.publishedAt || a.createdAt)
     })
-  }, [articles, searchQuery, selectedCategory, selectedTag, sortOrder])
+  }, [articles, searchQuery, selectedCategory, selectedTag, favoritesOnly, sortOrder])
 
-  const totalPages = Math.max(1, Math.ceil(filteredArticles.length / PAGE_SIZE))
-  const pageArticles = filteredArticles.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+  const pageSize = favoritesOnly ? FAVORITES_PAGE_SIZE : PAGE_SIZE
+  const totalPages = Math.max(1, Math.ceil(filteredArticles.length / pageSize))
+  const pageArticles = filteredArticles.slice((page - 1) * pageSize, page * pageSize)
   const featuredArticle = page === 1 ? pageArticles[0] : null
   const gridArticles = featuredArticle ? pageArticles.slice(1) : pageArticles
-  const hasActiveFilters = Boolean(searchQuery || selectedCategory || selectedTag)
+  const articleGridItems = favoritesOnly ? pageArticles : gridArticles
+  const hasActiveFilters = Boolean(searchQuery || selectedCategory || selectedTag || favoritesOnly)
 
   function updateFilter(update) {
     update()
@@ -200,23 +205,35 @@ export default function ArticlesPage() {
     <div className="dashboard-shell ua-shell">
       <UserHeader user={user} onLogout={handleLogout} isActive />
       <main>
-        <section className="ua-hero">
+        {favoritesOnly ? <section className="ua-favorites-hero">
+          <div className="ua-favorites-hero-inner">
+            <div className="ua-favorites-heading-group">
+              <span className="ua-favorites-hero-icon"><i className="bi bi-heart-fill" /></span>
+              <div><h1>Bài viết yêu thích</h1><p>Danh sách các bài viết mà bạn đã lưu để xem lại bất cứ lúc nào.</p></div>
+            </div>
+            <button className="ua-favorites-back" type="button" onClick={() => navigate('/articles')}><i className="bi bi-arrow-left" />Quay lại</button>
+          </div>
+        </section> : <section className="ua-hero">
           <div className="ua-hero-inner">
             <div className="ua-hero-copy">
-              <span className="ua-eyebrow">BLOG NUTRILENS</span>
               <h1>Kiến thức dinh dưỡng cho cuộc sống khỏe mạnh hơn</h1>
               <p>Khám phá bài viết hữu ích về dinh dưỡng, thực phẩm, sức khỏe và lối sống lành mạnh từ các chuyên gia hàng đầu.</p>
-              <form className="ua-search-form" onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput); setPage(1) }}>
-                <label><i className="bi bi-search" /><input aria-label="Tìm theo tiêu đề hoặc nội dung bài viết" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Tìm theo tiêu đề hoặc nội dung bài viết..." /></label>
-                <button type="submit"><i className="bi bi-search" />Tìm kiếm</button>
-              </form>
+              <div className="ua-search-row">
+                <form className="ua-search-form" onSubmit={(event) => { event.preventDefault(); setSearchQuery(searchInput); setPage(1) }}>
+                  <label><i className="bi bi-search" /><input aria-label="Tìm theo tiêu đề hoặc nội dung bài viết" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Tìm theo tiêu đề hoặc nội dung bài viết..." /></label>
+                  <button type="submit"><i className="bi bi-search" />Tìm kiếm</button>
+                </form>
+                <button className="ua-favorites-button" type="button" aria-label="Xem bài viết yêu thích" onClick={() => navigate('/articles/favorites')}>
+                  <span>Bài viết yêu thích</span>
+                </button>
+              </div>
             </div>
           </div>
-        </section>
+        </section>}
 
-        <div className="ua-content-wrap">
-          <div className="ua-layout">
-            <aside className="ua-sidebar" aria-label="Bộ lọc bài viết">
+        <div className={`ua-content-wrap${favoritesOnly ? ' ua-favorites-content' : ''}`}>
+          <div className={favoritesOnly ? 'ua-favorites-layout' : 'ua-layout'}>
+            {!favoritesOnly && <aside className="ua-sidebar" aria-label="Bộ lọc bài viết">
               <section className="ua-sidebar-section">
                 <h2><i className="bi bi-grid" />Chuyên mục</h2>
                 <div className="ua-filter-list">
@@ -232,25 +249,25 @@ export default function ArticlesPage() {
                 </div>
               </section>
               <button className="ua-clear-filters" type="button" onClick={clearFilters}><i className="bi bi-arrow-counterclockwise" />Xóa bộ lọc</button>
-            </aside>
+            </aside>}
 
-            <section className="ua-results" aria-label="Danh sách bài viết">
+            <section className={`ua-results${favoritesOnly ? ' ua-favorite-results' : ''}`} aria-label="Danh sách bài viết">
               <header className="ua-results-heading">
-                <h2>Tất cả bài viết <span>({filteredArticles.length})</span></h2>
-                <label>Sắp xếp theo
+                <h2>{favoritesOnly ? 'Bài viết yêu thích' : 'Tất cả bài viết'} <span>({filteredArticles.length})</span></h2>
+                {!favoritesOnly && <label>Sắp xếp theo
                   <select value={sortOrder} onChange={(event) => { setSortOrder(event.target.value); setPage(1) }}>
                     <option value="newest">Mới nhất</option>
                     <option value="oldest">Cũ nhất</option>
                     <option value="popular">Đọc nhiều</option>
                   </select>
-                </label>
+                </label>}
               </header>
 
               {isLoading ? <div className="ua-state"><i className="bi bi-arrow-repeat" /><span>Đang tải bài viết...</span></div>
                 : loadError ? <div className="ua-state ua-error"><i className="bi bi-exclamation-circle" /><span>{loadError}</span><button type="button" onClick={retryLoading}>Thử lại</button></div>
-                  : filteredArticles.length === 0 ? <div className="ua-state ua-empty"><i className="bi bi-journal-x" /><strong>Chưa tìm thấy bài viết phù hợp</strong><span>Hãy thử đổi từ khóa hoặc xóa bớt bộ lọc.</span>{hasActiveFilters && <button type="button" onClick={clearFilters}>Xóa bộ lọc</button>}</div>
+                  : filteredArticles.length === 0 ? <div className="ua-state ua-empty"><i className="bi bi-journal-x" /><strong>{favoritesOnly ? 'Bạn chưa có bài viết yêu thích' : 'Chưa tìm thấy bài viết phù hợp'}</strong><span>{favoritesOnly ? 'Những bài viết bạn đã yêu thích sẽ xuất hiện tại đây.' : 'Hãy thử đổi từ khóa hoặc xóa bớt bộ lọc.'}</span>{favoritesOnly ? <button type="button" onClick={() => navigate('/articles')}>Xem tất cả bài viết</button> : hasActiveFilters && <button type="button" onClick={clearFilters}>Xóa bộ lọc</button>}</div>
                     : <>
-                      {featuredArticle && <button type="button" className="ua-featured" onClick={() => navigate(`/articles/${featuredArticle._id}`)}>
+                      {!favoritesOnly && featuredArticle && <button type="button" className="ua-featured" onClick={() => navigate(`/articles/${featuredArticle._id}`)}>
                         <ArticleCover article={featuredArticle} className="ua-featured-image" />
                         <span className="ua-featured-copy">
                           <span className="ua-featured-label"><i className="bi bi-stars" />Nổi bật</span>
@@ -261,8 +278,8 @@ export default function ArticlesPage() {
                         </span>
                       </button>}
 
-                      {gridArticles.length > 0 && <div className="ua-article-grid">
-                        {gridArticles.map((article) => <button type="button" className="ua-article-card" key={article._id} onClick={() => navigate(`/articles/${article._id}`)}>
+                      {articleGridItems.length > 0 && <div className={`ua-article-grid${favoritesOnly ? ' ua-favorites-grid' : ''}`}>
+                        {articleGridItems.map((article) => <button type="button" className="ua-article-card" key={article._id} onClick={() => navigate(`/articles/${article._id}`)}>
                           <ArticleCover article={article} className="ua-card-image" />
                           <span className="ua-article-card-content">
                             <span className="ua-card-category">{formatCategory(getArticleCategory(article))}</span>

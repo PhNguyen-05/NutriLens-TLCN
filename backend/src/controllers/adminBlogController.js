@@ -118,13 +118,20 @@ async function listBlogPosts(_req, res) {
   }
 }
 
-async function listPublishedBlogPosts(_req, res) {
+async function listPublishedBlogPosts(req, res) {
   try {
-    const posts = await BlogPost.find({ status: 'Đã xuất bản' })
+    const viewerId = getLikeViewerId(req, req.query.viewerId);
+    const query = BlogPost.find({ status: 'Đã xuất bản' })
       .populate('authorId', AUTHOR_FIELDS)
-      .sort({ publishedAt: -1, createdAt: -1 })
-      .lean();
-    return res.status(200).json({ data: posts.map(serializeBlogPost) });
+      .sort({ publishedAt: -1, createdAt: -1 });
+    if (viewerId) query.select('+likedBy');
+    const posts = await query.lean();
+    return res.status(200).json({
+      data: posts.map((post) => ({
+        ...serializeBlogPost(post),
+        isLiked: Boolean(viewerId && post.likedBy?.includes(viewerId)),
+      })),
+    });
   } catch (err) {
     console.error('[listPublishedBlogPosts] Lỗi:', err.message);
     return res.status(500).json({ message: 'Không thể tải bài viết' });
