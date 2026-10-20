@@ -9,6 +9,7 @@ import HealthProfilePage from './pages/user/HealthProfilePage'
 import WeightTrackerPage from './pages/user/WeightTrackerPage'
 import FoodScanPage from './pages/user/FoodScanPage'
 import MealDiaryPage from './pages/user/MealDiaryPage'
+import ExercisePage from './pages/user/ExercisePage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import { useIdleTimer } from './hooks/useIdleTimer'
 
@@ -111,6 +112,10 @@ export default function App() {
       <Route
         path="/meal-diary"
         element={<PrivateRoute><MealDiaryPage /></PrivateRoute>}
+      />
+      <Route
+        path="/exercise"
+        element={<PrivateRoute><ExercisePage /></PrivateRoute>}
       />
       <Route
         path="/nutrition-goal"

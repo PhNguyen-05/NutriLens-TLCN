@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
+import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 
 const meals = [
   ['🍜', 'Phở Bò Tái Lăn Hà Nội', 'Bữa Sáng · 08:15 · Đã xác nhận AI', '485 kcal', ['Protein 28g', 'Carbs 62g', 'Fat 14g', 'Natri 890mg']],
@@ -203,7 +204,7 @@ export default function DashboardPage() {
         <nav className="dashboard-nav">
           <a className="active" href="/dashboard">Tổng quan</a>
           <FoodNavMenu />
-          <a href="/dashboard">Luyện tập</a>
+          <ExerciseNavMenu />
           <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
@@ -387,7 +388,7 @@ export default function DashboardPage() {
               <p>Mục tiêu tiêu hao: 450 kcal · Đã hoàn thành 1/3 bài tập (160 kcal)</p>
             </div>
             <div>
-              <button className="solid-button">⊕ Thêm bài tập</button>
+              <button className="solid-button" onClick={() => navigate('/exercise')}>⊕ Thêm bài tập</button>
             </div>
           </div>
           <div className="workout-content">

@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const User = require('../models/User');
 const Food = require('../models/Food');
 const FoodRequest = require('../models/FoodRequest');
+const Exercise = require('../models/Exercise');
 const AdminActionLog = require('../models/AdminActionLog');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
@@ -250,14 +251,22 @@ async function updateUserStatus(req, res) {
 
 async function listActionLogs(req, res) {
   try {
-    const { from = '', to = '', action = 'all', adminId = 'all', search = '', page, limit } = req.query;
+    const { from = '', to = '', action = 'all', adminId = 'all', targetType = 'all', search = '', page, limit } = req.query;
     const pagination = normalizePagination(page, limit || 7);
     const query = {};
     const validActions = [
       'lock_user', 'unlock_user', 'approve_post', 'delete_food',
       'hide_post', 'remove_post', 'reject_request', 'approve_request',
       'create_food', 'update_food', 'hide_food', 'show_food',
+      'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise',
     ];
+    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise'];
+
+    if (targetType !== 'all') {
+      if (validTargetTypes.includes(targetType)) {
+        query.targetType = targetType;
+      }
+    }
 
     if (action !== 'all') {
       if (!validActions.includes(action)) return res.status(400).json({ message: 'Loại hành động không hợp lệ' });
@@ -284,15 +293,17 @@ async function listActionLogs(req, res) {
     const keyword = String(search).trim();
     if (keyword) {
       const pattern = { $regex: escapeRegex(keyword), $options: 'i' };
-      const [matchingUsers, matchingFoods, matchingRequests] = await Promise.all([
+      const [matchingUsers, matchingFoods, matchingRequests, matchingExercises] = await Promise.all([
         User.find({ $or: [{ fullName: pattern }, { email: pattern }] }).select('_id').lean(),
         Food.find({ $or: [{ name: pattern }, { foodCode: pattern }] }).select('_id').lean(),
         FoodRequest.find({ $or: [{ foodName: pattern }, { requestCode: pattern }] }).select('_id').lean(),
+        Exercise.find({ $or: [{ name: pattern }, { slug: pattern }, { categoryName: pattern }] }).select('_id').lean(),
       ]);
       const matchingUserIds = matchingUsers.map((user) => user._id);
       const matchingFoodIds = matchingFoods.map((food) => food._id);
       const matchingRequestIds = matchingRequests.map((req) => req._id);
-      const allMatchingTargetIds = [...matchingUserIds, ...matchingFoodIds, ...matchingRequestIds];
+      const matchingExerciseIds = matchingExercises.map((ex) => ex._id);
+      const allMatchingTargetIds = [...matchingUserIds, ...matchingFoodIds, ...matchingRequestIds, ...matchingExerciseIds];
 
       query.$or = [
         { reason: pattern },
@@ -302,25 +313,45 @@ async function listActionLogs(req, res) {
       ];
     }
 
-    const [logs, total, admins] = await Promise.all([
+    // Base query for counting per targetType
+    const baseCountQuery = { ...query };
+    delete baseCountQuery.targetType;
+    delete baseCountQuery.actionType;
+
+    const [logs, total, admins, countsAggregate] = await Promise.all([
       AdminActionLog.find(query).sort({ createdAt: -1 }).skip(pagination.skip).limit(pagination.limit).lean(),
       AdminActionLog.countDocuments(query),
       User.find({ role: 'admin' }).select('fullName email avatarUrl').sort({ fullName: 1 }).lean(),
+      AdminActionLog.aggregate([
+        { $match: baseCountQuery },
+        { $group: { _id: '$targetType', count: { $sum: 1 } } },
+      ]),
     ]);
+
+    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, User: 0 };
+    countsAggregate.forEach((item) => {
+      if (item._id && targetCounts[item._id] !== undefined) {
+        targetCounts[item._id] = item.count;
+      }
+      targetCounts.all += item.count;
+    });
 
     const relatedIds = [...new Set(logs.flatMap((log) => [String(log.adminId), String(log.targetId)]))];
     const foodTargetIds = logs.filter((log) => log.targetType === 'FoodItem').map((log) => log.targetId);
     const requestTargetIds = logs.filter((log) => log.targetType === 'Request').map((log) => log.targetId);
+    const exerciseTargetIds = logs.filter((log) => log.targetType === 'Exercise').map((log) => log.targetId);
 
-    const [relatedUsers, relatedFoods, relatedRequests] = await Promise.all([
+    const [relatedUsers, relatedFoods, relatedRequests, relatedExercises] = await Promise.all([
       User.find({ _id: { $in: relatedIds } }).select('fullName email avatarUrl role').lean(),
       Food.find({ _id: { $in: foodTargetIds } }).select('name foodCode slug imageUrl status').lean(),
       FoodRequest.find({ _id: { $in: requestTargetIds } }).select('foodName requestCode status calories userId').populate('userId', 'fullName email').lean(),
+      Exercise.find({ _id: { $in: exerciseTargetIds } }).select('name slug category categoryName met intensity icon isActive').lean(),
     ]);
 
     const usersById = new Map(relatedUsers.map((user) => [String(user._id), user]));
     const foodsById = new Map(relatedFoods.map((food) => [String(food._id), food]));
     const requestsById = new Map(relatedRequests.map((req) => [String(req._id), req]));
+    const exercisesById = new Map(relatedExercises.map((ex) => [String(ex._id), ex]));
 
     return res.status(200).json({
       data: logs.map((log) => ({
@@ -329,8 +360,10 @@ async function listActionLogs(req, res) {
         target: log.targetType === 'User' ? usersById.get(String(log.targetId)) || null : null,
         targetFood: log.targetType === 'FoodItem' ? foodsById.get(String(log.targetId)) || null : null,
         targetRequest: log.targetType === 'Request' ? requestsById.get(String(log.targetId)) || null : null,
+        targetExercise: log.targetType === 'Exercise' ? exercisesById.get(String(log.targetId)) || null : null,
       })),
       admins,
+      counts: targetCounts,
       pagination: { page: pagination.page, limit: pagination.limit, total, totalPages: Math.ceil(total / pagination.limit) },
     });
   } catch (err) {
