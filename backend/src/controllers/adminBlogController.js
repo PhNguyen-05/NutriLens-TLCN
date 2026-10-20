@@ -7,6 +7,11 @@ const AUTHOR_FIELDS = 'fullName role';
 function serializeBlogPost(post) {
   const raw = typeof post.toObject === 'function' ? post.toObject() : post;
   const author = raw.authorId && raw.authorId.fullName !== undefined ? raw.authorId : null;
+  const legacyCategoryTags = Array.isArray(raw.categoryTags) ? raw.categoryTags : [];
+  const category = String(raw.category || legacyCategoryTags[0] || '');
+  const tags = Array.isArray(raw.tags) && raw.tags.length
+    ? raw.tags
+    : legacyCategoryTags.slice(category ? 1 : 0);
 
   return {
     ...raw,
@@ -14,8 +19,11 @@ function serializeBlogPost(post) {
     authorId: String(author?._id || raw.authorId || ''),
     authorName: author?.fullName || 'Admin NutriLens',
     authorRole: 'Quản trị viên',
-    categoryTags: Array.isArray(raw.categoryTags) ? raw.categoryTags : [],
+    category,
+    tags,
+    categoryTags: [...new Set([category, ...tags].filter(Boolean))],
     viewCount: Number(raw.viewCount || 0),
+    likeCount: Number(raw.likeCount || 0),
   };
 }
 
@@ -23,21 +31,38 @@ function validatePostInput(body = {}, current = null) {
   const title = String(body.title ?? current?.title ?? '').trim();
   const content = String(body.content ?? current?.content ?? '').trim();
   const imageUrl = body.imageUrl === undefined ? current?.imageUrl ?? null : String(body.imageUrl || '').trim() || null;
-  const categoryTags = body.categoryTags === undefined
+  const legacyCategoryTags = body.categoryTags === undefined
     ? current?.categoryTags || []
     : body.categoryTags;
+  const categoryValue = body.category === undefined
+    ? body.categoryTags !== undefined
+      ? (Array.isArray(body.categoryTags) ? body.categoryTags[0] || '' : '')
+      : current?.category || (Array.isArray(legacyCategoryTags) ? legacyCategoryTags[0] || '' : '')
+    : body.category;
+  const category = typeof categoryValue === 'string' ? categoryValue.trim() : null;
+  const rawTags = body.tags === undefined
+    ? body.categoryTags !== undefined
+      ? Array.isArray(body.categoryTags) ? body.categoryTags.slice(category ? 1 : 0) : []
+      : (Array.isArray(current?.tags) && current.tags.length
+        ? current.tags
+        : Array.isArray(legacyCategoryTags) ? legacyCategoryTags.slice(category ? 1 : 0) : [])
+    : body.tags;
   const status = body.status ?? current?.status ?? 'Nháp';
 
   if (!title) return { error: 'Tiêu đề bài viết không được để trống' };
   if (!content) return { error: 'Nội dung bài viết không được để trống' };
-  if (!Array.isArray(categoryTags) || categoryTags.some((tag) => typeof tag !== 'string')) {
+  if (category === null) return { error: 'Chuyên mục không hợp lệ' };
+  if (body.categoryTags !== undefined && (!Array.isArray(body.categoryTags) || body.categoryTags.some((tag) => typeof tag !== 'string'))) {
     return { error: 'Danh sách chuyên mục không hợp lệ' };
+  }
+  if (!Array.isArray(rawTags) || rawTags.some((tag) => typeof tag !== 'string')) {
+    return { error: 'Danh sách tag không hợp lệ' };
   }
   if (!BLOG_STATUSES.includes(status)) return { error: 'Trạng thái bài viết không hợp lệ' };
 
   const normalizedTags = [];
-  const seenTags = new Set();
-  for (const rawTag of categoryTags) {
+  const seenTags = new Set(category ? [category.toLocaleLowerCase('vi')] : []);
+  for (const rawTag of rawTags) {
     const tag = rawTag.trim();
     const key = tag.toLocaleLowerCase('vi');
     if (tag && !seenTags.has(key)) {
@@ -46,7 +71,17 @@ function validatePostInput(body = {}, current = null) {
     }
   }
 
-  return { value: { title, content, imageUrl, categoryTags: normalizedTags, status } };
+  return {
+    value: {
+      title,
+      content,
+      imageUrl,
+      category,
+      tags: normalizedTags,
+      categoryTags: [...(category ? [category] : []), ...normalizedTags],
+      status,
+    },
+  };
 }
 
 function invalidId(res) {
@@ -98,6 +133,7 @@ async function createBlogPost(req, res) {
       ...parsed.value,
       authorId: req.user.id,
       viewCount: 0,
+      likeCount: 0,
       publishedAt,
     });
     await post.populate('authorId', AUTHOR_FIELDS);

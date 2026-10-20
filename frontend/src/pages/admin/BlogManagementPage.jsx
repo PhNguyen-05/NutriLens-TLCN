@@ -5,7 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 const STATUS_OPTIONS = ['Nháp', 'Đã xuất bản', 'Đã ẩn', 'Đã xóa']
 const PAGE_SIZE = 6
 
-const EMPTY_FORM = { title: '', content: '', imageUrl: '', categoryTags: [] }
+const EMPTY_FORM = { title: '', content: '', imageUrl: '', category: '', tags: [] }
 
 function getBlogImageUrl(url) {
   if (!url) return ''
@@ -33,6 +33,14 @@ function getStatusClass(status) {
 function formatCategoryLabel(value) {
   const normalized = String(value || '').trim().toLocaleLowerCase('vi')
   return normalized ? normalized.charAt(0).toLocaleUpperCase('vi') + normalized.slice(1) : ''
+}
+
+function getPostCategory(post) {
+  return post?.category || post?.categoryTags?.[0] || ''
+}
+
+function getPostTags(post) {
+  return Array.isArray(post?.tags) ? post.tags : (post?.categoryTags || []).slice(getPostCategory(post) ? 1 : 0)
 }
 
 function getExcerpt(content) {
@@ -119,12 +127,12 @@ export default function BlogManagementPage() {
     }
   }, [loadPosts])
 
-  const categories = useMemo(() => [...new Set(posts.flatMap((post) => (post.categoryTags || []).map(formatCategoryLabel)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')), [posts])
+  const categories = useMemo(() => [...new Set(posts.map(getPostCategory).map(formatCategoryLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi')), [posts])
   const filteredPosts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('vi')
     return posts.filter((post) => {
-      const matchesSearch = !query || [post.title, post.content, post.authorName, ...(post.categoryTags || [])].some((value) => String(value || '').toLocaleLowerCase('vi').includes(query))
-      const matchesCategory = categoryFilter === 'all' || (post.categoryTags || []).some((tag) => formatCategoryLabel(tag) === categoryFilter)
+      const matchesSearch = !query || [post.title, post.content, post.authorName, getPostCategory(post), ...getPostTags(post)].some((value) => String(value || '').toLocaleLowerCase('vi').includes(query))
+      const matchesCategory = categoryFilter === 'all' || formatCategoryLabel(getPostCategory(post)) === categoryFilter
       const matchesStatus = statusFilter === 'all' ? post.status !== 'Đã xóa' : post.status === statusFilter
       const updatedDate = getLocalDateKey(post.updatedAt)
       const matchesDate = !filterDate || updatedDate === filterDate
@@ -159,7 +167,7 @@ export default function BlogManagementPage() {
   function openEdit(post) {
     setFormTarget(post)
     setIsFormOpen(true)
-    setForm({ title: post.title, content: post.content, imageUrl: post.imageUrl || '', categoryTags: [...(post.categoryTags || [])] })
+    setForm({ title: post.title, content: post.content, imageUrl: post.imageUrl || '', category: getPostCategory(post), tags: [...getPostTags(post)] })
     setTagInput('')
     setFormError('')
     setImageError('')
@@ -169,18 +177,27 @@ export default function BlogManagementPage() {
     setIsFormOpen(false)
     setFormTarget(null)
     setForm(EMPTY_FORM)
+    setTagInput('')
     setFormError('')
     setImageError('')
   }
 
   function addTag(rawTag = tagInput) {
     const tag = formatCategoryLabel(rawTag.trim().replace(/^#/, ''))
-    if (!tag || form.categoryTags.some((existing) => existing.toLocaleLowerCase('vi') === tag.toLocaleLowerCase('vi'))) {
+    if (!tag || [form.category, ...form.tags].some((existing) => existing.toLocaleLowerCase('vi') === tag.toLocaleLowerCase('vi'))) {
       setTagInput('')
       return
     }
-    setForm((current) => ({ ...current, categoryTags: [...current.categoryTags, tag] }))
+    setForm((current) => ({ ...current, tags: [...current.tags, tag] }))
     setTagInput('')
+  }
+
+  function handleTagKeyDown(event) {
+    if (event.key !== 'Enter' && event.key !== ',') return
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+    event.preventDefault()
+    event.stopPropagation()
+    addTag(event.currentTarget.value)
   }
 
   async function handleImage(event) {
@@ -235,7 +252,9 @@ export default function BlogManagementPage() {
       title: form.title.trim(),
       content: form.content.trim(),
       imageUrl: form.imageUrl || null,
-      categoryTags: form.categoryTags.map(formatCategoryLabel),
+      category: formatCategoryLabel(form.category),
+      tags: form.tags.map(formatCategoryLabel),
+      categoryTags: [form.category, ...form.tags].filter(Boolean).map(formatCategoryLabel),
       status,
     }
     try {
@@ -388,7 +407,7 @@ export default function BlogManagementPage() {
                   : pagePosts.map((post) => <tr key={post._id} className={post.status === 'Đã xóa' ? 'bm-row-deleted' : ''}>
                 <td className="bm-check-cell"><input type="checkbox" checked={selectedIds.includes(post._id)} onChange={() => toggleSelect(post._id)} aria-label={`Chọn ${post.title}`} /></td>
                 <td><div className="bm-title-cell"><button type="button" className={`bm-cover bm-cover-${post.tone || 'green'}`} onClick={() => setDetailTarget(post)} aria-label={`Xem ${post.title}`}>{post.imageUrl ? <img src={getBlogImageUrl(post.imageUrl)} alt="" /> : <span>{post.cover || '📝'}</span>}</button><div className="bm-title-copy"><button type="button" className="bm-title-link" onClick={() => setDetailTarget(post)}>{post.title}</button><p>{getExcerpt(post.content)}</p><div className="bm-tags">{(post.categoryTags || []).slice(0, 2).map((tag) => <span key={tag}>#{formatCategoryLabel(tag).replace(/\s+/g, '-')}</span>)}</div></div></div></td>
-                <td><span className="bm-category"><i className={`bi ${post.categoryTags?.[0]?.toLocaleLowerCase('vi').includes('vận động') ? 'bi-activity' : post.categoryTags?.[0]?.toLocaleLowerCase('vi').includes('tim mạch') ? 'bi-heart-pulse' : 'bi-leaf'}`} />{formatCategoryLabel(post.categoryTags?.[0]) || 'Chưa phân loại'}</span></td>
+                <td><span className="bm-category"><i className={`bi ${getPostCategory(post).toLocaleLowerCase('vi').includes('vận động') ? 'bi-activity' : getPostCategory(post).toLocaleLowerCase('vi').includes('tim mạch') ? 'bi-heart-pulse' : 'bi-leaf'}`} />{formatCategoryLabel(getPostCategory(post)) || 'Chưa phân loại'}</span></td>
                 <td><div className="bm-author"><span><i className="bi bi-person-fill" /></span><div><strong>{post.authorName}</strong><small>{post.authorRole || 'Quản trị viên'}</small></div></div></td>
                 <td><span className="bm-updated-date">{formatDate(post.updatedAt)}</span><small className="bm-updated-time">{formatTime(post.updatedAt)}</small></td>
                 <td><span className={`bm-status bm-status-${getStatusClass(post.status)}`}><i className="bi bi-circle-fill" />{post.status}</span></td>
@@ -408,7 +427,7 @@ export default function BlogManagementPage() {
       </section>
 
       {deleteTarget && <div className="bm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !isDeleting) setDeleteTarget(null) }}><section className="bm-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="bm-delete-title" aria-describedby="bm-delete-description"><div className="bm-confirm-icon"><i className="bi bi-trash3" /></div><h2 id="bm-delete-title">Xóa bài viết?</h2><p id="bm-delete-description">“{deleteTarget.title}” sẽ được chuyển sang trạng thái Đã xóa. Bạn có thể khôi phục bài viết từ bộ lọc trạng thái.</p>{deleteError && <p className="bm-delete-error" role="alert">{deleteError}</p>}<footer><button type="button" className="bm-secondary-button" disabled={isDeleting} onClick={() => setDeleteTarget(null)}>Hủy</button><button type="button" className="bm-primary-button bm-danger-button" disabled={isDeleting} onClick={confirmDelete}><i className={`bi ${isDeleting ? 'bi-arrow-repeat' : 'bi-trash3'}`} />{isDeleting ? 'Đang xóa...' : 'Xóa bài viết'}</button></footer></section></div>}
-      {detailTarget && <div className="bm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailTarget(null) }}><section className="bm-detail-modal" role="dialog" aria-modal="true" aria-labelledby="bm-detail-title"><header><div><span className="bm-modal-kicker">XEM TRƯỚC BÀI VIẾT</span><h2 id="bm-detail-title">Chi tiết bài viết</h2></div><button type="button" className="bm-close-button" onClick={() => setDetailTarget(null)} aria-label="Đóng"><i className="bi bi-x-lg" /></button></header><div className={`bm-detail-cover bm-cover-${detailTarget.tone || 'green'}`}>{detailTarget.imageUrl ? <img src={getBlogImageUrl(detailTarget.imageUrl)} alt="Ảnh minh họa bài viết" /> : <span>{detailTarget.cover || '📝'}</span>}</div><div className="bm-detail-meta"><span className={`bm-status bm-status-${getStatusClass(detailTarget.status)}`}><i className="bi bi-circle-fill" />{detailTarget.status}</span><span><i className="bi bi-calendar3" />{formatDate(detailTarget.publishedAt || detailTarget.updatedAt)}</span><span><i className="bi bi-eye" />{Number(detailTarget.viewCount || 0).toLocaleString('vi-VN')} lượt xem</span></div><h3>{detailTarget.title}</h3><div className="bm-detail-author"><i className="bi bi-person-circle" /><span>{detailTarget.authorName}<small>{detailTarget.authorRole}</small></span></div><div className="bm-detail-tags">{(detailTarget.categoryTags || []).map((tag) => <span key={tag}>#{formatCategoryLabel(tag)}</span>)}</div><p className="bm-detail-content">{detailTarget.content}</p><footer><button type="button" className="bm-secondary-button" onClick={() => setDetailTarget(null)}>Đóng</button><button type="button" className="bm-primary-button" onClick={() => { setDetailTarget(null); openEdit(detailTarget) }}><i className="bi bi-pencil" />Chỉnh sửa</button></footer></section></div>}
+      {detailTarget && <div className="bm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailTarget(null) }}><section className="bm-detail-modal" role="dialog" aria-modal="true" aria-labelledby="bm-detail-title"><header><h2 id="bm-detail-title">Chi tiết bài viết</h2><button type="button" className="bm-close-button" onClick={() => setDetailTarget(null)} aria-label="Đóng"><i className="bi bi-x-lg" /></button></header><div className={`bm-detail-cover bm-cover-${detailTarget.tone || 'green'}`}>{detailTarget.imageUrl ? <img src={getBlogImageUrl(detailTarget.imageUrl)} alt="Ảnh minh họa bài viết" /> : <span>{detailTarget.cover || '📝'}</span>}</div><div className="bm-detail-meta"><span className={`bm-status bm-status-${getStatusClass(detailTarget.status)}`}><i className="bi bi-circle-fill" />{detailTarget.status}</span><span><i className="bi bi-calendar3" />{formatDate(detailTarget.publishedAt || detailTarget.updatedAt)}</span><span><i className="bi bi-eye" />{Number(detailTarget.viewCount || 0).toLocaleString('vi-VN')} lượt xem</span><span className="bm-detail-like-count"><i className="bi bi-heart-fill" />{Number(detailTarget.likeCount || 0).toLocaleString('vi-VN')} lượt thích</span></div><h3>{detailTarget.title}</h3><div className="bm-detail-author"><i className="bi bi-person-circle" /><span>{detailTarget.authorName}<small>{detailTarget.authorRole}</small></span></div><div className="bm-detail-tags">{(detailTarget.categoryTags || []).map((tag) => <span key={tag}>#{formatCategoryLabel(tag)}</span>)}</div><p className="bm-detail-content">{detailTarget.content}</p><footer><button type="button" className="bm-secondary-button" onClick={() => setDetailTarget(null)}>Đóng</button><button type="button" className="bm-primary-button" onClick={() => { setDetailTarget(null); openEdit(detailTarget) }}><i className="bi bi-pencil" />Chỉnh sửa</button></footer></section></div>}
       {isFormOpen && <div className="bm-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeForm() }}><form className="bm-form-modal" onSubmit={(event) => { event.preventDefault(); savePost('Nháp') }} role="dialog" aria-modal="true" aria-labelledby="bm-form-title">
         <header className="bm-form-header"><span className="bm-form-header-icon"><i className="bi bi-newspaper" /></span><div className="bm-form-header-copy"><h2 id="bm-form-title">{formTarget ? 'Chỉnh sửa bài viết' : 'Tạo bài viết tin tức'}</h2><p>Soạn nội dung và thiết lập hiển thị cho bài viết mới</p></div><button type="button" className="bm-close-button" onClick={closeForm} aria-label="Đóng" disabled={isSaving}><i className="bi bi-x-lg" /></button></header>
         <div className="bm-form-scroll">
@@ -425,7 +444,21 @@ export default function BlogManagementPage() {
               <section className="bm-composer-panel">
                 <header><i className="bi bi-gear" /><h3>Thiết lập bài viết</h3></header>
                 <div className="bm-composer-panel-body">
-                  <div className="bm-field"><span>Chuyên mục / thẻ</span><div className="bm-tag-input-wrap"><div className="bm-form-tags">{form.categoryTags.map((tag) => <button type="button" key={tag} onClick={() => setForm((current) => ({ ...current, categoryTags: current.categoryTags.filter((item) => item !== tag) }))}>#{formatCategoryLabel(tag)}<i className="bi bi-x" /></button>)}<input aria-label="Thêm chuyên mục hoặc thẻ" value={tagInput} onChange={(event) => setTagInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ',') { event.preventDefault(); addTag() } }} /></div></div></div>
+                  <div className="bm-field">
+                    <span>Chuyên mục</span>
+                    <div className="bm-tag-input-wrap">
+                      <input aria-label="Chuyên mục" value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} />
+                    </div>
+                  </div>
+                  <div className="bm-field">
+                    <span>Tag</span>
+                    <div className="bm-tag-input-wrap">
+                      <div className="bm-form-tags">
+                        {form.tags.map((tag) => <button type="button" key={tag} onClick={() => setForm((current) => ({ ...current, tags: current.tags.filter((item) => item !== tag) }))}>#{formatCategoryLabel(tag)}<i className="bi bi-x" /></button>)}
+                        <input aria-label="Thêm tag" value={tagInput} onChange={(event) => setTagInput(event.target.value)} onKeyDown={handleTagKeyDown} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </section>
               <section className="bm-composer-panel bm-image-panel">

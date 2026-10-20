@@ -31,9 +31,12 @@ const blogPostSchema = new mongoose.Schema(
       trim: true,
       validate: { validator: isValidImageUrl, message: 'Ảnh minh họa phải là JPG hoặc PNG hợp lệ' },
     },
+    category: { type: String, trim: true, default: '' },
+    tags: { type: [{ type: String, trim: true }], default: [] },
     categoryTags: { type: [{ type: String, trim: true }], default: [] },
     status: { type: String, enum: BLOG_STATUSES, default: 'Nháp' },
     viewCount: { type: Number, min: 0, default: 0 },
+    likeCount: { type: Number, min: 0, default: 0 },
     publishedAt: { type: Date, default: null },
   },
   { timestamps: true }
@@ -41,6 +44,7 @@ const blogPostSchema = new mongoose.Schema(
 
 blogPostSchema.index({ status: 1, updatedAt: -1 });
 blogPostSchema.index({ status: 1, publishedAt: -1 });
+blogPostSchema.index({ category: 1 });
 blogPostSchema.index({ categoryTags: 1 });
 
 module.exports = mongoose.model('BlogPost', blogPostSchema);
