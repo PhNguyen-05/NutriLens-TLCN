@@ -1364,7 +1364,7 @@ export default function FoodManagementPage() {
                       <td className="fdm-td-center fdm-td-num">{food.servingSize}g</td>
                       <td className="fdm-td-center">
                         <span className={`fdm-status ${isHidden ? 'fdm-status--hidden' : 'fdm-status--active'}`}>
-                          <i />{isHidden ? 'Đã ẩn' : 'Hiển thị'}
+                          <i />{isHidden ? 'Đã ẩn' : 'Đang hiển thị'}
                         </span>
                       </td>
                       <td className="fdm-td-center">
@@ -1376,11 +1376,11 @@ export default function FoodManagementPage() {
                             <i className="bi bi-pencil-fill" />
                           </button>
                           {isHidden ? (
-                            <button className="fdm-btn fdm-btn--show" onClick={() => executeShow(food)} title="Hiển thị lại">
+                            <button className="fdm-btn fdm-btn--show" onClick={() => executeShow(food)} title="Hiển thị lại cho người dùng" aria-label={`Hiển thị lại ${food.name} cho người dùng`}>
                               <i className="bi bi-eye-fill" />
                             </button>
                           ) : (
-                            <button className="fdm-btn fdm-btn--hide" onClick={() => setHideTarget(food)} title="Ẩn">
+                            <button className="fdm-btn fdm-btn--hide" onClick={() => setHideTarget(food)} title="Ẩn món đang hiển thị khỏi người dùng" aria-label={`Ẩn ${food.name} khỏi người dùng`}>
                               <i className="bi bi-eye-slash-fill" />
                             </button>
                           )}

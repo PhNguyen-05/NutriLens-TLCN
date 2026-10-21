@@ -48,6 +48,7 @@ function serializeFoodRequestForUser(request) {
 
   return {
     ...plainRequest,
+    requestType: plainRequest.requestType || 'addition',
     name: plainRequest.name || plainRequest.foodName,
     caloriesPer100g: plainRequest.caloriesPer100g ?? plainRequest.calories,
     proteinPer100g: plainRequest.proteinPer100g ?? plainRequest.protein,
@@ -62,16 +63,42 @@ async function searchFoods(req, res, next) {
   try {
     const query = String(req.query.query || '').trim();
     const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const filter = safeQuery
-      ? { $or: [{ name: { $regex: safeQuery, $options: 'i' } }, { slug: { $regex: safeQuery, $options: 'i' } }] }
-      : {};
+    const filter = {
+      $and: [
+        { $or: [{ status: 'active' }, { status: { $exists: false } }, { status: null }] },
+      ],
+    };
+    if (safeQuery) {
+      filter.$and.push({
+        $or: [{ name: { $regex: safeQuery, $options: 'i' } }, { slug: { $regex: safeQuery, $options: 'i' } }],
+      });
+    }
     const foods = await Food.find(filter)
       .select('slug name description imageUrl servingSize calories protein fat carbs fiber sodium')
       .sort({ name: 1 })
       .limit(8)
       .lean();
+    let hiddenFood = null;
+    if (safeQuery) {
+      hiddenFood = await Food.findOne({ status: 'hidden', name: { $regex: `^${safeQuery}$`, $options: 'i' } })
+        .select('slug name imageUrl status')
+        .lean();
 
-    return res.status(200).json({ foods });
+      if (!hiddenFood) {
+        hiddenFood = await Food.findOne({
+          status: 'hidden',
+          $or: [
+            { name: { $regex: safeQuery, $options: 'i' } },
+            { slug: { $regex: safeQuery, $options: 'i' } },
+          ],
+        })
+          .select('slug name imageUrl status')
+          .sort({ name: 1 })
+          .lean();
+      }
+    }
+
+    return res.status(200).json({ foods, hiddenFood });
   } catch (err) {
     next(err);
   }
@@ -85,6 +112,52 @@ async function searchFoods(req, res, next) {
 ────────────────────────────────────────────────────────────── */
 async function createFoodRequest(req, res, next) {
   try {
+    const requestType = trimToNull(req.body.requestType) || 'addition';
+    if (requestType === 'reopen') {
+      const targetFood = await Food.findOne({ slug: trimToNull(req.body.targetFoodSlug), status: 'hidden' });
+      if (!targetFood) {
+        return res.status(409).json({ message: 'Món ăn không còn ở trạng thái ẩn hoặc không tồn tại.' });
+      }
+
+      const feedbackReason = trimToNull(req.body.feedbackReason);
+      if (!['reopen', 'nutrition', 'name_image', 'other'].includes(feedbackReason)) {
+        return res.status(400).json({ message: 'Vui lòng chọn lý do gửi đề nghị.' });
+      }
+
+      const note = trimToNull(req.body.note);
+      if (note && note.length > 500) {
+        return res.status(400).json({ message: 'Nội dung phản hồi không được vượt quá 500 ký tự.' });
+      }
+
+      const existingRequest = await FoodRequest.findOne({
+        requestedBy: req.user.id,
+        targetFoodId: targetFood._id,
+        requestType: 'reopen',
+        status: { $in: PENDING_FOOD_REQUEST_STATUSES },
+      }).lean();
+      if (existingRequest) {
+        return res.status(409).json({ message: 'Bạn đã gửi đề nghị mở lại món này và đang chờ Admin xem xét.' });
+      }
+
+      const reopenRequest = await FoodRequest.create({
+        requestedBy: req.user.id,
+        requestType: 'reopen',
+        targetFoodId: targetFood._id,
+        feedbackReason,
+        name: targetFood.name,
+        foodName: targetFood.name,
+        imageUrl: targetFood.imageUrl,
+        note,
+      });
+      return res.status(201).json({
+        message: 'Đã gửi đề nghị mở lại món ăn',
+        request: serializeFoodRequestForUser(reopenRequest),
+      });
+    }
+    if (requestType !== 'addition') {
+      return res.status(400).json({ message: 'Loại yêu cầu không hợp lệ.' });
+    }
+
     const name = trimToNull(req.body.name);
     if (!name) {
       return res.status(400).json({ message: 'Tên món ăn là bắt buộc' });
@@ -136,6 +209,9 @@ async function updateFoodRequest(req, res, next) {
     }
     if (!PENDING_FOOD_REQUEST_STATUSES.includes(existingRequest.status)) {
       return res.status(409).json({ message: 'Chỉ có thể chỉnh sửa yêu cầu đang chờ duyệt' });
+    }
+    if (existingRequest.requestType === 'reopen') {
+      return res.status(409).json({ message: 'Đề nghị mở lại món ăn không thể chỉnh sửa; vui lòng gửi lại nếu cần thay đổi.' });
     }
 
     const name = trimToNull(req.body.name);
@@ -220,7 +296,7 @@ async function getFoodRequests(req, res, next) {
 
     const [requests, total] = await Promise.all([
       FoodRequest.find({ $or: [{ requestedBy: req.user.id }, { userId: req.user.id }] })
-        .select('requestCode requestedBy userId name foodName imageUrl caloriesPer100g proteinPer100g carbPer100g fatPer100g calories protein carbs fat note status rejectReason rejectionReason reviewedAt createdAt updatedAt')
+        .select('requestCode requestedBy userId requestType targetFoodId feedbackReason name foodName imageUrl caloriesPer100g proteinPer100g carbPer100g fatPer100g calories protein carbs fat note status rejectReason rejectionReason reviewedAt createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(limit)
         .lean(),
@@ -264,8 +340,26 @@ async function scanFood(req, res, next) {
     }
 
     // 3. Tra cứu dinh dưỡng từ DB cho top-1
-    const topSlug = aiResult.predictions[0]?.slug;
-    const food = topSlug ? await Food.findOne({ slug: topSlug }).lean() : null;
+    const topPrediction = aiResult.predictions[0];
+    const topSlug = topPrediction?.slug;
+    let food = topSlug ? await Food.findOne({ slug: topSlug }).lean() : null;
+    if (!food && topPrediction?.name) {
+      food = await Food.findOne({
+        status: 'hidden',
+        $expr: { $eq: [{ $toLower: '$name' }, topPrediction.name.trim().toLowerCase()] },
+      }).lean();
+    }
+
+    if (food?.status === 'hidden') {
+      return res.status(200).json({
+        recognized: true,
+        unavailable: true,
+        predictions: aiResult.predictions,
+        hiddenFood: { slug: food.slug, name: food.name, imageUrl: food.imageUrl },
+        nutrition: null,
+        message: 'Món ăn không khả dụng trong danh mục',
+      });
+    }
 
     return res.status(200).json({
       recognized: true,
@@ -302,11 +396,26 @@ async function addMealLog(req, res, next) {
     const {
       foodSlug, foodName, confidence,
       imageUrl, servings = 1,
-      date, mealType = 'lunch',
+      date, mealType, timezoneOffsetMinutes = 0,
     } = req.body;
 
     if (!foodSlug || !foodName || !date) {
       return res.status(400).json({ message: 'Thiếu thông tin bắt buộc: foodSlug, foodName, date' });
+    }
+    const parsedDate = new Date(`${date}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+      return res.status(400).json({ message: 'Ngày ghi nhận không hợp lệ' });
+    }
+    if (!['breakfast', 'lunch', 'dinner', 'snack'].includes(mealType)) {
+      return res.status(400).json({ message: 'Vui lòng chọn loại bữa ăn' });
+    }
+    const timezoneOffset = Number(timezoneOffsetMinutes);
+    if (!Number.isInteger(timezoneOffset) || Math.abs(timezoneOffset) > 840) {
+      return res.status(400).json({ message: 'Múi giờ không hợp lệ' });
+    }
+    const localToday = new Date(Date.now() - timezoneOffset * 60_000).toISOString().slice(0, 10);
+    if (date > localToday) {
+      return res.status(400).json({ message: 'Không thể thêm món ăn vào ngày trong tương lai' });
     }
 
     // Lấy snapshot dinh dưỡng từ DB
@@ -358,6 +467,17 @@ async function getMealLogs(req, res, next) {
 
     const logs = await MealLog.find({ userId, date }).sort({ createdAt: 1 }).lean();
 
+    // Keep historical logs visible while exposing the food's current catalog status.
+    const foodSlugs = [...new Set(logs.map((log) => log.foodSlug).filter(Boolean))];
+    const foods = foodSlugs.length
+      ? await Food.find({ slug: { $in: foodSlugs } }).select('slug status').lean()
+      : [];
+    const foodStatusBySlug = new Map(foods.map((food) => [food.slug, food.status || 'active']));
+    const logsWithFoodStatus = logs.map((log) => ({
+      ...log,
+      foodHidden: foodStatusBySlug.get(log.foodSlug) === 'hidden',
+    }));
+
     // Tính tổng dinh dưỡng trong ngày
     const totals = logs.reduce(
       (acc, log) => {
@@ -374,7 +494,7 @@ async function getMealLogs(req, res, next) {
     // Làm tròn 1 chữ số thập phân
     Object.keys(totals).forEach((k) => { totals[k] = Math.round(totals[k] * 10) / 10; });
 
-    return res.status(200).json({ date, logs, totals });
+    return res.status(200).json({ date, logs: logsWithFoodStatus, totals });
   } catch (err) {
     next(err);
   }
@@ -382,6 +502,16 @@ async function getMealLogs(req, res, next) {
 
 async function updateMealLog(req, res, next) {
   try {
+    const mealLog = await MealLog.findOne({ _id: req.params.id, userId: req.user.id }).select('foodSlug').lean();
+    if (!mealLog) {
+      return res.status(404).json({ message: 'Không tìm thấy nhật ký hoặc bạn không có quyền cập nhật' });
+    }
+
+    const food = await Food.findOne({ slug: mealLog.foodSlug }).select('status').lean();
+    if (food?.status === 'hidden') {
+      return res.status(409).json({ message: 'Món ăn đã bị ẩn khỏi danh mục, bạn không thể chỉnh sửa bản ghi này' });
+    }
+
     const updates = {};
     const { date, mealType, servings } = req.body;
 

@@ -27,6 +27,13 @@ const MEAL_LABELS = {
   snack:     'Ăn vặt',
 }
 
+const FOOD_FEEDBACK_REASONS = {
+  reopen: 'Đề nghị mở lại món ăn',
+  nutrition: 'Thông tin dinh dưỡng chưa chính xác',
+  name_image: 'Tên món ăn hoặc hình ảnh chưa chính xác',
+  other: 'Khác',
+}
+
 const EMPTY_FOOD_REQUEST_FORM = {
   name: '',
   imageUrl: '',
@@ -173,7 +180,10 @@ function FoodRequestDetailModal({ request, onClose }) {
   const submittedAt = splitRequestDate(request.createdAt)
   const reviewedAt = splitRequestDate(request.reviewedAt)
   const imageSrc = resolveMediaUrl(request.imageUrl)
-  const adminNote = request.rejectReason || (request.status === 'Đã duyệt' ? 'Món ăn đã được bổ sung vào danh mục.' : 'Chưa có phản hồi')
+  const isReopenRequest = request.requestType === 'reopen'
+  const adminNote = request.rejectReason || (request.status === 'Đã duyệt'
+    ? (isReopenRequest ? 'Admin đã chủ động kích hoạt lại món ăn.' : 'Món ăn đã được bổ sung vào danh mục.')
+    : 'Chưa có phản hồi')
 
   return (
     <div className="fs-request-detail-overlay" role="presentation" onMouseDown={onClose}>
@@ -186,7 +196,7 @@ function FoodRequestDetailModal({ request, onClose }) {
       >
         <header className="fs-request-detail-header">
           <div>
-            <span>Yêu cầu đã gửi</span>
+            <span>{isReopenRequest ? 'Đề nghị mở lại món ăn' : 'Yêu cầu đã gửi'}</span>
             <h2 id="food-request-detail-title">{request.name}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Đóng chi tiết yêu cầu">
@@ -216,11 +226,37 @@ function FoodRequestDetailModal({ request, onClose }) {
         </section>
 
         <dl className="fs-request-detail-list">
-          <div><dt>Dinh dưỡng/100g</dt><dd>{formatRequestNutrition(request)}</dd></div>
+          {isReopenRequest && <div><dt>Lý do phản hồi</dt><dd>{FOOD_FEEDBACK_REASONS[request.feedbackReason] || 'Khác'}</dd></div>}
+          <div><dt>{isReopenRequest ? 'Thông tin dinh dưỡng' : 'Dinh dưỡng/100g'}</dt><dd>{isReopenRequest ? 'Không áp dụng cho đề nghị mở lại món.' : formatRequestNutrition(request)}</dd></div>
           <div><dt>Ghi chú của bạn</dt><dd>{request.note || 'Không có ghi chú'}</dd></div>
           <div><dt>Phản hồi Admin</dt><dd>{adminNote}</dd></div>
         </dl>
       </article>
+    </div>
+  )
+}
+
+function FoodReopenRequestModal({ food, submitting, error, onClose, onSubmit }) {
+  const [note, setNote] = useState('')
+
+  return (
+    <div className="fs-reopen-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) onClose() }}>
+      <form className="fs-reopen-dialog" role="dialog" aria-modal="true" aria-labelledby="fs-reopen-title" onSubmit={(event) => { event.preventDefault(); onSubmit({ food, note }) }}>
+        <header className="fs-reopen-header">
+          <span><i className="bi bi-chat-square-text-fill" /></span>
+          <div><h2 id="fs-reopen-title">Đề nghị mở lại món ăn</h2><p>Gửi đề nghị để Admin xem xét kích hoạt lại món ăn trong danh mục NutriLens.</p></div>
+          <button type="button" onClick={onClose} disabled={submitting} aria-label="Đóng"><i className="bi bi-x-lg" /></button>
+        </header>
+        <div className="fs-reopen-food">
+          {food.requestPreview ? <img src={food.requestPreview} alt={food.name} /> : <span><i className="bi bi-cup-hot" /></span>}
+          <div><strong>{food.name}</strong><small>Món ăn đã tồn tại trong hệ thống</small></div>
+          <em><i className="bi bi-eye-slash-fill" /> Đang bị ẩn</em>
+        </div>
+        <label className="fs-reopen-note"><span>Lời nhắn cho Admin <small>(tùy chọn)</small></span><textarea value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} placeholder="Bạn có thể chia sẻ thêm lý do muốn sử dụng món ăn này..." /><small>{note.length}/500</small></label>
+        {error && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{error}</div>}
+        <p className="fs-reopen-disclaimer">Món ăn vẫn giữ trạng thái ẩn cho đến khi Admin xem xét và chủ động kích hoạt lại.</p>
+        <footer><button type="button" className="fs-button secondary" onClick={onClose} disabled={submitting}>Hủy</button><button type="submit" className="fs-button primary" disabled={submitting}><i className={`bi ${submitting ? 'bi-hourglass-split' : 'bi-send-fill'}`} />{submitting ? 'Đang gửi...' : 'Gửi đề nghị'}</button></footer>
+      </form>
     </div>
   )
 }
@@ -461,7 +497,7 @@ function FoodRequestPanel({
                         <FoodRequestImage request={request} className="fs-request-history-thumb" />
                         <div>
                           <strong>{request.name}</strong>
-                          <small>{formatRequestDate(request.createdAt)}</small>
+                          <small>{request.requestType === 'reopen' ? 'Đề nghị mở lại · ' : ''}{formatRequestDate(request.createdAt)}</small>
                         </div>
                         <em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em>
                       </div>
@@ -528,7 +564,7 @@ function FoodRequestListPage({
       <section className="fs-request-list-hero">
         <div>
           <h1>Yêu cầu bổ sung món ăn của tôi</h1>
-          <p>Theo dõi trạng thái các yêu cầu bạn đã gửi về món ăn chưa có trong danh mục.</p>
+          <p>Theo dõi yêu cầu bổ sung món ăn và đề nghị mở lại món đang bị ẩn.</p>
           <p>Chúng tôi sẽ thông báo khi có cập nhật từ quản trị viên.</p>
         </div>
         <div className="fs-request-list-illustration">
@@ -575,17 +611,17 @@ function FoodRequestListPage({
                     const submittedAt = splitRequestDate(request.createdAt)
                     return (
                       <tr key={request._id}>
-                        <td><strong>{request.name}</strong><small>{`#FR${String(index + 1).padStart(3, '0')}`}</small></td>
+                        <td><strong>{request.name}</strong><small>{request.requestType === 'reopen' ? 'Đề nghị mở lại' : 'Yêu cầu bổ sung'} · {`#FR${String(index + 1).padStart(3, '0')}`}</small></td>
                         <td><FoodRequestImage request={request} className="fs-request-table-image" /></td>
                         <td><span className="fs-request-table-date">{submittedAt.date}<small>{submittedAt.time}</small></span></td>
-                        <td>{formatRequestNutrition(request)}</td>
+                        <td>{request.requestType === 'reopen' ? 'Không áp dụng' : formatRequestNutrition(request)}</td>
                         <td><em className={`fs-request-status-pill ${requestStatusClass(request.status)}`}>{request.status}</em></td>
-                        <td>{request.rejectReason || (request.status === 'Đã duyệt' ? 'Món ăn đã được bổ sung vào danh mục.' : 'Chưa có phản hồi')}</td>
+                        <td>{request.rejectReason || (request.status === 'Đã duyệt' ? (request.requestType === 'reopen' ? 'Admin đã kích hoạt lại món ăn.' : 'Món ăn đã được bổ sung vào danh mục.') : 'Chưa có phản hồi')}</td>
                         <td>
                           <div className="fs-request-row-actions">
                             <button className="fs-request-table-detail" type="button" onClick={() => onSelectRequest(request)}><i className="bi bi-eye" />Xem chi tiết</button>
                             {request.status === 'Chờ duyệt' && <>
-                              <button className="fs-request-table-edit" type="button" onClick={() => onEditRequest(request)}><i className="bi bi-pencil-square" />Sửa</button>
+                              {request.requestType !== 'reopen' && <button className="fs-request-table-edit" type="button" onClick={() => onEditRequest(request)}><i className="bi bi-pencil-square" />Sửa</button>}
                               <button className="fs-request-table-delete" type="button" onClick={() => onDeleteRequest(request)} disabled={deletingRequestId === request._id}>
                                 <i className={`bi ${deletingRequestId === request._id ? 'bi-hourglass-split' : 'bi-trash3'}`} />{deletingRequestId === request._id ? 'Đang xóa...' : 'Xóa'}
                               </button>
@@ -646,9 +682,10 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
   const [selectedPred, setSelectedPred] = useState(0)   // index trong predictions
   const [servings, setServings]         = useState(1)
   const [date, setDate]                 = useState(todayString)
-  const [mealType, setMealType]         = useState('lunch')
+  const [mealType, setMealType]         = useState('')
   const [foodQuery, setFoodQuery] = useState('')
   const [foodMatches, setFoodMatches] = useState([])
+  const [hiddenFoodMatch, setHiddenFoodMatch] = useState(null)
   const [foodSearchLoading, setFoodSearchLoading] = useState(true)
   const [foodSearchError, setFoodSearchError] = useState(null)
 
@@ -676,6 +713,10 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
   const [requestsError, setRequestsError] = useState(null)
   const [requestsExpanded, setRequestsExpanded] = useState(() => initialMode === 'requests')
   const [selectedRequest, setSelectedRequest] = useState(null)
+  const [reopenFood, setReopenFood] = useState(null)
+  const [reopenSubmitting, setReopenSubmitting] = useState(false)
+  const [reopenError, setReopenError] = useState('')
+  const [reopenFeedback, setReopenFeedback] = useState(null)
 
   const firstName = user?.fullName?.split(' ')[0] || 'bạn'
   const selectedPrediction = result?.predictions?.[selectedPred]
@@ -688,8 +729,10 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
     try {
       const { data } = await axiosInstance.get('/food/search', { params: { query } })
       setFoodMatches(data.foods || [])
+      setHiddenFoodMatch(data.hiddenFood || null)
     } catch {
       setFoodMatches([])
+      setHiddenFoodMatch(null)
       setFoodSearchError('Không thể tải thư viện món ăn. Vui lòng thử lại.')
     } finally {
       setFoodSearchLoading(false)
@@ -720,6 +763,8 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
     setFileObj(null)
     setScanError(null)
     setSaveMsg(null)
+    setHiddenFoodMatch(null)
+    setReopenFeedback(null)
     setServings(1)
     setCameraOpen(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -947,6 +992,14 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
 
   const handleAddLog = async () => {
     if (!result?.recognized) return
+    if (!mealType) {
+      setSaveMsg({ type: 'error', text: 'Vui lòng chọn bữa ăn trước khi thêm vào nhật ký.' })
+      return
+    }
+    if (date > todayString()) {
+      setSaveMsg({ type: 'error', text: 'Không thể thêm món ăn vào ngày trong tương lai.' })
+      return
+    }
     const pred = result.predictions[selectedPred]
     setSaving(true); setSaveMsg(null)
     try {
@@ -957,6 +1010,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
       payload.append('servings', String(Number(servings)))
       payload.append('date', date)
       payload.append('mealType', mealType)
+      payload.append('timezoneOffsetMinutes', String(new Date().getTimezoneOffset()))
       if (fileObj) payload.append('image', fileObj)
       else if (result.nutrition?.imageUrl) payload.append('imageUrl', result.nutrition.imageUrl)
 
@@ -974,7 +1028,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
 
   const reset = () => {
     setPreview(null); setFileObj(null); setResult(null)
-    setScanError(null); setSaveMsg(null); setSelectedPred(0)
+    setScanError(null); setSaveMsg(null); setSelectedPred(0); setMealType('')
     setCameraOpen(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (cameraInputRef.current) cameraInputRef.current.value = ''
@@ -1041,6 +1095,32 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
     setSelectedRequest(request)
     loadFoodRequests(true)
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0)
+  }
+
+  const openReopenRequest = (food, requestPreview = null) => {
+    setReopenFood({ ...food, requestPreview })
+    setReopenError('')
+    setReopenFeedback(null)
+  }
+
+  const handleSendReopenRequest = async ({ food, note }) => {
+    setReopenSubmitting(true)
+    setReopenError('')
+    try {
+      await axiosInstance.post('/food/requests', {
+        requestType: 'reopen',
+        targetFoodSlug: food.slug,
+        feedbackReason: 'reopen',
+        note: note.trim(),
+      })
+      setReopenFood(null)
+      setReopenFeedback({ foodName: food.name })
+      await loadFoodRequests(true)
+    } catch (err) {
+      setReopenError(err.response?.data?.message || 'Không thể gửi đề nghị. Vui lòng thử lại.')
+    } finally {
+      setReopenSubmitting(false)
+    }
   }
 
   const handleEditFoodRequest = (request) => {
@@ -1154,7 +1234,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <ExerciseNavMenu />
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
-          <Link to="/dashboard">Bài viết &amp; Mẹo</Link>
+          <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
@@ -1227,8 +1307,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <span className="fs-system-status"><i className="bi bi-cpu-fill" /><span><strong>CÔNG NGHỆ AI (CNN)</strong><small>Nhận diện chính xác · Nhanh chóng · Đáng tin cậy</small></span></span>
         </section>
 
-        {(scanError || saveMsg?.type === 'error') && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{scanError || saveMsg?.text}</div>}
-        {saveMsg?.type === 'success' && <div className="fs-alert success" role="status"><i className="bi bi-check-circle-fill" />{saveMsg.text}</div>}
+        {scanError && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{scanError}</div>}
 
         <section className="fs-workspace">
           <article className="fs-panel fs-upload-panel">
@@ -1272,7 +1351,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <article className="fs-panel fs-top-results">
             <div className="fs-panel-heading"><h2><i className="bi bi-patch-check-fill" />Top 3 kết quả đáng tin cậy nhất</h2><span>AI đề xuất</span></div>
             {result?.manual ? <div className="fs-empty-ranking"><span><i className="bi bi-search" /></span><strong>Đã chọn từ thư viện món ăn</strong><p>Kết quả tra cứu thủ công đang hiển thị bên dưới.</p></div> : result?.predictions?.length ? <div className="fs-prediction-list">
-              {result.predictions.slice(0, 3).map((prediction, index) => <button type="button" className={`fs-prediction ${selectedPred === index && result.recognized ? 'selected' : ''}`} key={prediction.slug || prediction.name} onClick={() => result.recognized && setSelectedPred(index)} disabled={!result.recognized}>
+              {result.predictions.slice(0, 3).map((prediction, index) => <button type="button" className={`fs-prediction ${selectedPred === index && result.recognized ? 'selected' : ''}`} key={prediction.slug || prediction.name} onClick={() => result.recognized && setSelectedPred(index)} disabled={!result.recognized || result.unavailable}>
                 <span className="fs-prediction-rank">{index + 1}</span>
                 <span className="fs-prediction-info"><strong>{prediction.name}</strong><ConfidenceBar value={prediction.confidence} /></span>
                 {selectedPred === index && result.recognized && <i className="bi bi-check-circle-fill fs-prediction-check" />}
@@ -1287,41 +1366,63 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
             <article className="fs-panel fs-manual-search">
               <div className="fs-panel-heading"><div><h2><i className="bi bi-question-circle-fill" />Món ăn nhận diện chưa chính xác?</h2><p>Tra cứu và chọn món ăn từ thư viện NutriLens.</p></div></div>
               <form className="fs-manual-search-form" onSubmit={(event) => { event.preventDefault(); searchFoodLibrary(foodQuery) }}>
-                <label className="fs-manual-search-input"><i className="bi bi-search" /><input type="search" value={foodQuery} onChange={(event) => setFoodQuery(event.target.value)} placeholder="Nhập tên món cần tìm (ví dụ: Bún chả, Cơm tấm...)" aria-label="Tìm món ăn trong thư viện" /></label>
+                <label className="fs-manual-search-input"><i className="bi bi-search" /><input type="search" value={foodQuery} onChange={(event) => { setFoodQuery(event.target.value); setHiddenFoodMatch(null); setReopenFeedback(null) }} placeholder="Nhập tên món cần tìm (ví dụ: Bún chả, Cơm tấm...)" aria-label="Tìm món ăn trong thư viện" /></label>
                 <button className="fs-button primary" type="submit" disabled={foodSearchLoading}><i className={`bi ${foodSearchLoading ? 'bi-hourglass-split' : 'bi-search'}`} />{foodSearchLoading ? 'Đang tìm...' : 'Tìm kiếm'}</button>
               </form>
               {foodSearchError && <p className="fs-manual-search-error" role="alert">{foodSearchError}</p>}
-              <div className="fs-quick-searches"><strong>{foodQuery ? 'Kết quả tìm kiếm:' : 'Gợi ý nhanh:'}</strong>{foodMatches.length ? foodMatches.map((food) => <button type="button" key={food.slug} onClick={() => selectManualFood(food)}>{food.name}{food.calories != null && <small>{roundN(food.calories, 0)} kcal</small>}</button>) : <span>{foodSearchLoading ? 'Đang tải món ăn...' : 'Không tìm thấy món phù hợp.'}</span>}</div>
-              {foodQuery.trim() && !foodSearchLoading && foodMatches.length === 0 && <button type="button" className="fs-request-food-button fs-no-match-request" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>}
+              <div className="fs-quick-searches"><strong>{foodQuery ? 'Kết quả tìm kiếm:' : 'Gợi ý nhanh:'}</strong>{foodMatches.length ? foodMatches.map((food) => <button type="button" key={food.slug} onClick={() => selectManualFood(food)}>{food.name}{food.calories != null && <small>{roundN(food.calories, 0)} kcal</small>}</button>) : <span>{foodSearchLoading ? 'Đang tải món ăn...' : 'Không tìm thấy món ăn.'}</span>}</div>
+              {foodQuery.trim() && !foodSearchLoading && hiddenFoodMatch && <div className="fs-hidden-food-match"><i className="bi bi-eye-slash-fill" /><span><strong>{hiddenFoodMatch.name}</strong> hiện đang bị ẩn trong hệ thống.</span>{!result?.unavailable && <button type="button" className="fs-request-food-button" onClick={() => openReopenRequest(hiddenFoodMatch)}><i className="bi bi-chat-square-text-fill" />Đề nghị mở lại</button>}</div>}
+              {foodQuery.trim() && !foodSearchLoading && foodMatches.length === 0 && !hiddenFoodMatch && <button type="button" className="fs-request-food-button fs-no-match-request" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>}
             </article>
 
-            {!result?.manual && <article className="fs-panel fs-recognition-panel">
-              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">Đã xác nhận AI</span>}</div>
-              {result?.recognized && selectedPrediction ? <div className="fs-recognition-result">
-                {recognitionImage && <img className="fs-result-image" src={recognitionImage} alt={selectedPrediction.name} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
-                <div className="fs-result-copy">
-                  <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">Món ăn Việt Nam</span></div>
-                  <p>{result.nutrition?.description || (result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.')}</p>
-                  <ConfidenceBar value={selectedPrediction.confidence} />
+            {reopenFeedback && <div className="fs-alert success fs-reopen-success" role="status"><i className="bi bi-check-circle-fill" /><span>Đã gửi đề nghị mở lại món “{reopenFeedback.foodName}” đến Admin xem xét. Món ăn vẫn giữ trạng thái ẩn cho đến khi Admin chủ động kích hoạt lại.</span></div>}
+
+            <article className="fs-panel fs-recognition-panel">
+              <div className="fs-panel-heading"><h2><i className={`bi ${result?.recognized ? 'bi-check-circle-fill' : 'bi-camera-fill'}`} />Kết quả nhận diện</h2>{result?.recognized && <span className="fs-recognized-tag">{result.manual ? 'Tra cứu thủ công' : 'Đã xác nhận AI'}</span>}</div>
+              {result?.recognized && selectedPrediction ? result.manual ? (
+                <div className="fs-result-empty fs-manual-result">
+                  <span className="fs-result-empty-icon"><i className="bi bi-stars" /></span>
+                  <div>
+                    <strong>{selectedPrediction.name}</strong>
+                    <p>{result.nutrition?.description || [
+                      'Đã chọn từ thư viện NutriLens',
+                      result.nutrition?.servingSize ? `${result.nutrition.servingSize}g` : null,
+                      result.nutrition?.calories != null ? `${roundN(result.nutrition.calories)} kcal` : null,
+                    ].filter(Boolean).join(' · ')}</p>
+                  </div>
                 </div>
-              </div> : result ? <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-exclamation-circle" /></span><div><strong>{result.message || 'Chưa nhận diện được món ăn'}</strong><p>{result.predictions?.length ? 'Hãy chọn lại ảnh rõ hơn hoặc kiểm tra các gợi ý bên cạnh.' : 'Hãy thử ảnh có ánh sáng tốt, nhìn rõ toàn bộ món ăn.'}</p></div></div> : <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-stars" /></span><div><strong>Kết quả phân tích sẽ xuất hiện ở đây</strong><p>Chọn ảnh món ăn và bắt đầu nhận diện để xem tên món cùng độ tin cậy của AI.</p></div></div>}
-            </article>}
+              ) : (
+                <div className="fs-recognition-result">
+                  {recognitionImage && <img className="fs-result-image" src={recognitionImage} alt={selectedPrediction.name} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
+                  <div className="fs-result-copy">
+                    <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">{result.unavailable ? 'Không khả dụng trong danh mục' : 'Món ăn Việt Nam'}</span></div>
+                    <p>{result.unavailable ? 'Món ăn không khả dụng trong danh mục. Bạn có thể chọn món khác hoặc gửi đề nghị để Admin xem xét lại món ăn này.' : result.nutrition?.description || (result.nutrition ? `${result.nutrition.servingSize || 0}g · ${roundN(result.nutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.')}</p>
+                    <ConfidenceBar value={selectedPrediction.confidence} />
+                  </div>
+                </div>
+              ) : result ? <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-exclamation-circle" /></span><div><strong>{result.message || 'Chưa nhận diện được món ăn'}</strong><p>{result.predictions?.length ? 'Hãy chọn lại ảnh rõ hơn hoặc kiểm tra các gợi ý bên cạnh.' : 'Hãy thử ảnh có ánh sáng tốt, nhìn rõ toàn bộ món ăn.'}</p></div></div> : <div className="fs-result-empty"><span className="fs-result-empty-icon"><i className="bi bi-stars" /></span><div><strong>Kết quả phân tích sẽ xuất hiện ở đây</strong><p>Chọn ảnh món ăn và bắt đầu nhận diện để xem tên món cùng độ tin cậy của AI.</p></div></div>}
+            </article>
 
             <article className="fs-panel fs-nutrition-panel" id="fs-nutrition">
               <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div></div>
               {result?.recognized && result.nutrition ? <>
                 <div className="fs-nutrition-controls">
-                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} onClick={() => setMealType(value)}>{label}</button>)}</div></fieldset>
-                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} onClick={() => { setMealType(value); setSaveMsg(null) }}>{label}</button>)}</div></fieldset>
+                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} max={todayString()} onChange={(event) => { setDate(event.target.value); setSaveMsg(null) }} /></label>
                   <label className="fs-nutrition-field"><span>Khẩu phần ăn</span><select value={servings} onChange={(event) => setServings(Number(event.target.value))}>{[0.5, 1, 1.5, 2, 3].map((value) => <option key={value} value={value}>{value} khẩu phần ({Math.round((result.nutrition.servingSize || 0) * value)}g)</option>)}</select></label>
                 </div>
                 <NutritionTable nutrition={result.nutrition} servings={servings} />
                 {result.nutrition.fiber != null && <div className="fs-nutrition-note"><i className="bi bi-lightbulb-fill" /><span><strong>Đánh giá dinh dưỡng</strong>Món ăn cung cấp năng lượng và các nhóm chất theo khẩu phần đã chọn.</span></div>}
-              </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
+              </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{hiddenFoodMatch || result?.unavailable ? 'Thông tin dinh dưỡng chưa khả dụng. Bạn có thể chọn món khác hoặc gửi đề nghị để Admin xem xét lại món ăn này.' : result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}
             </article>
-            {result?.recognized && result.nutrition && <div className="fs-nutrition-actions">
-              <button type="button" className="fs-request-food-button" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
-              <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>
+            {saveMsg && <div className={`fs-alert ${saveMsg.type} fs-save-feedback`} role={saveMsg.type === 'error' ? 'alert' : 'status'}><i className={`bi ${saveMsg.type === 'error' ? 'bi-exclamation-triangle-fill' : 'bi-check-circle-fill'}`} />{saveMsg.text}</div>}
+            {result?.recognized && (result.nutrition || result.unavailable) && <div className="fs-nutrition-actions">
+              {result.unavailable ? (
+                <button type="button" className="fs-request-food-button" onClick={() => openReopenRequest(result.hiddenFood, preview)}><i className="bi bi-chat-square-text-fill" />Đề nghị mở lại món ăn</button>
+              ) : !result.manual && !hiddenFoodMatch && (
+                <button type="button" className="fs-request-food-button" onClick={openFoodRequest}><i className="bi bi-patch-plus" />Yêu cầu bổ sung món ăn</button>
+              )}
+              {result.nutrition && <button type="button" className="fs-button primary" onClick={handleAddLog} disabled={saving}><i className={`bi ${saving ? 'bi-hourglass-split' : 'bi-journal-plus'}`} />{saving ? 'Đang lưu...' : 'Thêm vào nhật ký bữa ăn'}</button>}
             </div>}
 
             <article className="fs-panel fs-recent-meals">
@@ -1345,7 +1446,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
                 <div><dt>Khẩu phần cơ sở</dt><dd>{result?.nutrition?.servingSize ? `${result.nutrition.servingSize}g` : '—'}</dd></div>
                 <div><dt>Loại bữa ăn</dt><dd>{result?.recognized ? MEAL_LABELS[mealType] || '—' : '—'}</dd></div>
               </dl>
-              <div className="fs-data-source"><i className="bi bi-shield-check" />Thông tin được đối chiếu với cơ sở dữ liệu dinh dưỡng NutriLens.</div>
+              <div className="fs-data-source"><i className="bi bi-shield-check" />{result?.unavailable ? 'Món ăn hiện đang bị ẩn trong danh mục.' : 'Thông tin được đối chiếu với cơ sở dữ liệu dinh dưỡng NutriLens.'}</div>
             </article>
 
             <article className="fs-panel fs-calorie-panel">
@@ -1364,6 +1465,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
         )}
       </main>
       <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span></footer>
+      {reopenFood && <FoodReopenRequestModal food={reopenFood} submitting={reopenSubmitting} error={reopenError} onClose={() => setReopenFood(null)} onSubmit={handleSendReopenRequest} />}
       {cameraOpen && <div className="fs-camera-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCamera() }}>
         <section className="fs-camera-modal" role="dialog" aria-modal="true" aria-labelledby="fs-camera-title">
           <header className="fs-camera-header">

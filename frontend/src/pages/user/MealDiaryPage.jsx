@@ -11,6 +11,7 @@ const MEALS = [
   { value: 'snack', label: 'Bữa phụ', icon: 'bi-cup-hot', color: '#a45af5' },
   { value: 'dinner', label: 'Bữa tối', icon: 'bi-moon-stars', color: '#5685df' },
 ]
+const HIDDEN_FOOD_MESSAGE = 'Món ăn đã bị ẩn khỏi danh mục, bạn không thể chỉnh sửa bản ghi này'
 
 function localDate() {
   return new Date().toLocaleDateString('sv-SE')
@@ -79,6 +80,7 @@ export default function MealDiaryPage() {
   const [error, setError] = useState('')
   const [profile, setProfile] = useState(null)
   const [editingLog, setEditingLog] = useState(null)
+  const [viewingLog, setViewingLog] = useState(null)
   const [editForm, setEditForm] = useState({ date: '', mealType: 'lunch', servings: '1' })
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState('')
@@ -164,6 +166,10 @@ export default function MealDiaryPage() {
   }
 
   function openEdit(log) {
+    if (log.foodHidden) {
+      setViewingLog(log)
+      return
+    }
     setEditingLog(log)
     setEditError('')
     setEditForm({
@@ -190,26 +196,42 @@ export default function MealDiaryPage() {
         setReloadKey((key) => key + 1)
       }
     } catch (requestError) {
-      setEditError(requestError.response?.data?.message || 'Không thể cập nhật món ăn.')
+      const message = requestError.response?.data?.message
+      if (requestError.response?.status === 409 && message === HIDDEN_FOOD_MESSAGE) {
+        setEditingLog(null)
+        setViewingLog({ ...editingLog, foodHidden: true })
+        setLoadedDate(null)
+        setReloadKey((key) => key + 1)
+      } else {
+        setEditError(message || 'Không thể cập nhật món ăn.')
+      }
     } finally {
       setSavingEdit(false)
     }
   }
 
   async function deleteLog(log) {
-    if (!window.confirm(`Xóa ${log.foodName} khỏi nhật ký bữa ăn?`)) return
+    if (!window.confirm(`Xóa ${log.foodName} khỏi nhật ký bữa ăn?`)) return false
     setDeletingLogId(log._id)
     setError('')
     try {
       await axiosInstance.delete(`/food/meal-logs/${log._id}`)
       setLoadedDate(null)
       setReloadKey((key) => key + 1)
+      return true
     } catch (requestError) {
       setError(requestError.response?.data?.message || 'Không thể xóa món ăn khỏi nhật ký.')
+      return false
     } finally {
       setDeletingLogId(null)
     }
   }
+
+  async function deleteViewedLog() {
+    if (await deleteLog(viewingLog)) setViewingLog(null)
+  }
+
+  const viewingMealLabel = MEALS.find((meal) => meal.value === viewingLog?.mealType)?.label || 'Không xác định'
 
   const metricCards = [
     { key: 'calories', label: 'Tổng calories ngày này', value: amount(calories), target: amount(targets.calories), unit: 'kcal', icon: 'bi-fire', tone: 'calories', percent: calorieProgress },
@@ -228,7 +250,7 @@ export default function MealDiaryPage() {
           <ExerciseNavMenu />
           <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
-          <Link to="/dashboard">Bài viết &amp; Mẹo</Link>
+          <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
@@ -283,10 +305,10 @@ export default function MealDiaryPage() {
             {loading ? <div className="fd-state"><span className="fs-mini-spinner" />Đang tải nhật ký...</div> : visibleMeals.length ? <div className="fd-meal-groups">
               {visibleMeals.map((meal) => <section className="fd-meal-group" key={meal.value}>
                 <header><span className="fd-meal-label" style={{ '--meal-color': meal.color }}><i className={`bi ${meal.icon}`} />{meal.label}</span><strong>{amount(meal.logs.reduce((sum, log) => sum + logValue(log, 'calories'), 0))} kcal</strong></header>
-                {meal.logs.map((log) => <article className="fd-food-row" key={log._id}>
+                {meal.logs.map((log) => <article className={`fd-food-row ${log.foodHidden ? 'is-food-hidden' : ''}`} key={log._id}>
                   <DiaryImage log={log} />
-                  <div className="fd-food-copy"><h3>{log.foodName}</h3><p><i className="bi bi-clock" />{formatTime(log.createdAt)}<span>·</span>{amount(log.servings || 1, 1)} khẩu phần</p><div className="fd-food-macros"><span className="protein"><i className="bi bi-droplet-half" />Đạm {amount(logValue(log, 'protein'), 1)}g</span><span className="carbs"><i className="bi bi-lightning-charge" />Carbs {amount(logValue(log, 'carbs'), 1)}g</span><span className="fat"><i className="bi bi-droplet" />Béo {amount(logValue(log, 'fat'), 1)}g</span></div></div>
-                  <div className="fd-food-actions"><strong className="fd-food-calories">{amount(logValue(log, 'calories'))}<small>kcal</small></strong><div><button type="button" className="fd-edit-button" onClick={() => openEdit(log)}><i className="bi bi-pencil" />Sửa</button><button type="button" className="fd-delete-button" onClick={() => deleteLog(log)} disabled={deletingLogId === log._id}><i className="bi bi-trash3" />{deletingLogId === log._id ? 'Đang xóa' : 'Xóa'}</button></div></div>
+                  <div className="fd-food-copy"><h3>{log.foodName}</h3>{log.foodHidden && <span className="fd-hidden-food-badge"><i className="bi bi-eye-slash-fill" />Món ăn đã bị ẩn</span>}<p><i className="bi bi-clock" />{formatTime(log.createdAt)}<span>·</span>{amount(log.servings || 1, 1)} khẩu phần</p><div className="fd-food-macros"><span className="protein"><i className="bi bi-droplet-half" />Đạm {amount(logValue(log, 'protein'), 1)}g</span><span className="carbs"><i className="bi bi-lightning-charge" />Carbs {amount(logValue(log, 'carbs'), 1)}g</span><span className="fat"><i className="bi bi-droplet" />Béo {amount(logValue(log, 'fat'), 1)}g</span></div></div>
+                  <div className="fd-food-actions"><strong className="fd-food-calories">{amount(logValue(log, 'calories'))}<small>kcal</small></strong><div>{log.foodHidden ? <button type="button" className="fd-edit-button" onClick={() => setViewingLog(log)}><i className="bi bi-eye" />Chi tiết</button> : <button type="button" className="fd-edit-button" onClick={() => openEdit(log)}><i className="bi bi-pencil" />Sửa</button>}<button type="button" className="fd-delete-button" onClick={() => deleteLog(log)} disabled={deletingLogId === log._id}><i className="bi bi-trash3" />{deletingLogId === log._id ? 'Đang xóa' : 'Xóa'}</button></div></div>
                 </article>)}
               </section>)}
             </div> : <div className="fd-empty"><span><i className="bi bi-journal-plus" /></span><strong>{activeMeal === 'all' ? 'Chưa có món ăn trong ngày này' : `Chưa có món ${MEALS.find((meal) => meal.value === activeMeal)?.label.toLowerCase()} nào`}</strong><p>Ghi nhận món ăn để theo dõi calories và dinh dưỡng tại đây.</p><Link to="/food-scan"><i className="bi bi-camera" />Nhận diện món ăn</Link></div>}
@@ -320,6 +342,25 @@ export default function MealDiaryPage() {
           </aside>
         </section>
       </main>
+      {viewingLog && <div className="fd-edit-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setViewingLog(null) }}>
+        <section className="fd-edit-dialog fd-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="fd-detail-title">
+          <header><div><small>NHẬT KÝ BỮA ĂN</small><h2 id="fd-detail-title">Chi tiết bản ghi</h2></div><button type="button" onClick={() => setViewingLog(null)} aria-label="Đóng"><i className="bi bi-x-lg" /></button></header>
+          <div className="fd-hidden-food-alert" role="alert"><i className="bi bi-exclamation-triangle-fill" />{HIDDEN_FOOD_MESSAGE}</div>
+          <div className="fd-detail-food"><DiaryImage log={viewingLog} /><strong>{viewingLog.foodName}</strong></div>
+          <dl className="fd-detail-values">
+            <div><dt>Ngày ghi nhận</dt><dd>{formatDate(viewingLog.date)}</dd></div>
+            <div><dt>Loại bữa ăn</dt><dd>{viewingMealLabel}</dd></div>
+            <div><dt>Khối lượng</dt><dd>{amount(viewingLog.servings || 1, 1)} khẩu phần</dd></div>
+            <div><dt>Năng lượng</dt><dd>{amount(logValue(viewingLog, 'calories'))} kcal</dd></div>
+            <div><dt>Đạm</dt><dd>{amount(logValue(viewingLog, 'protein'), 1)} g</dd></div>
+            <div><dt>Carbs</dt><dd>{amount(logValue(viewingLog, 'carbs'), 1)} g</dd></div>
+            <div><dt>Chất béo</dt><dd>{amount(logValue(viewingLog, 'fat'), 1)} g</dd></div>
+            <div><dt>Thời gian ghi</dt><dd>{formatTime(viewingLog.createdAt)}</dd></div>
+          </dl>
+          {error && <p className="fd-edit-error" role="alert">{error}</p>}
+          <footer><button type="button" className="fd-detail-delete" onClick={deleteViewedLog} disabled={deletingLogId === viewingLog._id}><i className="bi bi-trash3" />{deletingLogId === viewingLog._id ? 'Đang xóa...' : 'Xóa bản ghi'}</button></footer>
+        </section>
+      </div>}
       {editingLog && <div className="fd-edit-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditingLog(null) }}>
         <form className="fd-edit-dialog" onSubmit={saveEdit} role="dialog" aria-modal="true" aria-labelledby="fd-edit-title">
           <header><div><small>NHẬT KÝ BỮA ĂN</small><h2 id="fd-edit-title">Chỉnh sửa món ăn</h2></div><button type="button" onClick={() => setEditingLog(null)} aria-label="Đóng"><i className="bi bi-x-lg" /></button></header>

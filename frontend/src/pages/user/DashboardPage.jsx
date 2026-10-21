@@ -207,7 +207,7 @@ export default function DashboardPage() {
           <ExerciseNavMenu />
           <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>
-          <a href="/dashboard">Bài viết & Mẹo</a>
+          <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search"><i className="bi bi-search" /> Tra cứu thực phẩm...</span>
@@ -416,14 +416,14 @@ export default function DashboardPage() {
         </section>
 
         <section className="content-panel articles-panel">
-          <PanelHeading title="✦ Kiến thức & Đời sống" subtitle="Cập nhật kiến thức dinh dưỡng khoa học, mẹo ăn uống lành mạnh và công nghệ AI" action={<a href="/dashboard">Xem tất cả bài viết →</a>} />
+          <PanelHeading title="✦ Kiến thức & Đời sống" subtitle="Cập nhật kiến thức dinh dưỡng khoa học, mẹo ăn uống lành mạnh và công nghệ AI" action={<Link to="/articles">Xem tất cả bài viết →</Link>} />
           <div className="article-grid">
             {articles.map(([title, tag, time]) => (
               <article key={title}>
                 <span>{tag}</span>
                 <h3>{title}</h3>
                 <small>{time}</small>
-                <a href="/dashboard">Đọc tiếp →</a>
+                <Link to="/articles">Đọc tiếp →</Link>
               </article>
             ))}
           </div>

@@ -134,6 +134,7 @@ async function listFoodRequests(req, res) {
       .populate('userId', 'fullName email avatarUrl role')
       .populate('requestedBy', 'fullName email avatarUrl role')
       .populate('reviewedBy', 'fullName email avatarUrl')
+      .populate('targetFoodId', 'name slug imageUrl status')
       .populate('approvedFoodId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
       .populate('approvedFoodItemId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
       .sort(sortOptions)
@@ -177,6 +178,7 @@ async function getFoodRequestDetail(req, res) {
       .populate('userId', 'fullName email avatarUrl role')
       .populate('requestedBy', 'fullName email avatarUrl role')
       .populate('reviewedBy', 'fullName email avatarUrl')
+      .populate('targetFoodId', 'name slug imageUrl status')
       .populate('approvedFoodId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
       .populate('approvedFoodItemId', 'name foodCode slug imageUrl calories protein fat carbs foodGroup status')
       .lean();
@@ -199,7 +201,7 @@ async function getFoodRequestDetail(req, res) {
       .select('name foodCode slug imageUrl calories protein fat carbs foodGroup status servingSize')
       .lean();
 
-    const matchedFoods = allActiveFoods.filter((f) => {
+    const matchedFoods = request.requestType === 'reopen' ? [] : allActiveFoods.filter((f) => {
       const fNameLower = (f.name || '').toLowerCase().trim();
       if (!fNameLower) return false;
       // 1. Trùng khớp hoàn toàn
@@ -259,6 +261,44 @@ async function approveFoodRequest(req, res) {
     if (normalizeStatus(request.status) !== 'pending') {
       return res.status(400).json({
         message: `Yêu cầu này đã được xử lý trước đó (${normalizeStatus(request.status) === 'approved' ? 'Đã duyệt' : 'Đã từ chối'})`,
+      });
+    }
+
+    if (request.requestType === 'reopen') {
+      const food = await Food.findById(request.targetFoodId);
+      if (!food || food.status !== 'hidden') {
+        return res.status(409).json({ message: 'Món ăn không còn ở trạng thái ẩn; vui lòng kiểm tra lại danh mục.' });
+      }
+
+      food.status = 'active';
+      await food.save();
+      request.status = 'approved';
+      request.approvedFoodId = food._id;
+      request.reviewedBy = req.user.id || req.user._id;
+      request.reviewedAt = new Date();
+      request.adminNote = String(req.body.adminNote || '').trim() || null;
+      await request.save();
+
+      await Notification.create({
+        userId: request.userId || request.requestedBy,
+        title: 'Đề nghị mở lại món ăn đã được duyệt',
+        message: `Món ăn "${food.name}" đã được Admin kích hoạt lại và hiện có thể sử dụng.`,
+        type: 'food_request_approved',
+        data: { requestId: request._id, requestCode: request.requestCode, foodId: food._id, foodName: food.name },
+      });
+
+      await AdminActionLog.create({
+        adminId: req.user.id || req.user._id,
+        actionType: 'show_food',
+        targetType: 'FoodItem',
+        targetId: food._id,
+        reason: `Duyệt đề nghị mở lại món "${food.name}"`,
+        note: `Mã yêu cầu: ${request.requestCode || request._id}${request.adminNote ? ` | ${request.adminNote}` : ''}`,
+      });
+
+      return res.status(200).json({
+        message: `Đã duyệt đề nghị và kích hoạt lại món "${food.name}".`,
+        data: { request, food },
       });
     }
 
@@ -425,8 +465,8 @@ async function rejectFoodRequest(req, res) {
     // 2. Gửi thông báo kết quả cho người dùng (Luồng thay thế 9a)
     await Notification.create({
       userId: request.userId || request.requestedBy,
-      title: 'Yêu cầu thêm món ăn đã bị từ chối',
-      message: `Yêu cầu thêm món "${request.foodName || request.name}" đã bị từ chối. Lý do: ${reason}`,
+      title: request.requestType === 'reopen' ? 'Đề nghị mở lại món ăn đã bị từ chối' : 'Yêu cầu thêm món ăn đã bị từ chối',
+      message: `${request.requestType === 'reopen' ? 'Đề nghị mở lại món' : 'Yêu cầu thêm món'} "${request.foodName || request.name}" đã bị từ chối. Lý do: ${reason}`,
       type: 'food_request_rejected',
       data: {
         requestId: request._id,

@@ -4,6 +4,7 @@ import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import DashboardPage from './pages/user/DashboardPage'
+import ArticlesPage, { ArticleDetailPage } from './pages/user/ArticlesPage'
 import HealthProfilePage from './pages/user/HealthProfilePage'
 import WeightTrackerPage from './pages/user/WeightTrackerPage'
 import FoodScanPage from './pages/user/FoodScanPage'
@@ -75,6 +76,18 @@ export default function App() {
       <Route
         path="/dashboard"
         element={<PrivateRoute><DashboardPage /></PrivateRoute>}
+      />
+      <Route
+        path="/articles/favorites"
+        element={<ArticlesPage favoritesOnly />}
+      />
+      <Route
+        path="/articles"
+        element={<ArticlesPage />}
+      />
+      <Route
+        path="/articles/:articleId"
+        element={<ArticleDetailPage />}
       />
       <Route
         path="/profile"
