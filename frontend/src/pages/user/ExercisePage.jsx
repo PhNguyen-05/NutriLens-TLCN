@@ -33,15 +33,25 @@ function getTimeStr(d = new Date()) {
   return `${hours}:${minutes}`
 }
 
+function getMinDateStr(daysAgo = 90) {
+  const d = new Date()
+  d.setDate(d.getDate() - daysAgo)
+  return getTodayStr(d)
+}
+
 function validateDateTime(date, time) {
   const today = getTodayStr()
   const nowTime = getTimeStr()
+  const minDate = getMinDateStr(90)
 
   if (!date) {
     return 'Vui lòng chọn ngày tập'
   }
   if (date > today) {
     return 'Ngày tập không thể ở thời điểm tương lai'
+  }
+  if (date < minDate) {
+    return 'Ngày tập không được vượt quá 90 ngày trong quá khứ'
   }
   if (date === today && time && time > nowTime) {
     return 'Giờ bắt đầu tập không thể ở thời điểm tương lai'
@@ -783,7 +793,7 @@ export default function ExercisePage() {
               {period === 'custom' && (
                 <div className="ex-date-range">
                   <label>
-                    Từ&nbsp;<input type="date" value={customStart} max={customEnd || getTodayStr()} onChange={e => handleCustomStartChange(e.target.value)} />
+                    Từ&nbsp;<input type="date" min={getMinDateStr(365)} value={customStart} max={customEnd || getTodayStr()} onChange={e => handleCustomStartChange(e.target.value)} />
                   </label>
                   <span>—</span>
                   <label>
@@ -927,7 +937,7 @@ export default function ExercisePage() {
               <div className="ex-form-row">
                 <div className="ex-field">
                   <label>Ngày tập</label>
-                  <input type="date" max={getTodayStr()} value={logForm.date}
+                  <input type="date" min={getMinDateStr(90)} max={getTodayStr()} value={logForm.date}
                     onChange={e => onLogDateChange(e.target.value)} />
                 </div>
                 <div className="ex-field">
@@ -942,7 +952,7 @@ export default function ExercisePage() {
               {/* Thời lượng */}
               <div className="ex-field">
                 <label>Thời lượng tập (phút)</label>
-                <input type="number" min="1" max="1440" placeholder="Ví dụ: 30"
+                <input type="number" min="1" max="1440" step="1" placeholder="Ví dụ: 30"
                   value={logForm.duration} onChange={e => onDurationChange(e.target.value)} />
                 <div className="ex-quick-chips">
                   {[15, 30, 45, 60, 90].map(m => (
@@ -1069,6 +1079,11 @@ export default function ExercisePage() {
                   value={editForm.exerciseId}
                   onChange={e => onEditDuration(editForm.duration, e.target.value)}
                 >
+                  {editing && !exercises.some(ex => String(ex._id) === String(editForm.exerciseId)) && (
+                    <option value={editForm.exerciseId}>
+                      {editing.exerciseName} (Đã ngưng áp dụng)
+                    </option>
+                  )}
                   {exercises.map(ex => (
                     <option key={ex._id} value={ex._id}>
                       {ex.name} (MET {ex.met})
@@ -1080,7 +1095,7 @@ export default function ExercisePage() {
               <div className="ex-form-row">
                 <div className="ex-field">
                   <label>Ngày tập</label>
-                  <input type="date" max={getTodayStr()} value={editForm.date}
+                  <input type="date" min={getMinDateStr(90)} max={getTodayStr()} value={editForm.date}
                     onChange={e => onEditDateChange(e.target.value)} />
                 </div>
                 <div className="ex-field">
@@ -1094,7 +1109,7 @@ export default function ExercisePage() {
 
               <div className="ex-field">
                 <label>Thời lượng (phút)</label>
-                <input type="number" min="1" max="1440"
+                <input type="number" min="1" max="1440" step="1"
                   value={editForm.duration} onChange={e => onEditDuration(e.target.value)} />
                 <div className="ex-quick-chips">
                   {[15, 30, 45, 60, 90].map(m => (
@@ -1272,6 +1287,7 @@ export default function ExercisePage() {
                   type="number"
                   min="5"
                   max="360"
+                  step="1"
                   value={customForm.defaultDurationMinutes}
                   onChange={e => setCustomForm(p => ({ ...p, defaultDurationMinutes: e.target.value }))}
                 />

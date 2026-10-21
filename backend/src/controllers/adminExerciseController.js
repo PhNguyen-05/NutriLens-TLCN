@@ -192,9 +192,9 @@ async function getExerciseDetail(req, res) {
     const [logCount, recentLogs] = await Promise.all([
       ExerciseLog.countDocuments({ exerciseId: exercise._id }),
       ExerciseLog.find({ exerciseId: exercise._id })
-        .sort({ recordedDate: -1, loggedAt: -1 })
+        .sort({ date: -1, createdAt: -1 })
         .limit(5)
-        .populate('user', 'fullName email')
+        .populate('userId', 'fullName email')
         .lean(),
     ]);
 
@@ -202,7 +202,10 @@ async function getExerciseDetail(req, res) {
       data: {
         ...exercise,
         logCount,
-        recentLogs,
+        recentLogs: recentLogs.map((log) => ({
+          ...log,
+          user: log.userId || null,
+        })),
       },
     });
   } catch (err) {

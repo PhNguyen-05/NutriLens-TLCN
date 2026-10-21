@@ -7093,6 +7093,14 @@ td.fdm-td-center { text-align: center !important; }
   margin-bottom: 16px;
 }
 .ex-period-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .ex-period-btns {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+}
 .ex-period-btn {
   padding: 6px 12px;
   border-radius: 8px;

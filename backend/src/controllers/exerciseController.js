@@ -393,10 +393,35 @@ async function getUserCurrentWeight(userId) {
  * Công thức ước tính Calories:
  * Calories = (MET * 3.5 * Cân nặng (kg) * Thời gian (phút)) / 200
  */
-function calculateEstimatedCalories(met, weightKg, durationMinutes) {
-  if (!met || !weightKg || !durationMinutes) return 0;
-  const result = (met * 3.5 * weightKg * durationMinutes) / 200;
-  return Math.round(result);
+function calculateEstimatedCalories(met, weightKg, durationMinutes) {
+  if (!met || !weightKg || !durationMinutes) return 0;
+  const result = (met * 3.5 * weightKg * durationMinutes) / 200;
+  return Math.round(result);
+}
+
+/**
+ * Lấy ngày và giờ hiện tại theo múi giờ Việt Nam (Asia/Ho_Chi_Minh)
+ * Tránh lỗi chênh lệch múi giờ trên Server (UTC vs GMT+7)
+ */
+function getVietnamNow() {
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const nowTimeStr = new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(now);
+  return { todayStr, nowTimeStr };
+}
+
+/**
+ * Lấy chuỗi ngày tối thiểu cho phép ghi nhận nhật ký (mặc định 90 ngày trước)
+ */
+function getVietnamMinDateStr(daysAgo = 90) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  return d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 // =============================================================================
@@ -580,12 +605,7 @@ async function createExerciseLog(req, res) {
       return res.status(400).json({ message: 'Thời lượng tập không thể vượt quá 24 giờ (1440 phút)' });
     }
 
-    const todayStr = new Date().toLocaleDateString('sv-SE');
-    const nowTimeStr = new Intl.DateTimeFormat('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date());
+    const { todayStr, nowTimeStr } = getVietnamNow();
 
     const logDate = date && /^\d{4}-\d{2}-\d{2}$/.test(date)
       ? date
@@ -593,6 +613,11 @@ async function createExerciseLog(req, res) {
 
     if (logDate > todayStr) {
       return res.status(400).json({ message: 'Ngày tập không thể ở thời điểm tương lai' });
+    }
+
+    const minDateStr = getVietnamMinDateStr(90);
+    if (logDate < minDateStr) {
+      return res.status(400).json({ message: 'Ngày tập không được vượt quá 90 ngày trong quá khứ' });
     }
 
     const logTime = time || nowTimeStr;
@@ -676,12 +701,7 @@ async function updateExerciseLog(req, res) {
       nextDuration = parsedDuration;
     }
 
-    const todayStr = new Date().toLocaleDateString('sv-SE');
-    const nowTimeStr = new Intl.DateTimeFormat('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }).format(new Date());
+    const { todayStr, nowTimeStr } = getVietnamNow();
 
     const nextDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) ? date : log.date;
     const nextTime = time !== undefined ? time : log.time;
@@ -689,6 +709,12 @@ async function updateExerciseLog(req, res) {
     if (nextDate > todayStr) {
       return res.status(400).json({ message: 'Ngày tập không thể ở thời điểm tương lai' });
     }
+
+    const minDateStr = getVietnamMinDateStr(90);
+    if (nextDate < minDateStr) {
+      return res.status(400).json({ message: 'Ngày tập không được vượt quá 90 ngày trong quá khứ' });
+    }
+
     if (nextDate === todayStr && nextTime && nextTime > nowTimeStr) {
       return res.status(400).json({ message: 'Giờ bắt đầu tập không thể ở thời điểm tương lai' });
     }
@@ -877,6 +903,16 @@ async function deleteCustomExercise(req, res) {
 
     if (!exercise) {
       return res.status(404).json({ message: 'Bài tập cá nhân không tồn tại hoặc bạn không có quyền xóa' });
+    }
+
+    const logCount = await ExerciseLog.countDocuments({ exerciseId: exercise._id });
+    if (logCount > 0) {
+      exercise.isActive = false;
+      await exercise.save();
+      return res.status(200).json({
+        message: 'Bài tập cá nhân đã có lượt ghi nhận nhật ký nên được chuyển sang trạng thái ẩn để bảo toàn dữ liệu lịch sử.',
+        hidden: true,
+      });
     }
 
     await Exercise.deleteOne({ _id: id });

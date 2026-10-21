@@ -592,6 +592,7 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
       setErrors(errs)
       if (errs.name) setApiError(errs.name)
       else if (errs.met) setApiError(errs.met)
+      else if (errs.defaultDurationMinutes) setApiError(errs.defaultDurationMinutes)
       return
     }
 
@@ -605,7 +606,7 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
         category: form.category,
         intensity: form.intensity,
         met: Number(form.met),
-        defaultDurationMinutes: Number.isFinite(parsedDuration) && parsedDuration >= 0 ? parsedDuration : 0,
+        defaultDurationMinutes: Number.isFinite(parsedDuration) && parsedDuration > 0 ? Math.round(parsedDuration) : 30,
         description: form.description.trim(),
         icon: form.icon,
         isActive: Boolean(form.isActive),
