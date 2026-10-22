@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const BlogPost = require('../models/BlogPost');
+const AdminActionLog = require('../models/AdminActionLog');
 
 const BLOG_STATUSES = ['Nháp', 'Đã xuất bản', 'Đã ẩn', 'Đã xóa'];
 const AUTHOR_FIELDS = 'fullName role';
@@ -242,6 +243,19 @@ async function createBlogPost(req, res) {
       publishedAt,
     });
     await post.populate('authorId', AUTHOR_FIELDS);
+
+    // Ghi nhận lịch sử thao tác của Admin
+    await AdminActionLog.create({
+      adminId: req.user.id,
+      actionType: post.status === 'Đã xuất bản' ? 'publish_post' : 'create_post',
+      targetType: 'Post',
+      targetId: post._id,
+      reason: post.status === 'Đã xuất bản'
+        ? `Tạo và xuất bản bài viết "${post.title}"`
+        : `Tạo bài viết nháp "${post.title}"`,
+      note: `Chuyên mục: ${post.category || 'Chưa phân loại'}${post.tags?.length ? ` | Thẻ: ${post.tags.join(', ')}` : ''}`,
+    });
+
     return res.status(201).json({ message: 'Đã lưu bài viết', data: serializeBlogPost(post) });
   } catch (err) {
     const validationResponse = validationFailure(res, err);
@@ -270,6 +284,36 @@ async function updateBlogPost(req, res) {
 
     await post.save();
     await post.populate('authorId', AUTHOR_FIELDS);
+
+    const isStatusChanged = previousStatus !== post.status;
+    let actionType = 'update_post';
+    let reason = `Cập nhật thông tin bài viết "${post.title}"`;
+    if (isStatusChanged) {
+      if (post.status === 'Đã xuất bản') {
+        actionType = 'publish_post';
+        reason = `Xuất bản bài viết "${post.title}"`;
+      } else if (post.status === 'Đã ẩn') {
+        actionType = 'hide_post';
+        reason = `Ẩn bài viết "${post.title}" khỏi người dùng`;
+      } else if (post.status === 'Nháp') {
+        actionType = 'draft_post';
+        reason = `Chuyển bài viết "${post.title}" về bản nháp`;
+      } else if (post.status === 'Đã xóa') {
+        actionType = 'delete_post';
+        reason = `Xóa bài viết "${post.title}" khỏi hệ thống`;
+      }
+    }
+
+    // Ghi nhận lịch sử thao tác của Admin
+    await AdminActionLog.create({
+      adminId: req.user.id,
+      actionType,
+      targetType: 'Post',
+      targetId: post._id,
+      reason,
+      note: `Chuyên mục: ${post.category || 'Chưa phân loại'} | Trạng thái: ${post.status}${isStatusChanged ? ` (Cũ: ${previousStatus})` : ''}`,
+    });
+
     return res.status(200).json({ message: 'Đã cập nhật bài viết', data: serializeBlogPost(post) });
   } catch (err) {
     const validationResponse = validationFailure(res, err);
@@ -289,10 +333,38 @@ async function updateBlogPostStatus(req, res) {
     const post = await BlogPost.findById(id);
     if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
 
+    const previousStatus = post.status;
     if (status === 'Đã xuất bản' && post.status !== 'Đã xuất bản') post.publishedAt = new Date();
     post.status = status;
     await post.save();
     await post.populate('authorId', AUTHOR_FIELDS);
+
+    let actionType = 'update_post';
+    let reason = `Cập nhật trạng thái bài viết "${post.title}" thành ${status}`;
+    if (status === 'Đã xuất bản') {
+      actionType = 'publish_post';
+      reason = `Xuất bản bài viết "${post.title}"`;
+    } else if (status === 'Đã ẩn') {
+      actionType = 'hide_post';
+      reason = `Ẩn bài viết "${post.title}" khỏi người dùng`;
+    } else if (status === 'Nháp') {
+      actionType = 'draft_post';
+      reason = `Chuyển bài viết "${post.title}" về bản nháp`;
+    } else if (status === 'Đã xóa') {
+      actionType = 'delete_post';
+      reason = `Xóa bài viết "${post.title}" khỏi hệ thống`;
+    }
+
+    // Ghi nhận lịch sử thao tác của Admin
+    await AdminActionLog.create({
+      adminId: req.user.id,
+      actionType,
+      targetType: 'Post',
+      targetId: post._id,
+      reason,
+      note: `Chuyên mục: ${post.category || 'Chưa phân loại'} | Trạng thái: ${previousStatus} → ${status}`,
+    });
+
     return res.status(200).json({ message: 'Đã cập nhật trạng thái bài viết', data: serializeBlogPost(post) });
   } catch (err) {
     const validationResponse = validationFailure(res, err);
@@ -318,6 +390,36 @@ async function bulkUpdateBlogPostStatus(req, res) {
       await post.save();
     }));
     await Promise.all(posts.map((post) => post.populate('authorId', AUTHOR_FIELDS)));
+
+    let actionType = 'update_post';
+    let getReason = (title) => `Cập nhật trạng thái bài viết "${title}" thành ${status} (hàng loạt)`;
+    if (status === 'Đã xuất bản') {
+      actionType = 'publish_post';
+      getReason = (title) => `Xuất bản bài viết "${title}" (hàng loạt)`;
+    } else if (status === 'Đã ẩn') {
+      actionType = 'hide_post';
+      getReason = (title) => `Ẩn bài viết "${title}" khỏi người dùng (hàng loạt)`;
+    } else if (status === 'Nháp') {
+      actionType = 'draft_post';
+      getReason = (title) => `Chuyển bài viết "${title}" về bản nháp (hàng loạt)`;
+    } else if (status === 'Đã xóa') {
+      actionType = 'delete_post';
+      getReason = (title) => `Xóa bài viết "${title}" khỏi hệ thống (hàng loạt)`;
+    }
+
+    const logsToCreate = posts.map((post) => ({
+      adminId: req.user.id,
+      actionType,
+      targetType: 'Post',
+      targetId: post._id,
+      reason: getReason(post.title),
+      note: `Chuyên mục: ${post.category || 'Chưa phân loại'} | Trạng thái mới: ${status}`,
+    }));
+
+    if (logsToCreate.length > 0) {
+      await AdminActionLog.insertMany(logsToCreate);
+    }
+
     return res.status(200).json({
       message: 'Đã cập nhật trạng thái các bài viết',
       data: posts.map(serializeBlogPost),
@@ -341,6 +443,17 @@ async function deleteBlogPost(req, res) {
     post.status = 'Đã xóa';
     await post.save();
     await post.populate('authorId', AUTHOR_FIELDS);
+
+    // Ghi nhận lịch sử thao tác của Admin
+    await AdminActionLog.create({
+      adminId: req.user.id,
+      actionType: 'delete_post',
+      targetType: 'Post',
+      targetId: post._id,
+      reason: `Xóa bài viết "${post.title}" khỏi hệ thống`,
+      note: `Chuyên mục: ${post.category || 'Chưa phân loại'}`,
+    });
+
     return res.status(200).json({ message: 'Đã xóa bài viết', data: serializeBlogPost(post) });
   } catch (err) {
     const validationResponse = validationFailure(res, err);

@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Food = require('../models/Food');
 const FoodRequest = require('../models/FoodRequest');
 const Exercise = require('../models/Exercise');
+const BlogPost = require('../models/BlogPost');
 const AdminActionLog = require('../models/AdminActionLog');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
@@ -259,8 +260,9 @@ async function listActionLogs(req, res) {
       'hide_post', 'remove_post', 'reject_request', 'approve_request',
       'create_food', 'update_food', 'hide_food', 'show_food',
       'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise',
+      'create_post', 'update_post', 'publish_post', 'draft_post', 'delete_post',
     ];
-    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise'];
+    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise', 'Post'];
 
     if (targetType !== 'all') {
       if (validTargetTypes.includes(targetType)) {
@@ -293,17 +295,25 @@ async function listActionLogs(req, res) {
     const keyword = String(search).trim();
     if (keyword) {
       const pattern = { $regex: escapeRegex(keyword), $options: 'i' };
-      const [matchingUsers, matchingFoods, matchingRequests, matchingExercises] = await Promise.all([
+      const [matchingUsers, matchingFoods, matchingRequests, matchingExercises, matchingPosts] = await Promise.all([
         User.find({ $or: [{ fullName: pattern }, { email: pattern }] }).select('_id').lean(),
         Food.find({ $or: [{ name: pattern }, { foodCode: pattern }] }).select('_id').lean(),
         FoodRequest.find({ $or: [{ foodName: pattern }, { requestCode: pattern }] }).select('_id').lean(),
         Exercise.find({ $or: [{ name: pattern }, { slug: pattern }, { categoryName: pattern }] }).select('_id').lean(),
+        BlogPost.find({ $or: [{ title: pattern }, { category: pattern }, { tags: pattern }] }).select('_id').lean(),
       ]);
       const matchingUserIds = matchingUsers.map((user) => user._id);
       const matchingFoodIds = matchingFoods.map((food) => food._id);
       const matchingRequestIds = matchingRequests.map((req) => req._id);
       const matchingExerciseIds = matchingExercises.map((ex) => ex._id);
-      const allMatchingTargetIds = [...matchingUserIds, ...matchingFoodIds, ...matchingRequestIds, ...matchingExerciseIds];
+      const matchingPostIds = matchingPosts.map((post) => post._id);
+      const allMatchingTargetIds = [
+        ...matchingUserIds,
+        ...matchingFoodIds,
+        ...matchingRequestIds,
+        ...matchingExerciseIds,
+        ...matchingPostIds,
+      ];
 
       query.$or = [
         { reason: pattern },
@@ -328,7 +338,7 @@ async function listActionLogs(req, res) {
       ]),
     ]);
 
-    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, User: 0 };
+    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, User: 0 };
     countsAggregate.forEach((item) => {
       if (item._id && targetCounts[item._id] !== undefined) {
         targetCounts[item._id] = item.count;
@@ -340,18 +350,21 @@ async function listActionLogs(req, res) {
     const foodTargetIds = logs.filter((log) => log.targetType === 'FoodItem').map((log) => log.targetId);
     const requestTargetIds = logs.filter((log) => log.targetType === 'Request').map((log) => log.targetId);
     const exerciseTargetIds = logs.filter((log) => log.targetType === 'Exercise').map((log) => log.targetId);
+    const postTargetIds = logs.filter((log) => log.targetType === 'Post').map((log) => log.targetId);
 
-    const [relatedUsers, relatedFoods, relatedRequests, relatedExercises] = await Promise.all([
+    const [relatedUsers, relatedFoods, relatedRequests, relatedExercises, relatedPosts] = await Promise.all([
       User.find({ _id: { $in: relatedIds } }).select('fullName email avatarUrl role').lean(),
       Food.find({ _id: { $in: foodTargetIds } }).select('name foodCode slug imageUrl status').lean(),
       FoodRequest.find({ _id: { $in: requestTargetIds } }).select('foodName requestCode status calories userId').populate('userId', 'fullName email').lean(),
       Exercise.find({ _id: { $in: exerciseTargetIds } }).select('name slug category categoryName met intensity icon isActive').lean(),
+      BlogPost.find({ _id: { $in: postTargetIds } }).select('title category tags status imageUrl authorId').lean(),
     ]);
 
     const usersById = new Map(relatedUsers.map((user) => [String(user._id), user]));
     const foodsById = new Map(relatedFoods.map((food) => [String(food._id), food]));
     const requestsById = new Map(relatedRequests.map((req) => [String(req._id), req]));
     const exercisesById = new Map(relatedExercises.map((ex) => [String(ex._id), ex]));
+    const postsById = new Map(relatedPosts.map((post) => [String(post._id), post]));
 
     return res.status(200).json({
       data: logs.map((log) => ({
@@ -361,6 +374,7 @@ async function listActionLogs(req, res) {
         targetFood: log.targetType === 'FoodItem' ? foodsById.get(String(log.targetId)) || null : null,
         targetRequest: log.targetType === 'Request' ? requestsById.get(String(log.targetId)) || null : null,
         targetExercise: log.targetType === 'Exercise' ? exercisesById.get(String(log.targetId)) || null : null,
+        targetPost: log.targetType === 'Post' ? postsById.get(String(log.targetId)) || null : null,
       })),
       admins,
       counts: targetCounts,
