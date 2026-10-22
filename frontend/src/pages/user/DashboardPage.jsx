@@ -393,10 +393,6 @@ export default function DashboardPage() {
           <span className="dashboard-search"><i className="bi bi-search" /> Tra cứu thực phẩm...</span>
           <i className="bi bi-bell dashboard-bell" />
           <div className="profile-menu">
-
-            <button className="dashboard-avatar" onClick={() => setProfileOpen((isOpen) => !isOpen)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">
-              {user?.avatarUrl ? <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
-
             <button
               className="dashboard-avatar"
               onClick={() => setProfileOpen((isOpen) => !isOpen)}
@@ -404,8 +400,9 @@ export default function DashboardPage() {
               aria-haspopup="menu"
               title="Mở menu tài khoản"
             >
-              {user?.avatarUrl ? <img src={user.avatarUrl} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
-
+              {user?.avatarUrl
+                ? <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" />
+                : firstName.charAt(0).toUpperCase()}
             </button>
             {profileOpen && (
               <div className="profile-dropdown" role="menu">
