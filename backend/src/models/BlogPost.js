@@ -7,6 +7,7 @@ function isValidImageUrl(value) {
   const imageUrl = String(value).trim();
   const localPath = imageUrl.split(/[?#]/, 1)[0];
   if (/^\/api\/media\/[a-f\d]{24}$/i.test(localPath)) return true;
+  if (/^\/api\/blog\/[a-f\d]{24}\/image$/i.test(localPath)) return true;
   if (imageUrl.startsWith('/uploads/blog/')) return /\.(jpe?g|png)$/i.test(localPath);
 
   try {
@@ -32,6 +33,8 @@ const blogPostSchema = new mongoose.Schema(
       trim: true,
       validate: { validator: isValidImageUrl, message: 'Ảnh minh họa phải là JPG hoặc PNG hợp lệ' },
     },
+    imageData: { type: Buffer, default: null, select: false },
+    imageContentType: { type: String, default: null, select: false },
     category: { type: String, trim: true, default: '' },
     tags: { type: [{ type: String, trim: true }], default: [] },
     categoryTags: { type: [{ type: String, trim: true }], default: [] },

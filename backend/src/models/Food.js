@@ -26,11 +26,22 @@ const foodSchema = new mongoose.Schema(
 
     description: { type: String, default: null },
     imageUrl:    { type: String, default: null },
+    imageData: { type: Buffer, default: null, select: false },
+    imageContentType: { type: String, default: null, select: false },
 
     // Trạng thái: active = Đang sử dụng, hidden = Đã ẩn
     status: { type: String, enum: ['active', 'hidden'], default: 'active', index: true },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    toJSON: {
+      transform(_doc, ret) {
+        delete ret.imageData;
+        delete ret.imageContentType;
+        return ret;
+      },
+    },
+  }
 );
 
 foodSchema.index({ name: 'text' });

@@ -15,6 +15,8 @@ function serializeBlogPost(post) {
   const raw = typeof post.toObject === 'function' ? post.toObject() : post;
   const publicPost = { ...raw };
   delete publicPost.likedBy;
+  delete publicPost.imageData;
+  delete publicPost.imageContentType;
   const author = raw.authorId && raw.authorId.fullName !== undefined ? raw.authorId : null;
   const legacyCategoryTags = Array.isArray(raw.categoryTags) ? raw.categoryTags : [];
   const category = String(raw.category || legacyCategoryTags[0] || '');
@@ -103,6 +105,44 @@ function validationFailure(res, error) {
     return res.status(400).json({ message: message || 'Dữ liệu bài viết không hợp lệ' });
   }
   return null;
+}
+
+function parseInlineImage(imageUrl) {
+  if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:')) return { image: null };
+
+  const match = imageUrl.match(/^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if (!match) return { error: 'Ảnh minh họa phải là JPG hoặc PNG hợp lệ' };
+
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > 5 * 1024 * 1024) return { error: 'Ảnh minh họa không được vượt quá 5 MB' };
+  if (buffer.toString('base64') !== match[2]) return { error: 'Dữ liệu ảnh không hợp lệ' };
+
+  return { image: { buffer, contentType: match[1].toLowerCase() } };
+}
+
+function getEmbeddedImageUrl(postId) {
+  return `/api/blog/${postId.toString()}/image`;
+}
+
+async function getBlogPostImage(req, res) {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(404).json({ message: 'Không tìm thấy ảnh' });
+
+    const post = await BlogPost.findById(id).select('imageData imageContentType');
+    if (!post?.imageData) return res.status(404).json({ message: 'Không tìm thấy ảnh' });
+
+    const imageBuffer = Buffer.from(post.imageData);
+    res.setHeader('Content-Type', post.imageContentType || 'application/octet-stream');
+    res.setHeader('Content-Length', String(imageBuffer.length));
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    return res.end(imageBuffer);
+  } catch (err) {
+    console.error('[getBlogPostImage] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải ảnh bài viết' });
+  }
 }
 
 async function listBlogPosts(_req, res) {
@@ -232,15 +272,22 @@ async function createBlogPost(req, res) {
   try {
     const parsed = validatePostInput(req.body);
     if (parsed.error) return res.status(400).json({ message: parsed.error });
+    const parsedImage = parseInlineImage(parsed.value.imageUrl);
+    if (parsedImage.error) return res.status(400).json({ message: parsedImage.error });
 
     const publishedAt = parsed.value.status === 'Đã xuất bản' ? new Date() : null;
-    const post = await BlogPost.create({
+    const post = new BlogPost({
       ...parsed.value,
+      imageUrl: parsedImage.image ? null : parsed.value.imageUrl,
+      imageData: parsedImage.image?.buffer || null,
+      imageContentType: parsedImage.image?.contentType || null,
       authorId: req.user.id,
       viewCount: 0,
       likeCount: 0,
       publishedAt,
     });
+    if (parsedImage.image) post.imageUrl = getEmbeddedImageUrl(post._id);
+    await post.save();
     await post.populate('authorId', AUTHOR_FIELDS);
     return res.status(201).json({ message: 'Đã lưu bài viết', data: serializeBlogPost(post) });
   } catch (err) {
@@ -261,9 +308,23 @@ async function updateBlogPost(req, res) {
 
     const parsed = validatePostInput(req.body, post);
     if (parsed.error) return res.status(400).json({ message: parsed.error });
+    const parsedImage = parseInlineImage(parsed.value.imageUrl);
+    if (parsedImage.error) return res.status(400).json({ message: parsedImage.error });
 
     const previousStatus = post.status;
-    Object.assign(post, parsed.value);
+    const { imageUrl, ...postFields } = parsed.value;
+    Object.assign(post, postFields);
+    if (parsedImage.image) {
+      post.imageData = parsedImage.image.buffer;
+      post.imageContentType = parsedImage.image.contentType;
+      post.imageUrl = getEmbeddedImageUrl(post._id);
+    } else if (imageUrl === null) {
+      post.imageUrl = null;
+      post.imageData = null;
+      post.imageContentType = null;
+    } else {
+      post.imageUrl = imageUrl;
+    }
     if (parsed.value.status === 'Đã xuất bản' && previousStatus !== 'Đã xuất bản') {
       post.publishedAt = new Date();
     }
@@ -352,6 +413,7 @@ async function deleteBlogPost(req, res) {
 
 module.exports = {
   listBlogPosts,
+  getBlogPostImage,
   listPublishedBlogPosts,
   getPublishedBlogPost,
   incrementPublishedBlogView,

@@ -36,7 +36,7 @@ const EMPTY_FORM = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function getImageUrl(url) {
   if (!url) return ''
-  if (/^https?:\/\//i.test(url)) return url
+  if (/^(https?:|data:|blob:)/i.test(url)) return url
   return `${axiosInstance.defaults.baseURL.replace(/\/api\/?$/, '')}${url}`
 }
 
@@ -616,7 +616,7 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
             {uploadingImage ? (
               <div className="fm-uploading-box">
                 <span className="food-spinner" style={{ width: 26, height: 26, borderWidth: 3 }} />
-                <span>Đang tải ảnh lên máy chủ...</span>
+                <span>Đang xử lý ảnh...</span>
               </div>
             ) : form.imageUrl ? (
               <div className="fm-image-preview-card">
@@ -628,7 +628,9 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
                     <i className="bi bi-check-circle-fill" />
                     <span>Đã có ảnh đại diện</span>
                   </div>
-                  <p className="fm-ipc-url" title={form.imageUrl}>{form.imageUrl}</p>
+                  <p className="fm-ipc-url" title={form.imageUrl.startsWith('data:') ? 'Ảnh sẽ được lưu trong MongoDB khi lưu món ăn' : form.imageUrl}>
+                    {form.imageUrl.startsWith('data:') ? 'Ảnh sẽ được lưu trong MongoDB khi lưu món ăn' : form.imageUrl}
+                  </p>
                   <div className="fm-ipc-actions">
                     <button type="button" className="fm-ipc-btn fm-ipc-btn--change" onClick={() => fileRef.current?.click()}>
                       <i className="bi bi-arrow-repeat" /> Thay đổi ảnh
@@ -652,18 +654,11 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
                 <div className="fm-drop-placeholder">
                   <span className="fm-drop-icon"><i className="bi bi-cloud-arrow-up-fill" /></span>
                   <p>Kéo thả ảnh vào đây hoặc <span className="fm-link">chọn tệp từ máy tính</span></p>
-                  <small>Hỗ trợ JPG, PNG, WEBP (tối đa 5MB) — tự động lưu vào máy chủ</small>
+                  <small>Hỗ trợ JPG, PNG, WEBP (tối đa 5MB) — lưu vào MongoDB khi lưu món ăn</small>
                 </div>
               </div>
             )}
 
-            <div style={{ marginTop: 4 }}>
-              <label className="fm-label" htmlFor="fm-url" style={{ fontSize: 10, color: '#7a92a8', textTransform: 'none', letterSpacing: 'normal' }}>
-                Hoặc dán URL ảnh trực tiếp từ internet
-              </label>
-              <input id="fm-url" name="imageUrl" className="fm-input" style={{ fontSize: 12, padding: '7px 10px', marginTop: 3 }}
-                value={form.imageUrl} onChange={change} placeholder="https://..." />
-            </div>
           </div>
 
           {/* ── Mô tả ── */}

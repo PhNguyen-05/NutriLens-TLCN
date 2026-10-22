@@ -13,7 +13,10 @@
     "seed:admin": "node ./scripts/seedAdmin.js",
     "reset:admin": "node ./scripts/resetAdmin.js",
     "seed:foods": "node ./scripts/seedFoods.js",
-    "migrate:uploads-to-gridfs": "node ./scripts/migrateLocalUploadsToGridFS.js"
+    "migrate:uploads-to-cloudinary": "node ./scripts/migrateUploadsToCloudinary.js",
+    "migrate:blog-images-to-mongo": "node ./scripts/migrateCloudinaryBlogImagesToMongo.js",
+    "cleanup:legacy-gridfs": "node ./scripts/dropLegacyGridFSCollections.js",
+    "migrate:food-images-to-mongo": "node ./scripts/migrateCloudinaryFoodImagesToMongo.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

@@ -3,7 +3,6 @@ const path = require('path');
 const multer = require('multer');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
-const { saveMediaFile } = require('../services/mediaStorage');
 const {
   listBlogPosts,
   getBlogPost,
@@ -38,12 +37,8 @@ router.post('/upload-image', (req, res, next) => {
       });
     }
     if (!req.file) return res.status(400).json({ message: 'Vui lòng chọn ảnh minh họa' });
-    try {
-      const imageUrl = await saveMediaFile(req.file, 'blog');
-      return res.status(200).json({ imageUrl });
-    } catch (saveError) {
-      return next(saveError);
-    }
+    const imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    return res.status(200).json({ imageUrl });
   });
 });
 

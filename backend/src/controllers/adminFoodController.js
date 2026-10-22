@@ -5,6 +5,39 @@ const FoodRequest = require('../models/FoodRequest');
 const MealLog = require('../models/MealLog');
 const AdminActionLog = require('../models/AdminActionLog');
 
+const MAX_FOOD_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function parseInlineFoodImage(imageUrl) {
+  if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:')) return { image: null };
+
+  const match = imageUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if (!match) return { error: 'Ảnh món ăn phải là JPG, PNG hoặc WEBP hợp lệ' };
+
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > MAX_FOOD_IMAGE_BYTES) {
+    return { error: 'Ảnh món ăn rỗng hoặc vượt quá 5 MB' };
+  }
+  if (buffer.toString('base64') !== match[2]) return { error: 'Dữ liệu ảnh món ăn không hợp lệ' };
+
+  return { image: { buffer, contentType: match[1].toLowerCase() } };
+}
+
+function validateFoodImageInput(imageUrl, currentImageUrl = null) {
+  if (!imageUrl || imageUrl.startsWith('data:') || imageUrl === currentImageUrl) return null;
+  return 'Hãy tải ảnh JPG, PNG hoặc WEBP lên để lưu ảnh món ăn trong MongoDB';
+}
+
+function getFoodImageUrl(foodId) {
+  return `/api/food/${foodId.toString()}/image`;
+}
+
+function serializeFood(food) {
+  const data = typeof food.toObject === 'function' ? food.toObject() : { ...food };
+  delete data.imageData;
+  delete data.imageContentType;
+  return data;
+}
+
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
 }
@@ -98,6 +131,11 @@ async function createFood(req, res) {
   try {
     const adminId = req.user.id;
     const { name, calories, protein, fat, carbs, servingSize, imageUrl, description, foodGroup } = req.body;
+    const normalizedImageUrl = String(imageUrl || '').trim() || null;
+    const parsedImage = parseInlineFoodImage(normalizedImageUrl);
+    if (parsedImage.error) return res.status(400).json({ message: parsedImage.error });
+    const imageInputError = validateFoodImageInput(normalizedImageUrl);
+    if (imageInputError) return res.status(400).json({ message: imageInputError });
 
     const trimmedName = String(name || '').trim();
     if (!trimmedName) return res.status(400).json({ message: 'Tên món ăn không được để trống' });
@@ -123,16 +161,20 @@ async function createFood(req, res) {
     // Auto-generate food code (system)
     const foodCode = await generateFoodCode();
 
-    const food = await Food.create({
+    const food = new Food({
       slug, name: trimmedName, foodCode,
       foodGroup: String(foodGroup || '').trim() || null,
       calories: Number(calories), protein: Number(protein),
       fat: Number(fat), carbs: Number(carbs),
       servingSize: svNum,
-      imageUrl: String(imageUrl || '').trim() || null,
+      imageUrl: parsedImage.image ? null : normalizedImageUrl,
+      imageData: parsedImage.image?.buffer || null,
+      imageContentType: parsedImage.image?.contentType || null,
       description: String(description || '').trim() || null,
       status: 'active',
     });
+    if (parsedImage.image) food.imageUrl = getFoodImageUrl(food._id);
+    await food.save();
 
     await AdminActionLog.create({
       adminId,
@@ -142,7 +184,7 @@ async function createFood(req, res) {
       reason: `Thêm mới món "${food.name}"`,
       note: `Mã: ${food.foodCode || 'Chưa gán'} | Nhóm: ${food.foodGroup || 'Chưa phân nhóm'}`,
     });
-    return res.status(201).json({ message: 'Thêm món ăn thành công', data: food });
+    return res.status(201).json({ message: 'Thêm món ăn thành công', data: serializeFood(food) });
   } catch (err) {
     console.error('[createFood] Lỗi:', err.message);
     return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });
@@ -186,6 +228,11 @@ async function updateFood(req, res) {
     if (!food) return res.status(404).json({ message: 'Món ăn không tồn tại' });
 
     const { name, calories, protein, fat, carbs, servingSize, imageUrl, description, foodGroup } = req.body;
+    const normalizedImageUrl = String(imageUrl || '').trim() || null;
+    const parsedImage = parseInlineFoodImage(normalizedImageUrl);
+    if (parsedImage.error) return res.status(400).json({ message: parsedImage.error });
+    const imageInputError = validateFoodImageInput(normalizedImageUrl, food.imageUrl);
+    if (imageInputError) return res.status(400).json({ message: imageInputError });
     const trimmedName = String(name || '').trim();
     if (!trimmedName) return res.status(400).json({ message: 'Tên món ăn không được để trống' });
 
@@ -208,7 +255,17 @@ async function updateFood(req, res) {
     food.calories = Number(calories); food.protein = Number(protein);
     food.fat = Number(fat); food.carbs = Number(carbs);
     food.servingSize = svNum;
-    food.imageUrl = String(imageUrl || '').trim() || null;
+    if (parsedImage.image) {
+      food.imageData = parsedImage.image.buffer;
+      food.imageContentType = parsedImage.image.contentType;
+      food.imageUrl = getFoodImageUrl(food._id);
+    } else {
+      if (normalizedImageUrl !== food.imageUrl) {
+        food.imageData = null;
+        food.imageContentType = null;
+      }
+      food.imageUrl = normalizedImageUrl;
+    }
     food.description = String(description || '').trim() || null;
     food.foodGroup = String(foodGroup || '').trim() || null;
     if (!food.foodCode) food.foodCode = await generateFoodCode();
@@ -222,7 +279,7 @@ async function updateFood(req, res) {
       reason: `Cập nhật thông tin món "${food.name}"`,
       note: `Mã: ${food.foodCode} | Khẩu phần: ${food.servingSize}g`,
     });
-    return res.status(200).json({ message: 'Cập nhật món ăn thành công', data: food });
+    return res.status(200).json({ message: 'Cập nhật món ăn thành công', data: serializeFood(food) });
   } catch (err) {
     console.error('[updateFood] Lỗi:', err.message);
     return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });

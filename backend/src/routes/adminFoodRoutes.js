@@ -4,7 +4,7 @@
  *
  * Base: /api/admin/foods
  *   GET    /             - Danh sách món ăn (tìm kiếm, lọc, phân trang)
- *   POST   /upload-image - Tải ảnh đại diện món ăn lên MongoDB GridFS
+ *   POST   /upload-image - Nhận ảnh đại diện món ăn trong bộ nhớ để lưu cùng document Food
  *   POST   /             - Thêm mới món ăn
  *   GET    /:id          - Xem chi tiết món ăn (kèm số lượt dùng trong MealLog)
  *   PUT    /:id          - Cập nhật thông tin món ăn
@@ -16,7 +16,6 @@ const express = require('express');
 const multer = require('multer');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
-const { saveMediaFile } = require('../services/mediaStorage');
 const {
   listFoods,
   getFoodDetail,
@@ -49,7 +48,7 @@ const foodImageUpload = multer({
 router.use(requireAuth, authorize('admin'));
 
 // Upload ảnh món ăn
-router.post('/upload-image', (req, res, next) => {
+router.post('/upload-image', (req, res) => {
   foodImageUpload.single('image')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({
@@ -59,12 +58,8 @@ router.post('/upload-image', (req, res, next) => {
     if (!req.file) {
       return res.status(400).json({ message: 'Vui lòng chọn tệp ảnh để tải lên' });
     }
-    try {
-      const imageUrl = await saveMediaFile(req.file, 'food');
-      return res.status(200).json({ message: 'Tải ảnh lên thành công', imageUrl });
-    } catch (error) {
-      return next(error);
-    }
+    const imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+    return res.status(200).json({ message: 'Đã nhận ảnh', imageUrl });
   });
 });
 

@@ -5,6 +5,60 @@ const Notification = require('../models/Notification');
 const AdminActionLog = require('../models/AdminActionLog');
 const User = require('../models/User');
 
+const MAX_FOOD_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_FOOD_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+function parseInlineFoodImage(value) {
+  if (typeof value !== 'string' || !value.startsWith('data:')) return null;
+  const match = value.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if (!match) throw new Error('Ảnh món ăn phải là JPG, PNG hoặc WEBP hợp lệ');
+
+  const buffer = Buffer.from(match[2], 'base64');
+  if (!buffer.length || buffer.length > MAX_FOOD_IMAGE_BYTES || buffer.toString('base64') !== match[2]) {
+    throw new Error('Dữ liệu ảnh món ăn không hợp lệ hoặc vượt quá 5 MB');
+  }
+  return { buffer, contentType: match[1].toLowerCase() };
+}
+
+async function downloadCloudinaryFoodImage(imageUrl) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(imageUrl);
+  } catch {
+    return null;
+  }
+  if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname !== 'res.cloudinary.com') return null;
+
+  const response = await fetch(parsedUrl, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`Không thể tải ảnh món ăn (HTTP ${response.status})`);
+
+  const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (!ALLOWED_FOOD_IMAGE_TYPES.has(contentType)) throw new Error('Định dạng ảnh món ăn không được hỗ trợ');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('Không đọc được dữ liệu ảnh món ăn');
+
+  const chunks = [];
+  let totalBytes = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_FOOD_IMAGE_BYTES) {
+      await reader.cancel();
+      throw new Error('Ảnh món ăn vượt quá 5 MB');
+    }
+    chunks.push(Buffer.from(value));
+  }
+
+  const buffer = Buffer.concat(chunks, totalBytes);
+  if (!buffer.length) throw new Error('Ảnh món ăn rỗng');
+  return { buffer, contentType };
+}
+
+function getFoodImageUrl(foodId) {
+  return `/api/food/${foodId.toString()}/image`;
+}
+
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -353,8 +407,13 @@ async function approveFoodRequest(req, res) {
     // 1. Tạo món ăn chính thức trong Food
     const foodCode = await generateFoodCode();
     const slug = generateSlug(finalFoodName);
+    const sourceImageUrl = String(imageUrl || request.imageUrl || '').trim() || null;
+    let embeddedImage = parseInlineFoodImage(sourceImageUrl);
+    if (!embeddedImage && sourceImageUrl) {
+      embeddedImage = await downloadCloudinaryFoodImage(sourceImageUrl);
+    }
 
-    const newFood = await Food.create({
+    const newFood = new Food({
       slug,
       name: finalFoodName,
       foodCode,
@@ -364,10 +423,14 @@ async function approveFoodRequest(req, res) {
       protein: numProtein,
       fat: numFat,
       carbs: numCarbs,
-      imageUrl: String(imageUrl || request.imageUrl || '').trim() || null,
+      imageUrl: embeddedImage ? null : sourceImageUrl,
+      imageData: embeddedImage?.buffer || null,
+      imageContentType: embeddedImage?.contentType || null,
       description: String(description || request.description || '').trim() || null,
       status: 'active', // Đang sử dụng (Luồng chính 7)
     });
+    if (embeddedImage) newFood.imageUrl = getFoodImageUrl(newFood._id);
+    await newFood.save();
 
     // 2. Cập nhật trạng thái yêu cầu thành "Đã duyệt"
     request.status = 'approved';
@@ -382,7 +445,7 @@ async function approveFoodRequest(req, res) {
     request.carbs = numCarbs;
     if (foodGroup) request.foodGroup = foodGroup;
     if (servingLabel) request.servingLabel = servingLabel;
-    if (imageUrl) request.imageUrl = imageUrl;
+    if (imageUrl && !String(imageUrl).startsWith('data:')) request.imageUrl = imageUrl;
     await request.save();
 
     // 3. Gửi thông báo cho người dùng đã gửi yêu cầu (Luồng chính 8)

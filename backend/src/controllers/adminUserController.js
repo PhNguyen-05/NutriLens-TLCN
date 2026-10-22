@@ -5,7 +5,7 @@ const Food = require('../models/Food');
 const FoodRequest = require('../models/FoodRequest');
 const Exercise = require('../models/Exercise');
 const AdminActionLog = require('../models/AdminActionLog');
-const { saveMediaFile, deleteMediaFile } = require('../services/mediaStorage');
+const { uploadFileToCloudinary } = require('../services/cloudinaryStorage');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
 
@@ -142,7 +142,6 @@ async function getUserDetail(req, res) {
 async function updateUserStatus(req, res) {
   const uploadedEvidence = req.files || [];
   const storedEvidenceUrls = [];
-  const removeStoredEvidence = async () => Promise.all(storedEvidenceUrls.map((url) => deleteMediaFile(url).catch(() => {})));
 
   try {
     const { id } = req.params;
@@ -197,7 +196,10 @@ async function updateUserStatus(req, res) {
 
     if (status === 'active') {
       for (const file of uploadedEvidence) {
-        storedEvidenceUrls.push(await saveMediaFile(file, 'unlock-evidence'));
+        storedEvidenceUrls.push(await uploadFileToCloudinary(
+          file,
+          process.env.CLOUDINARY_EVIDENCE_FOLDER || 'nutrilens/unlock-evidence'
+        ));
       }
     }
 
@@ -241,7 +243,6 @@ async function updateUserStatus(req, res) {
       data: safeUser,
     });
   } catch (err) {
-    await removeStoredEvidence();
     console.error('[updateUserStatus] Lỗi:', err.message);
     return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });
   }

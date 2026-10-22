@@ -13,7 +13,7 @@ const { predictFood } = require('../utils/aiService');
 const Food    = require('../models/Food');
 const MealLog = require('../models/MealLog');
 const FoodRequest = require('../models/FoodRequest');
-const { saveMediaFile } = require('../services/mediaStorage');
+const { uploadFileToCloudinary } = require('../services/cloudinaryStorage');
 
 const PENDING_FOOD_REQUEST_STATUSES = ['pending', 'Chờ duyệt'];
 
@@ -180,7 +180,9 @@ async function createFoodRequest(req, res, next) {
       nutrition[field] = parsed.value;
     }
 
-    const uploadedImageUrl = req.file ? await saveMediaFile(req.file, 'food-request') : null;
+    const uploadedImageUrl = req.file
+      ? await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_FOOD_REQUEST_FOLDER || 'nutrilens/food-requests')
+      : null;
 
     const foodRequest = await FoodRequest.create({
       requestedBy: req.user.id,
@@ -229,7 +231,9 @@ async function updateFoodRequest(req, res, next) {
       nutrition[field] = parsed.value;
     }
 
-    const uploadedImageUrl = req.file ? await saveMediaFile(req.file, 'food-request') : null;
+    const uploadedImageUrl = req.file
+      ? await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_FOOD_REQUEST_FOLDER || 'nutrilens/food-requests')
+      : null;
     const imageUrl = uploadedImageUrl
       || (req.body.imageUrl !== undefined ? trimToNull(req.body.imageUrl) : existingRequest.imageUrl);
     const updatedRequest = await FoodRequest.findOneAndUpdate(
@@ -436,7 +440,9 @@ async function addMealLog(req, res, next) {
       foodSlug,
       foodName,
       confidence: confidence === '' || confidence == null ? null : Number(confidence),
-      imageUrl: req.file ? await saveMediaFile(req.file, 'meal-log') : imageUrl || null,
+      imageUrl: req.file
+        ? await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_MEAL_LOG_FOLDER || 'nutrilens/meal-logs')
+        : imageUrl || null,
       servings: Number(servings) || 1,
       nutrition,
     });

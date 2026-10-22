@@ -47,12 +47,28 @@ Hệ thống sử dụng MongoDB với 18 collections, được tổ chức thà
 5.  **Nhóm Hệ thống chung:** Notification, AdminActionLog
 
 ## 🖼 Lưu trữ ảnh
-Ảnh tải lên được lưu trong MongoDB Atlas bằng GridFS (bucket mặc định `media`). Backend cần `MONGO_URI`; có thể đổi bucket bằng biến `MONGO_GRIDFS_BUCKET` trong `backend/.env`.
+Ảnh blog và ảnh món ăn mới được lưu dạng nhị phân ngay trong document `blogposts` hoặc `foods` ở MongoDB Atlas (`imageData`, `imageContentType`). Các trường `imageUrl` giữ đường dẫn API để tải ảnh; luồng này không dùng GridFS hay lưu ảnh lên ổ đĩa backend. Ảnh blog và ảnh món ăn tối đa 5 MB.
 
-Để chuyển các ảnh cũ đang có trong `backend/uploads` và cập nhật URL trong MongoDB, chạy lệnh từ thư mục `backend` sau khi cấu hình `.env`:
+Các ảnh Cloudinary cũ trong blog có thể được chuyển vào document tương ứng bằng lệnh sau từ thư mục `backend`:
 
 ```bash
-npm run migrate:uploads-to-gridfs
+npm run migrate:blog-images-to-mongo
 ```
 
-Lệnh di chuyển giữ nguyên các file local để có thể kiểm tra lại. Nếu thiếu một số file, các URL đó được giữ nguyên và script báo đường dẫn cần khôi phục; đặt lại file vào đúng vị trí rồi chạy lệnh lần nữa. Sau khi xác nhận ảnh mới hiển thị đúng, có thể dọn các file cũ khỏi máy chủ.
+Lệnh tải từng ảnh Cloudinary công khai rồi cập nhật document `blogposts`; nó không xóa ảnh trên Cloudinary. Ảnh tải lên ở các phần khác của ứng dụng vẫn dùng Cloudinary và cần `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` và `CLOUDINARY_API_SECRET` trong `backend/.env`.
+
+Để chuyển ảnh món ăn cũ từ Cloudinary vào document `foods`, chạy lệnh này từ thư mục `backend`:
+
+```bash
+npm run migrate:food-images-to-mongo
+```
+
+Ảnh món ăn mới tải lên từ trang quản lý Food được lưu vào MongoDB khi lưu món ăn. Ảnh người dùng gửi trong yêu cầu thêm món vẫn được lưu trên Cloudinary; khi yêu cầu được duyệt, ảnh được sao chép vào document Food.
+
+Để chuyển ảnh local còn được tham chiếu và ảnh GridFS cũ của các phần khác sang Cloudinary, cập nhật credentials rồi chạy lệnh từ thư mục `backend`:
+
+```bash
+npm run migrate:uploads-to-cloudinary
+```
+
+Lệnh cập nhật URL trong MongoDB và giữ các file local. Nếu thiếu file local, URL đó được giữ nguyên và script báo đường dẫn cần khôi phục. Các file GridFS chỉ bị xóa sau khi URL thay thế đã được lưu thành công; bucket chỉ được dọn khi không còn file GridFS nào.

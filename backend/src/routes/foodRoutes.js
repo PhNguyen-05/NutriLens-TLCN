@@ -4,6 +4,7 @@
  *
  * Base: /api/food
  *   POST   /scan          - Quét ảnh nhận diện món ăn
+ *   GET    /:id/image     - Tải ảnh món ăn từ document Food trong MongoDB
  *   POST   /meal-logs     - Thêm món vào nhật ký
  *   GET    /meal-logs     - Xem nhật ký theo ngày (?date=YYYY-MM-DD)
  *   DELETE /meal-logs/:id - Xoá 1 dòng nhật ký
@@ -12,6 +13,7 @@
 const express = require('express');
 const multer  = require('multer');
 const requireAuth = require('../middleware/auth');
+const { getFoodImage } = require('../controllers/foodImageController');
 const {
   searchFoods,
   createFoodRequest,
@@ -68,6 +70,7 @@ const mealLogImageUpload = multer({
 // POST /api/food/scan — không cần đăng nhập (cho phép dùng thử)
 // Nếu muốn yêu cầu đăng nhập: thêm requireAuth trước upload.single
 router.get('/search', searchFoods);
+router.get('/:id/image', getFoodImage);
 router.post('/scan', upload.single('file'), scanFood);
 
 // Các route nhật ký yêu cầu đăng nhập
