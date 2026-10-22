@@ -500,7 +500,7 @@ function FoodRequestReviewModal({
                       <input
                         value={form.imageUrl}
                         onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
-                        placeholder="https://... hoặc /uploads/foods/..."
+                        placeholder="https://... hoặc /api/media/<id>"
                       />
                     </div>
                     <div className="frm-field">

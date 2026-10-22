@@ -6,6 +6,7 @@ function isValidImageUrl(value) {
   if (value == null || value === '') return true;
   const imageUrl = String(value).trim();
   const localPath = imageUrl.split(/[?#]/, 1)[0];
+  if (/^\/api\/media\/[a-f\d]{24}$/i.test(localPath)) return true;
   if (imageUrl.startsWith('/uploads/blog/')) return /\.(jpe?g|png)$/i.test(localPath);
 
   try {

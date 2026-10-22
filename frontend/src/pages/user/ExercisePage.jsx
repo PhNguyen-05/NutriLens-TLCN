@@ -5,6 +5,13 @@ import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 
+function resolveAvatarUrl(value) {
+  const url = String(value || '').trim()
+  if (/^(https?:|data:)/i.test(url)) return url
+  const apiOrigin = String(axiosInstance.defaults.baseURL || '').replace(/\/api\/?$/, '')
+  return `${apiOrigin}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
 const CATEGORY_TABS = [
   { id: 'all',         label: 'Tất cả',          icon: 'bi-grid' },
   { id: 'my',          label: 'Bài tập của tôi', icon: 'bi-person-heart' },
@@ -525,7 +532,7 @@ export default function ExercisePage() {
               aria-expanded={profileOpen} aria-haspopup="menu"
               title="Mở menu tài khoản"
             >
-              {user?.avatarUrl ? <img src={user.avatarUrl} alt="Avatar" /> : firstName.charAt(0).toUpperCase()}
+              {user?.avatarUrl ? <img src={resolveAvatarUrl(user.avatarUrl)} alt="Avatar" /> : firstName.charAt(0).toUpperCase()}
             </button>
             {profileOpen && (
               <div className="profile-dropdown" role="menu">

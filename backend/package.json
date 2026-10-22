@@ -12,7 +12,8 @@
     "start": "nodemon ./src/server.js",
     "seed:admin": "node ./scripts/seedAdmin.js",
     "reset:admin": "node ./scripts/resetAdmin.js",
-    "seed:foods": "node ./scripts/seedFoods.js"
+    "seed:foods": "node ./scripts/seedFoods.js",
+    "migrate:uploads-to-gridfs": "node ./scripts/migrateLocalUploadsToGridFS.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

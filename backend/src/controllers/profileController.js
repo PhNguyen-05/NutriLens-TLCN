@@ -2,6 +2,7 @@ const UserProfile = require('../models/UserProfile');
 const User = require('../models/User');
 const WeightLog = require('../models/WeightLog');
 const { calculateHealthMetrics, calcSafeCalorieTarget, CALORIE_FLOOR, getAge } = require('../utils/healthMetrics');
+const { saveMediaFile } = require('../services/mediaStorage');
 
 const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
 const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight', 'eat_healthier'];
@@ -861,7 +862,7 @@ async function updateAvatar(req, res) {
       return res.status(400).json({ message: 'Ảnh đại diện không hợp lệ, vui lòng chọn ảnh JPG hoặc PNG' });
     }
 
-    const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/avatars/${req.file.filename}`;
+    const avatarUrl = await saveMediaFile(req.file, 'avatar');
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: { avatarUrl } },

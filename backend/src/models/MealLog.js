@@ -35,7 +35,7 @@ const mealLogSchema = new mongoose.Schema(
     // Độ tin cậy của AI (%) - lưu lại để tham khảo
     confidence: { type: Number, default: null },
 
-    // URL ảnh đã lưu tại /uploads/meal-logs/...
+    // URL ảnh được phục vụ từ GridFS trên MongoDB.
     imageUrl: { type: String, default: null },
 
     // Số lượng khẩu phần người dùng nhập (mặc định = 1)

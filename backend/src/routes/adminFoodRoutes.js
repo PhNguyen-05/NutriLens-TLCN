@@ -4,7 +4,7 @@
  *
  * Base: /api/admin/foods
  *   GET    /             - Danh sách món ăn (tìm kiếm, lọc, phân trang)
- *   POST   /upload-image - Tải ảnh đại diện món ăn lên server
+ *   POST   /upload-image - Tải ảnh đại diện món ăn lên MongoDB GridFS
  *   POST   /             - Thêm mới món ăn
  *   GET    /:id          - Xem chi tiết món ăn (kèm số lượt dùng trong MealLog)
  *   PUT    /:id          - Cập nhật thông tin món ăn
@@ -13,12 +13,10 @@
  */
 
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
 const multer = require('multer');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
+const { saveMediaFile } = require('../services/mediaStorage');
 const {
   listFoods,
   getFoodDetail,
@@ -34,19 +32,8 @@ const {
 
 const router = express.Router();
 
-// Tạo thư mục lưu trữ ảnh món ăn nếu chưa có
-const foodUploadDir = path.join(__dirname, '../../uploads/foods');
-fs.mkdirSync(foodUploadDir, { recursive: true });
-
 const foodImageUpload = multer({
-  storage: multer.diskStorage({
-    destination: foodUploadDir,
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const uniqueName = `food-${Date.now()}-${crypto.randomUUID().slice(0, 8)}${ext}`;
-      cb(null, uniqueName);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     const allowed = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -62,8 +49,8 @@ const foodImageUpload = multer({
 router.use(requireAuth, authorize('admin'));
 
 // Upload ảnh món ăn
-router.post('/upload-image', (req, res) => {
-  foodImageUpload.single('image')(req, res, (err) => {
+router.post('/upload-image', (req, res, next) => {
+  foodImageUpload.single('image')(req, res, async (err) => {
     if (err) {
       return res.status(400).json({
         message: err.code === 'LIMIT_FILE_SIZE' ? 'Ảnh món ăn không được vượt quá 5 MB' : err.message,
@@ -72,11 +59,12 @@ router.post('/upload-image', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'Vui lòng chọn tệp ảnh để tải lên' });
     }
-    const relativeUrl = `/uploads/foods/${req.file.filename}`;
-    return res.status(200).json({
-      message: 'Tải ảnh lên thành công',
-      imageUrl: relativeUrl,
-    });
+    try {
+      const imageUrl = await saveMediaFile(req.file, 'food');
+      return res.status(200).json({ message: 'Tải ảnh lên thành công', imageUrl });
+    } catch (error) {
+      return next(error);
+    }
   });
 });
 

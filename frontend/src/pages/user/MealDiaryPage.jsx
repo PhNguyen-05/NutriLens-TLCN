@@ -257,7 +257,7 @@ export default function MealDiaryPage() {
           <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
           <div className="profile-menu">
             <button className="dashboard-avatar" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">
-              {user?.avatarUrl ? <img src={user.avatarUrl} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
+              {user?.avatarUrl ? <img src={resolveMediaUrl(user.avatarUrl)} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
             </button>
             {profileOpen && <div className="profile-dropdown" role="menu">
               <div className="profile-name">Xin chào, {firstName}</div>

@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
-const fs = require('fs/promises');
 
 const User = require('../models/User');
 const Food = require('../models/Food');
 const FoodRequest = require('../models/FoodRequest');
 const Exercise = require('../models/Exercise');
 const AdminActionLog = require('../models/AdminActionLog');
+const { saveMediaFile, deleteMediaFile } = require('../services/mediaStorage');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
 
@@ -141,7 +141,8 @@ async function getUserDetail(req, res) {
 
 async function updateUserStatus(req, res) {
   const uploadedEvidence = req.files || [];
-  const removeUploadedEvidence = async () => Promise.all(uploadedEvidence.map((file) => fs.unlink(file.path).catch(() => {})));
+  const storedEvidenceUrls = [];
+  const removeStoredEvidence = async () => Promise.all(storedEvidenceUrls.map((url) => deleteMediaFile(url).catch(() => {})));
 
   try {
     const { id } = req.params;
@@ -149,46 +150,38 @@ async function updateUserStatus(req, res) {
     const adminId = req.user.id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      await removeUploadedEvidence();
       return res.status(400).json({ message: 'Mã người dùng không hợp lệ' });
     }
 
     if (!['active', 'locked'].includes(status)) {
-      await removeUploadedEvidence();
       return res.status(400).json({ message: 'Trạng thái cập nhật không hợp lệ' });
     }
 
     const targetUser = await User.findById(id);
 
     if (!targetUser) {
-      await removeUploadedEvidence();
       return res.status(404).json({ message: 'Người dùng không còn tồn tại' });
     }
 
     if (targetUser._id.toString() === adminId || targetUser.role === 'admin') {
-      await removeUploadedEvidence();
       return res.status(403).json({
         message: 'Không thể khóa/mở khóa tài khoản Quản trị viên',
       });
     }
 
     if (targetUser.status === status) {
-      await removeUploadedEvidence();
       return res.status(409).json({ message: 'Tài khoản đã ở trạng thái này' });
     }
 
     if (status === 'locked' && !String(lockReason || '').trim()) {
-      await removeUploadedEvidence();
       return res.status(400).json({ message: 'Vui lòng nhập lý do khóa tài khoản' });
     }
 
     if (status === 'locked' && ![0, 7, 14].includes(Number(lockDurationDays))) {
-      await removeUploadedEvidence();
       return res.status(400).json({ message: 'Thời hạn khóa tài khoản không hợp lệ' });
     }
 
     if (status === 'active' && !String(unlockReason || '').trim()) {
-      await removeUploadedEvidence();
       return res.status(400).json({ message: 'Vui lòng nhập lý do yêu cầu mở khóa' });
     }
 
@@ -197,11 +190,16 @@ async function updateUserStatus(req, res) {
     }
 
     if (String(unlockReason || '').trim().length > 500) {
-      await removeUploadedEvidence();
       return res.status(400).json({ message: 'Lý do mở khóa không được vượt quá 500 ký tự' });
     }
 
     const action = status === 'locked' ? 'lock_user' : 'unlock_user';
+
+    if (status === 'active') {
+      for (const file of uploadedEvidence) {
+        storedEvidenceUrls.push(await saveMediaFile(file, 'unlock-evidence'));
+      }
+    }
 
     targetUser.status = status;
     targetUser.lockReason = status === 'locked' ? String(lockReason).trim() : null;
@@ -228,8 +226,8 @@ async function updateUserStatus(req, res) {
       reason: status === 'locked' ? targetUser.lockReason : String(unlockReason || '').trim(),
       durationDays: status === 'locked' ? Number(lockDurationDays) : null,
       note: status === 'locked' ? targetUser.adminLockNote : null,
-      evidence: status === 'active' ? uploadedEvidence.map((file) => ({
-        url: `/uploads/unlock-evidence/${file.filename}`,
+      evidence: status === 'active' ? uploadedEvidence.map((file, index) => ({
+        url: storedEvidenceUrls[index],
         originalName: file.originalname,
         mimeType: file.mimetype,
         size: file.size,
@@ -243,7 +241,7 @@ async function updateUserStatus(req, res) {
       data: safeUser,
     });
   } catch (err) {
-    await removeUploadedEvidence();
+    await removeStoredEvidence();
     console.error('[updateUserStatus] Lỗi:', err.message);
     return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });
   }

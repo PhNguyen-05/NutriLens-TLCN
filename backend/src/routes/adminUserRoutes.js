@@ -1,6 +1,4 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const multer = require('multer');
 
 const {
@@ -13,17 +11,9 @@ const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 
 const router = express.Router();
-const evidenceDirectory = path.join(__dirname, '../../uploads/unlock-evidence');
-fs.mkdirSync(evidenceDirectory, { recursive: true });
 
 const evidenceUpload = multer({
-  storage: multer.diskStorage({
-    destination: evidenceDirectory,
-    filename: (req, file, callback) => {
-      const extension = path.extname(file.originalname).toLowerCase();
-      callback(null, `${Date.now()}-${require('crypto').randomUUID()}${extension}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 5 },
   fileFilter: (req, file, callback) => {
     const allowed = new Set(['image/jpeg', 'image/png', 'application/pdf']);

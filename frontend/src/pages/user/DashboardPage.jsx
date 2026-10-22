@@ -5,6 +5,13 @@ import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 
+function resolveAvatarUrl(value) {
+  const url = String(value || '').trim()
+  if (/^(https?:|data:)/i.test(url)) return url
+  const apiOrigin = String(axiosInstance.defaults.baseURL || '').replace(/\/api\/?$/, '')
+  return `${apiOrigin}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
 const meals = [
   ['🍜', 'Phở Bò Tái Lăn Hà Nội', 'Bữa Sáng · 08:15 · Đã xác nhận AI', '485 kcal', ['Protein 28g', 'Carbs 62g', 'Fat 14g', 'Natri 890mg']],
   ['🥗', 'Gỏi Cuốn Tôm Thịt & Sốt Tương Đậu Phộng', 'Bữa Trưa · 12:15 · Đã xác nhận AI', '380 kcal', ['Protein 24g', 'Carbs 45g', 'Fat 8g', 'Chất xơ 6.2g']],
@@ -214,7 +221,7 @@ export default function DashboardPage() {
           <i className="bi bi-bell dashboard-bell" />
           <div className="profile-menu">
             <button className="dashboard-avatar" onClick={() => setProfileOpen((isOpen) => !isOpen)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">
-              {user?.avatarUrl ? <img src={user.avatarUrl} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
+              {user?.avatarUrl ? <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
             </button>
             {profileOpen && (
               <div className="profile-dropdown" role="menu">

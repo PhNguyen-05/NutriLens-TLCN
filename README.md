@@ -45,3 +45,14 @@ Hệ thống sử dụng MongoDB với 18 collections, được tổ chức thà
 3.  **Nhóm Tập luyện:** Exercise, ExerciseLog
 4.  **Nhóm Cộng đồng & Blog:** Post, Comment, Like, Report, BlogPost
 5.  **Nhóm Hệ thống chung:** Notification, AdminActionLog
+
+## 🖼 Lưu trữ ảnh
+Ảnh tải lên được lưu trong MongoDB Atlas bằng GridFS (bucket mặc định `media`). Backend cần `MONGO_URI`; có thể đổi bucket bằng biến `MONGO_GRIDFS_BUCKET` trong `backend/.env`.
+
+Để chuyển các ảnh cũ đang có trong `backend/uploads` và cập nhật URL trong MongoDB, chạy lệnh từ thư mục `backend` sau khi cấu hình `.env`:
+
+```bash
+npm run migrate:uploads-to-gridfs
+```
+
+Lệnh di chuyển giữ nguyên các file local để có thể kiểm tra lại. Nếu thiếu một số file, các URL đó được giữ nguyên và script báo đường dẫn cần khôi phục; đặt lại file vào đúng vị trí rồi chạy lệnh lần nữa. Sau khi xác nhận ảnh mới hiển thị đúng, có thể dọn các file cũ khỏi máy chủ.

@@ -1,5 +1,4 @@
 const express = require('express');
-const path = require('path');
 const multer = require('multer');
 
 const requireAuth = require('../middleware/auth');
@@ -8,12 +7,7 @@ const { getProfile, saveProfile, updateAvatar, getWeightLogs, saveWeightLog, del
 const router = express.Router();
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: path.join(__dirname, '../../uploads/avatars'),
-    filename: (req, file, callback) => {
-      callback(null, `${req.user.id}-${Date.now()}${path.extname(file.originalname).toLowerCase()}`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 3 * 1024 * 1024 },
   fileFilter: (req, file, callback) => callback(null, ['image/jpeg', 'image/png'].includes(file.mimetype)),
 });
