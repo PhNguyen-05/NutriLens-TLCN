@@ -2,7 +2,18 @@ const express = require('express');
 const multer = require('multer');
 
 const requireAuth = require('../middleware/auth');
-const { getProfile, saveProfile, updateAvatar, getWeightLogs, saveWeightLog, deleteWeightLog, getNutritionProposal, saveNutritionGoal, applyMilestoneWeight } = require('../controllers/profileController');
+const {
+  getProfile,
+  saveProfile,
+  updateAvatar,
+  getWeightLogs,
+  saveWeightLog,
+  deleteWeightLog,
+  getNutritionProposal,
+  saveNutritionGoal,
+  applyMilestoneWeight,
+  getDashboardStats,
+} = require('../controllers/profileController');
 
 const router = express.Router();
 
@@ -15,6 +26,7 @@ const upload = multer({
 router.use(requireAuth);
 router.get('/', getProfile);
 router.put('/', saveProfile);
+router.get('/dashboard-stats', getDashboardStats);
 router.get('/weight-logs', getWeightLogs);
 router.post('/weight-logs', saveWeightLog);
 router.delete('/weight-logs/:id', deleteWeightLog);

@@ -11,9 +11,12 @@ const adminActionLogSchema = new Schema(
     },
     actionType: {
       type: String,
-      enum: ['lock_user', 'unlock_user', 'approve_post', 'delete_food', 'hide_post', 'remove_post', 'reject_request',
-             'approve_request', 'create_food', 'update_food', 'hide_food', 'show_food',
-             'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise'],
+      enum: [
+        'lock_user', 'unlock_user', 'approve_post', 'delete_food', 'hide_post', 'remove_post', 'reject_request',
+        'approve_request', 'create_food', 'update_food', 'hide_food', 'show_food',
+        'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise',
+        'create_post', 'update_post', 'publish_post', 'draft_post', 'delete_post',
+      ],
       required: true,
     },
     targetType: {

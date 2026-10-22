@@ -6,6 +6,7 @@ const TABS = [
   { id: 'FoodItem', label: 'Danh mục món ăn', icon: 'bi-egg-fried' },
   { id: 'Request', label: 'Yêu cầu bổ sung món', icon: 'bi-patch-plus-fill' },
   { id: 'Exercise', label: 'Bài tập thể chất', icon: 'bi-person-walking' },
+  { id: 'Post', label: 'Blog y khoa', icon: 'bi-journal-text' },
   { id: 'User', label: 'Tài khoản người dùng', icon: 'bi-people-fill' },
 ]
 
@@ -28,6 +29,14 @@ const MODULE_ACTIONS = {
     { value: 'show_exercise', label: 'Hiển thị bài tập' },
     { value: 'delete_exercise', label: 'Xóa bài tập' },
   ],
+  Post: [
+    { value: 'create_post', label: 'Tạo bài viết' },
+    { value: 'update_post', label: 'Cập nhật bài viết' },
+    { value: 'publish_post', label: 'Xuất bản bài viết' },
+    { value: 'hide_post', label: 'Ẩn bài viết' },
+    { value: 'draft_post', label: 'Chuyển về nháp' },
+    { value: 'delete_post', label: 'Xóa bài viết' },
+  ],
   User: [
     { value: 'lock_user', label: 'Khóa tài khoản' },
     { value: 'unlock_user', label: 'Mở khóa tài khoản' },
@@ -48,7 +57,12 @@ const actionLabels = {
   hide_exercise: 'Ẩn bài tập',
   show_exercise: 'Hiển thị bài tập',
   delete_exercise: 'Xóa bài tập',
+  create_post: 'Tạo bài viết',
+  update_post: 'Cập nhật bài viết',
+  publish_post: 'Xuất bản bài viết',
   hide_post: 'Ẩn bài viết',
+  draft_post: 'Chuyển về nháp',
+  delete_post: 'Xóa bài viết',
   remove_post: 'Gỡ bài viết',
   reject_request: 'Từ chối yêu cầu',
   approve_request: 'Duyệt yêu cầu món',
@@ -70,20 +84,30 @@ function getActionTypeAndIcon(actionType) {
     case 'lock_user':
     case 'delete_food':
     case 'delete_exercise':
-      return { type: 'lock', icon: ['delete_food', 'delete_exercise'].includes(actionType) ? 'bi-trash-fill' : 'bi-lock-fill' }
+    case 'delete_post':
+    case 'remove_post':
+      return {
+        type: 'lock',
+        icon: ['delete_food', 'delete_exercise', 'delete_post', 'remove_post'].includes(actionType)
+          ? 'bi-trash-fill'
+          : 'bi-lock-fill',
+      }
     case 'unlock_user':
     case 'create_food':
     case 'create_exercise':
+    case 'create_post':
     case 'show_food':
     case 'show_exercise':
+    case 'publish_post':
+    case 'approve_post':
     case 'approve_request':
       return {
         type: 'unlock',
         icon: actionType === 'approve_request'
           ? 'bi-check-circle-fill'
-          : ['create_food', 'create_exercise'].includes(actionType)
+          : ['create_food', 'create_exercise', 'create_post'].includes(actionType)
           ? 'bi-plus-circle-fill'
-          : ['show_food', 'show_exercise'].includes(actionType)
+          : ['show_food', 'show_exercise', 'publish_post', 'approve_post'].includes(actionType)
           ? 'bi-eye-fill'
           : 'bi-unlock-fill',
       }
@@ -91,9 +115,13 @@ function getActionTypeAndIcon(actionType) {
       return { type: 'lock', icon: 'bi-x-circle-fill' }
     case 'hide_food':
     case 'hide_exercise':
+    case 'hide_post':
       return { type: 'lock', icon: 'bi-eye-slash-fill' }
+    case 'draft_post':
+      return { type: 'update', icon: 'bi-file-earmark-text' }
     case 'update_food':
     case 'update_exercise':
+    case 'update_post':
       return { type: 'update', icon: 'bi-pencil-square' }
     default:
       return { type: 'update', icon: 'bi-gear-fill' }
@@ -102,7 +130,7 @@ function getActionTypeAndIcon(actionType) {
 
 export default function AdminActionLogsModal({ isOpen, onClose, embedded = false }) {
   const [targetTab, setTargetTab] = useState('all')
-  const [tabCounts, setTabCounts] = useState({ all: 0, FoodItem: 0, Request: 0, Exercise: 0, User: 0 })
+  const [tabCounts, setTabCounts] = useState({ all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, User: 0 })
   const [logFrom, setLogFrom] = useState(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
   const [logTo, setLogTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [logAction, setLogAction] = useState('all')
@@ -171,9 +199,11 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
     ? 'Tìm theo tên món, mã yêu cầu REQ, người gửi...'
     : targetTab === 'Exercise'
     ? 'Tìm theo tên bài tập, cường độ, MET, lý do...'
+    : targetTab === 'Post'
+    ? 'Tìm theo tiêu đề bài viết, chuyên mục, lý do...'
     : targetTab === 'User'
     ? 'Tìm theo họ tên, email, lý do...'
-    : 'Tìm kiếm theo tên người dùng, món ăn, bài tập, lý do...'
+    : 'Tìm kiếm theo tên người dùng, món ăn, bài tập, bài viết, lý do...'
 
   const renderActionOptions = () => {
     if (targetTab !== 'all' && MODULE_ACTIONS[targetTab]) {
@@ -206,6 +236,11 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
             <option key={item.value} value={item.value}>{item.label}</option>
           ))}
         </optgroup>
+        <optgroup label="Blog y khoa">
+          {MODULE_ACTIONS.Post.map((item) => (
+            <option key={item.value} value={item.value}>{item.label}</option>
+          ))}
+        </optgroup>
         <optgroup label="Tài khoản người dùng">
           {MODULE_ACTIONS.User.map((item) => (
             <option key={item.value} value={item.value}>{item.label}</option>
@@ -227,7 +262,21 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
         <tr key={log._id}>
           <td>{timestamp}</td>
           <td><span className={`action-log-action ${type}`}><i className={`bi ${icon}`} />{actionLabels[log.actionType] || log.actionType}</span></td>
-          <td><span className="action-log-target">{log.targetType === 'User' ? 'Tài khoản thường' : log.targetType === 'FoodItem' ? 'Danh mục món ăn' : log.targetType === 'Exercise' ? 'Danh mục bài tập' : log.targetType === 'Request' ? 'Yêu cầu bổ sung món' : log.targetType}</span></td>
+          <td>
+            <span className="action-log-target">
+              {log.targetType === 'User'
+                ? 'Tài khoản thường'
+                : log.targetType === 'FoodItem'
+                ? 'Danh mục món ăn'
+                : log.targetType === 'Exercise'
+                ? 'Danh mục bài tập'
+                : log.targetType === 'Request'
+                ? 'Yêu cầu bổ sung món'
+                : log.targetType === 'Post'
+                ? 'Blog y khoa'
+                : log.targetType}
+            </span>
+          </td>
           <td><div className="action-log-admin"><span className="action-log-avatar">{log.admin?.avatarUrl ? <img src={getAvatarUrl(log.admin.avatarUrl)} alt="" /> : log.admin?.fullName?.charAt(0)?.toUpperCase() || 'A'}</span><span>{log.admin?.fullName || 'Admin'}</span></div></td>
           <td>
             {log.reason || '—'}
@@ -235,6 +284,7 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
             {log.targetFood && <small className="action-log-target-user">Món ăn: {log.targetFood.name} {log.targetFood.foodCode ? `(${log.targetFood.foodCode})` : ''}</small>}
             {log.targetRequest && <small className="action-log-target-user">Yêu cầu: {log.targetRequest.foodName} {log.targetRequest.requestCode ? `(${log.targetRequest.requestCode})` : ''}{log.targetRequest.userId?.fullName ? ` · Người gửi: ${log.targetRequest.userId.fullName}` : ''}</small>}
             {log.targetExercise && <small className="action-log-target-user">Bài tập: {log.targetExercise.name} {log.targetExercise.categoryName ? `(${log.targetExercise.categoryName})` : ''} · {log.targetExercise.met} MET {log.targetExercise.intensity ? `· Cường độ: ${log.targetExercise.intensity}` : ''}</small>}
+            {log.targetPost && <small className="action-log-target-user">Bài viết: {log.targetPost.title} {log.targetPost.category ? `(${log.targetPost.category})` : ''} · Trạng thái: {log.targetPost.status || '—'}</small>}
           </td>
           <td><span className="action-log-note">{log.note || (log.actionType === 'unlock_user' ? 'Đã xác minh yêu cầu mở khóa' : '—')}</span>{log.evidence?.map((file) => <a className="action-log-evidence" key={file.url} href={getAvatarUrl(file.url)} target="_blank" rel="noreferrer"><i className="bi bi-paperclip" />{file.originalName}</a>)}</td>
         </tr>
@@ -302,7 +352,7 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
     <div className="user-modal-backdrop action-log-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
       <section className="user-modal action-log-modal" role="dialog" aria-modal="true" aria-labelledby="action-log-title">
         <header className="action-log-heading">
-          <div><span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span><div><h2 id="action-log-title">Lịch sử thao tác của Admin</h2><p>Xem chi tiết các thao tác quản lý tài khoản, danh mục món ăn, danh mục bài tập và nội dung hệ thống.</p></div></div>
+          <div><span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span><div><h2 id="action-log-title">Lịch sử thao tác của Admin</h2><p>Xem chi tiết các thao tác quản lý tài khoản, danh mục món ăn, danh mục bài tập, blog y khoa và nội dung hệ thống.</p></div></div>
           <button aria-label="Đóng" onClick={onClose}><i className="bi bi-x-lg" /></button>
         </header>
 
