@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
+import UserNavMenu from '../../components/common/UserNavMenu'
 
 function resolveAvatarUrl(value) {
   const url = String(value || '').trim()
@@ -385,40 +386,14 @@ export default function DashboardPage() {
           <a className="active" href="/dashboard">Tổng quan</a>
           <FoodNavMenu />
           <ExerciseNavMenu />
-          <Link to="/weight-tracker">Chỉ số &amp; Cân nặng</Link>
+          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
           <a href="/dashboard">Cộng đồng</a>
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search"><i className="bi bi-search" /> Tra cứu thực phẩm...</span>
           <i className="bi bi-bell dashboard-bell" />
-          <div className="profile-menu">
-            <button
-              className="dashboard-avatar"
-              onClick={() => setProfileOpen((isOpen) => !isOpen)}
-              aria-expanded={profileOpen}
-              aria-haspopup="menu"
-              title="Mở menu tài khoản"
-            >
-              {user?.avatarUrl
-                ? <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" />
-                : firstName.charAt(0).toUpperCase()}
-            </button>
-            {profileOpen && (
-              <div className="profile-dropdown" role="menu">
-                <div className="profile-name">Xin chào, {firstName}</div>
-                <button className="profile-link" onClick={() => navigate('/weight-tracker')} role="menuitem">
-                  <i className="bi bi-speedometer2" /> Theo dõi cân nặng &amp; Tiến trình
-                </button>
-                <button className="profile-link" onClick={() => navigate('/profile')} role="menuitem">
-                  <i className="bi bi-person-circle" /> Hồ sơ cá nhân & Sức khỏe
-                </button>
-                <button onClick={handleLogout} role="menuitem">
-                  <i className="bi bi-box-arrow-right" /> Đăng xuất
-                </button>
-              </div>
-            )}
-          </div>
+          <UserNavMenu />
         </div>
       </header>
 

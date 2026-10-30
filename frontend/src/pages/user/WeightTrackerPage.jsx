@@ -3,6 +3,9 @@ import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import axiosInstance from '../../api/axiosInstance'
 import { userUpdated } from '../../store/slices/authSlice'
+import FoodNavMenu from '../../components/common/FoodNavMenu'
+import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
+import UserNavMenu from '../../components/common/UserNavMenu'
 
 function getLocalDateValue() {
   const today = new Date()
@@ -740,21 +743,44 @@ export default function WeightTrackerPage() {
   }
 
   return (
-    <div className="wt-shell">
-      <header className="wt-topbar">
-        <div className="wt-topbar__inner">
-          <div className="wt-topbar__left">
-            <Link to="/dashboard" className="wt-back" title="Quay lại Trang chủ">
-              <i className="bi bi-arrow-left" />
-            </Link>
+    <div className="dashboard-shell wt-shell">
+      {/* ── Header chính dùng chung (đồng bộ với Dashboard, FoodScan, MealDiary, Exercise, Articles) ── */}
+      <header className="dashboard-header">
+        <Link className="dashboard-logo" to="/dashboard">
+          <span><i className="bi bi-leaf-fill" /></span>NutriLens
+        </Link>
+        <nav className="dashboard-nav" aria-label="Điều hướng chính">
+          <Link to="/dashboard">Tổng quan</Link>
+          <FoodNavMenu />
+          <ExerciseNavMenu />
+          <Link className="active" to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
+          <Link to="/dashboard">Cộng đồng</Link>
+          <Link to="/articles">Bài viết &amp; Mẹo</Link>
+        </nav>
+        <div className="dashboard-actions">
+          <span className="dashboard-search">
+            <i className="bi bi-search" />Tra cứu thực phẩm, món ăn...
+          </span>
+          <button className="foodscan-bell" type="button" aria-label="Thông báo">
+            <i className="bi bi-bell" />
+          </button>
+          <UserNavMenu />
+        </div>
+      </header>
+
+      <main className="wt-main">
+        {/* ── Page heading (đồng bộ kích thước, màu sắc & bố cục chuẩn như FoodScan / Exercise) ── */}
+        <section className="fs-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="fs-page-icon"><i className="bi bi-activity" /></span>
             <div>
-              <span className="wt-eyebrow">
-                <i className="bi bi-activity" /> NutriLens Progress
-              </span>
-              <h1>Theo dõi Cân nặng &amp; Tiến trình</h1>
+              <h1 style={{ margin: 0, color: '#172c42', fontSize: '1.7rem', fontWeight: 750 }}>Tiến Trình &amp; Cân Nặng</h1>
+              <p style={{ margin: '4px 0 0', color: '#758994', fontSize: '0.92rem' }}>
+                Theo dõi chỉ số cân nặng, phân tích xu hướng BMI và lịch sử tiến trình thay đổi vóc dáng.
+              </p>
             </div>
           </div>
-          <div className="wt-topbar__actions">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Link to="/profile" className="wt-btn wt-btn--secondary" title="Xem hồ sơ & mục tiêu sức khỏe">
               <i className="bi bi-person-gear" /> Hồ sơ dinh dưỡng
             </Link>
@@ -766,10 +792,7 @@ export default function WeightTrackerPage() {
               <i className="bi bi-plus-circle-fill" /> Ghi nhận cân nặng
             </button>
           </div>
-        </div>
-      </header>
-
-      <main className="wt-main">
+        </section>
         {/* Alerts */}
         {error && (
           <div className="wt-alert wt-alert--error" role="alert">

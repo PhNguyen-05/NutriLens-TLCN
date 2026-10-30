@@ -370,7 +370,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .dashboard-nav .food-nav-dropdown-item > span { display: grid; gap: 3px; min-width: 0; }
 .dashboard-nav .food-nav-dropdown-item strong { font-size: 13px; font-weight: 700; }
 .dashboard-nav .food-nav-dropdown-item small { color: #788681; font-size: 11px; font-weight: 400; line-height: 1.35; }
-.dashboard-actions { display: flex; align-items: center; gap: 14px; margin-left: auto; white-space: nowrap; }.dashboard-search { width: clamp(190px, 15vw, 250px); background: #f5f5fb; border: 1px solid #ececf4; color: #9aa4b4; border-radius: 18px; padding: 9px 13px; }.dashboard-bell { color: #1a6655; }.profile-menu { position: relative; }.dashboard-avatar { width: 31px; height: 31px; padding: 0; overflow: hidden; border-radius: 50%; border: 2px solid #d4f2e8; background: #178b69; color: white; font-weight: 700; cursor: pointer; }.dashboard-avatar img { width: 100%; height: 100%; object-fit: cover; }.profile-dropdown { position: absolute; top: calc(100% + 10px); right: 0; width: 170px; padding: 8px; background: #fff; border: 1px solid #e2e9e6; border-radius: 9px; box-shadow: 0 10px 28px rgba(15, 48, 41, .14); z-index: 10; }.profile-name { padding: 7px 9px 9px; border-bottom: 1px solid #edf1ef; color: #41534d; font-size: 11px; font-weight: 600; }.profile-dropdown button { width: 100%; display: flex; align-items: center; gap: 8px; margin-top: 5px; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: #b13d38; font-size: 11px; text-align: left; cursor: pointer; }.profile-dropdown .profile-link { color: #1a6655; }.profile-dropdown button:hover { background: #fff0ef; }.profile-dropdown .profile-link:hover { background: #edf9f4; }
+.dashboard-actions { display: flex; align-items: center; gap: 14px; margin-left: auto; white-space: nowrap; }.dashboard-search { width: clamp(190px, 15vw, 250px); background: #f5f5fb; border: 1px solid #ececf4; color: #9aa4b4; border-radius: 18px; padding: 9px 13px; }.dashboard-bell { color: #1a6655; }.profile-menu { position: relative; }.dashboard-avatar { width: 31px; height: 31px; padding: 0; overflow: hidden; border-radius: 50%; border: 2px solid #d4f2e8; background: #178b69; color: white; font-weight: 700; cursor: pointer; }.dashboard-avatar img { width: 100%; height: 100%; object-fit: cover; }.profile-dropdown { position: absolute; top: calc(100% + 10px); right: 0; min-width: 195px; width: max-content; padding: 8px; background: #fff; border: 1px solid #e2e9e6; border-radius: 9px; box-shadow: 0 10px 28px rgba(15, 48, 41, .14); z-index: 10; }.profile-name { padding: 7px 9px 9px; border-bottom: 1px solid #edf1ef; color: #41534d; font-size: 11px; font-weight: 600; }.profile-dropdown button { width: 100%; display: flex; align-items: center; gap: 8px; margin-top: 5px; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: #b13d38; font-size: 11px; text-align: left; cursor: pointer; white-space: nowrap; }.profile-dropdown .profile-link { color: #1a6655; }.profile-dropdown button:hover { background: #fff0ef; }.profile-dropdown .profile-link:hover { background: #edf9f4; }
 .dashboard-main { max-width: 1240px; margin: auto; padding: 14px 16px 28px; }.dashboard-daybar, .welcome-panel, .content-panel, .metric-card { background: #fff; border: 1px solid #e8edf0; border-radius: 9px; box-shadow: 0 2px 9px rgba(26, 61, 52, .025); }.dashboard-daybar { padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }.dashboard-daybar strong { font-size: 13px; }.dashboard-daybar strong i { color: #0b8967; }.dot-separator { margin: 0 9px; color: #99a5a4; }.goal-pill, .heading-chip { background: #fff4ed; border-radius: 10px; color: #9a6549; padding: 3px 8px; font-size: 9px; }.dashboard-daybar small { display: block; margin-top: 8px; color: #168266; background: #e4f8ef; width: max-content; padding: 3px 8px; border-radius: 9px; font-size: 9px; }.day-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }.day-actions button, .workout-panel .panel-heading button { border: 1px solid #e6eaf1; background: #f8f9fc; border-radius: 5px; padding: 6px 9px; font-size: 10px; color: #253d3a; }.day-actions button i { color: #3162a3; }
 .dashboard-intro-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 14px; }.welcome-panel { padding: 17px 21px; background: linear-gradient(110deg, #fff 40%, #effdf8); }.eyebrow { display: inline-block; background: #e6f6ef; color: #19846b; border-radius: 10px; padding: 4px 9px; font-size: 9px; font-weight: 700; }.welcome-panel h1 { font-size: 21px; margin: 10px 0 5px; }.welcome-panel p { color: #566360; max-width: 550px; line-height: 1.55; margin: 0; }.welcome-stats { border-top: 1px solid #e4ece9; margin-top: 14px; padding-top: 10px; display: flex; gap: 20px; }.welcome-stats span { color: #168465; }.welcome-stats b, .welcome-stats strong { display: block; color: #465b56; font-size: 9px; }.welcome-stats strong { color: #1f302d; margin-top: 2px; }
 .scanner-panel { background: #006d4e; color: #fff; border-radius: 9px; padding: 18px 20px 20px; box-shadow: 0 4px 10px rgba(0, 88, 59, .14); }.scanner-heading { display: flex; justify-content: space-between; align-items: center; font-size: 9px; font-weight: 700; letter-spacing: .02em; }.scanner-heading span { color: #b9f0d4; background: rgba(255,255,255,.16); border-radius: 10px; padding: 4px 8px; }.scanner-heading small { color: #d3f2e6; font-weight: 400; }.scanner-box { border: 2px dashed rgba(170, 231, 205, .55); background: rgba(255,255,255,.08); border-radius: 9px; margin: 14px 0 13px; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; }.scanner-box i { background: rgba(255,255,255,.2); color: #fff; border-radius: 50%; padding: 8px 10px; margin-bottom: 8px; font-size: 18px; }.scanner-box strong { font-size: 17px; font-weight: 600; }.scanner-box small { font-size: 10px; color: #b9dace; margin-top: 6px; }.scanner-actions { display: flex; gap: 8px; }.scanner-button { flex: 1; border: 0; background: white; color: #006d4e; border-radius: 6px; padding: 9px; font-size: 11px; font-weight: 700; }.scanner-button i { margin-right: 5px; }.scanner-upload { width: 40px; border: 0; background: rgba(255,255,255,.18); color: #fff; border-radius: 6px; font-size: 15px; }
@@ -3554,9 +3554,9 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
    WEIGHT TRACKER & PROGRESS STYLES
    ───────────────────────────────────────────────────────────── */
 .wt-shell {
-  min-height: 100vh;
-  background: #f8fafc;
-  color: #1e293b;
+  min-height: 100svh;
+  background: #f6f8fb;
+  color: #172e2a;
   font-family: inherit;
 }
 
@@ -3569,7 +3569,7 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
 }
 
 .wt-topbar__inner {
-  max-width: 1080px;
+  max-width: 1240px;
   margin: 0 auto;
   padding: 14px 20px;
   display: flex;
@@ -3609,7 +3609,7 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #10b981;
+  color: #008b63;
 }
 
 .wt-topbar__left h1 {
@@ -3640,28 +3640,31 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
 }
 
 .wt-btn--primary {
-  background: #10b981;
+  background: #008b63;
   color: #fff;
+  border-color: #008b63;
 }
 .wt-btn--primary:hover {
-  background: #059669;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  background: #007553;
+  border-color: #007553;
+  box-shadow: 0 4px 12px rgba(0, 139, 99, 0.25);
 }
 
 .wt-btn--secondary {
-  background: #f8fafc;
-  color: #334155;
-  border-color: #cbd5e1;
+  background: #fff;
+  color: #243a35;
+  border: 1px solid #d1dcd7;
 }
 .wt-btn--secondary:hover {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: #f1f8f5;
+  color: #087b5b;
+  border-color: #bdebd8;
 }
 
 .wt-main {
-  max-width: 1080px;
+  max-width: 1240px;
   margin: 0 auto;
-  padding: 24px 20px 60px;
+  padding: 16px 20px 60px;
   display: flex;
   flex-direction: column;
   gap: 20px;

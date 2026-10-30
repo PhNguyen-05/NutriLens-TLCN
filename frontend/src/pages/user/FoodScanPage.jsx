@@ -9,6 +9,7 @@ import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
+import UserNavMenu from '../../components/common/UserNavMenu'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1232,24 +1233,14 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <Link to="/dashboard">Tổng quan</Link>
           <FoodNavMenu />
           <ExerciseNavMenu />
-          <Link to="/weight-tracker">Chỉ số &amp; Xu hướng</Link>
+          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
           <Link to="/dashboard">Cộng đồng</Link>
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
           <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
           <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
-          <div className="profile-menu">
-            <button className="dashboard-avatar" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="menu" title="Mở menu tài khoản">
-              {user?.avatarUrl ? <img src={resolveMediaUrl(user.avatarUrl)} alt="Ảnh đại diện" /> : firstName.charAt(0).toUpperCase()}
-            </button>
-            {profileOpen && <div className="profile-dropdown" role="menu">
-              <div className="profile-name">Xin chào, {firstName}</div>
-              <button className="profile-link" onClick={() => navigate('/profile')} role="menuitem"><i className="bi bi-person-circle" /> Hồ sơ cá nhân</button>
-              <button className="profile-link" onClick={() => navigate('/weight-tracker')} role="menuitem"><i className="bi bi-activity" /> Tiến trình cân nặng</button>
-              <button onClick={handleLogout} role="menuitem"><i className="bi bi-box-arrow-right" /> Đăng xuất</button>
-            </div>}
-          </div>
+          <UserNavMenu />
         </div>
       </header>
 
