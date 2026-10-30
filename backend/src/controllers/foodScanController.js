@@ -13,7 +13,7 @@ const { predictFood } = require('../utils/aiService');
 const Food    = require('../models/Food');
 const MealLog = require('../models/MealLog');
 const FoodRequest = require('../models/FoodRequest');
-const { uploadFileToCloudinary } = require('../services/cloudinaryStorage');
+const { uploadFileToCloudinary, isCloudinaryConfigured } = require('../services/cloudinaryStorage');
 
 const PENDING_FOOD_REQUEST_STATUSES = ['pending', 'Chờ duyệt'];
 
@@ -180,9 +180,21 @@ async function createFoodRequest(req, res, next) {
       nutrition[field] = parsed.value;
     }
 
-    const uploadedImageUrl = req.file
-      ? await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_FOOD_REQUEST_FOLDER || 'nutrilens/food-requests')
-      : null;
+    let uploadedImageUrl = null;
+    if (req.file) {
+      if (isCloudinaryConfigured()) {
+        try {
+          uploadedImageUrl = await uploadFileToCloudinary(
+            req.file,
+            process.env.CLOUDINARY_FOOD_REQUEST_FOLDER || 'nutrilens/food-requests'
+          );
+        } catch (uploadErr) {
+          console.warn('[requestFood] Upload ảnh món ăn lên Cloudinary thất bại:', uploadErr.message);
+        }
+      } else {
+        console.warn('[requestFood] Chưa cấu hình Cloudinary, tiếp tục tạo yêu cầu không có ảnh upload');
+      }
+    }
 
     const foodRequest = await FoodRequest.create({
       requestedBy: req.user.id,
@@ -231,9 +243,21 @@ async function updateFoodRequest(req, res, next) {
       nutrition[field] = parsed.value;
     }
 
-    const uploadedImageUrl = req.file
-      ? await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_FOOD_REQUEST_FOLDER || 'nutrilens/food-requests')
-      : null;
+    let uploadedImageUrl = null;
+    if (req.file) {
+      if (isCloudinaryConfigured()) {
+        try {
+          uploadedImageUrl = await uploadFileToCloudinary(
+            req.file,
+            process.env.CLOUDINARY_FOOD_REQUEST_FOLDER || 'nutrilens/food-requests'
+          );
+        } catch (uploadErr) {
+          console.warn('[updateFoodRequest] Upload ảnh lên Cloudinary thất bại:', uploadErr.message);
+        }
+      } else {
+        console.warn('[updateFoodRequest] Chưa cấu hình Cloudinary, tiếp tục cập nhật không có ảnh upload');
+      }
+    }
     const imageUrl = uploadedImageUrl
       || (req.body.imageUrl !== undefined ? trimToNull(req.body.imageUrl) : existingRequest.imageUrl);
     const updatedRequest = await FoodRequest.findOneAndUpdate(
@@ -433,6 +457,26 @@ async function addMealLog(req, res, next) {
         }
       : {};
 
+    let mealImageUrl = imageUrl || null;
+    if (req.file) {
+      if (isCloudinaryConfigured()) {
+        try {
+          mealImageUrl = await uploadFileToCloudinary(
+            req.file,
+            process.env.CLOUDINARY_MEAL_LOG_FOLDER || 'nutrilens/meal-logs'
+          );
+        } catch (uploadErr) {
+          console.warn('[addMealLog] Upload ảnh món ăn lên Cloudinary thất bại, chuyển sang ảnh danh mục:', uploadErr.message);
+          mealImageUrl = food?.imageUrl || mealImageUrl;
+        }
+      } else {
+        console.warn('[addMealLog] Chưa cấu hình Cloudinary, sử dụng ảnh món ăn từ danh mục hệ thống');
+        mealImageUrl = food?.imageUrl || mealImageUrl;
+      }
+    } else if (!mealImageUrl && food?.imageUrl) {
+      mealImageUrl = food.imageUrl;
+    }
+
     const log = await MealLog.create({
       userId,
       date,
@@ -440,9 +484,7 @@ async function addMealLog(req, res, next) {
       foodSlug,
       foodName,
       confidence: confidence === '' || confidence == null ? null : Number(confidence),
-      imageUrl: req.file
-        ? await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_MEAL_LOG_FOLDER || 'nutrilens/meal-logs')
-        : imageUrl || null,
+      imageUrl: mealImageUrl,
       servings: Number(servings) || 1,
       nutrition,
     });

@@ -13,18 +13,6 @@ function resolveAvatarUrl(value) {
   return `${apiOrigin}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
-const meals = [
-  ['🍜', 'Phở Bò Tái Lăn Hà Nội', 'Bữa Sáng · 08:15 · Đã xác nhận AI', '485 kcal', ['Protein 28g', 'Carbs 62g', 'Fat 14g', 'Natri 890mg']],
-  ['🥗', 'Gỏi Cuốn Tôm Thịt & Sốt Tương Đậu Phộng', 'Bữa Trưa · 12:15 · Đã xác nhận AI', '380 kcal', ['Protein 24g', 'Carbs 45g', 'Fat 8g', 'Chất xơ 6.2g']],
-]
-
-const articles = [
-  ['Cách kiểm soát đường huyết sau ăn với thực đơn Việt Nam', 'Dinh dưỡng lâm sàng', '5 phút đọc'],
-  ['Bóc tách Macro chuẩn xác: Bí quyết từ mô hình AI Vision', 'Thực phẩm & AI', '4 phút đọc'],
-  ['Tối ưu lượng đạm (Protein) cho người tập luyện & giảm mỡ', 'Chuyển hóa & Calo', '6 phút đọc'],
-  ['5 bí kíp nêm nếm gia vị giảm 40% lượng muối mà vẫn đậm đà', 'Mẹo nấu nướng', '3 phút đọc'],
-]
-
 function localDate() {
   return new Date().toLocaleDateString('sv-SE')
 }
@@ -65,6 +53,27 @@ function mealTypeInfo(type) {
     default:
       return { label: 'Bữa Phụ', icon: '🥪', tone: '#8b5cf6' }
   }
+}
+
+function formatArticleCategory(article) {
+  const cat = article?.category || article?.categoryTags?.[0] || 'Dinh dưỡng'
+  return cat.charAt(0).toUpperCase() + cat.slice(1)
+}
+
+function formatArticleDate(dateStr) {
+  if (!dateStr) return 'Gần đây'
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return 'Gần đây'
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+}
+
+function formatDateViShort(dateStr) {
+  if (!dateStr) return ''
+  const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number)
+  if (!y || !m || !d) return ''
+  const date = new Date(y, m - 1, d)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
 }
 
 function PanelHeading({ title, subtitle, action }) {
@@ -201,10 +210,13 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const scanUploadInputRef = useRef(null)
 
-  const [profileOpen, setProfileOpen] = useState(false)
   const [healthProfile, setHealthProfile] = useState(null)
   const [baselineStatus, setBaselineStatus] = useState(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
+
+  // Danh sách bài viết blog thực tế từ hệ thống
+  const [blogArticles, setBlogArticles] = useState([])
+  const [blogLoading, setBlogLoading] = useState(true)
 
   // Ngày được chọn để xem thống kê (mặc định hôm nay)
   const todayStr = localDate()
@@ -241,6 +253,28 @@ export default function DashboardPage() {
       isActive = false
     }
   }, [selectedDate])
+
+  // Tải danh sách bài viết blog thực tế từ hệ thống
+  useEffect(() => {
+    let isActive = true
+    axiosInstance
+      .get('/blog')
+      .then(({ data }) => {
+        if (!isActive) return
+        const list = Array.isArray(data?.data) ? data.data : []
+        setBlogArticles(list.slice(0, 4))
+      })
+      .catch((err) => {
+        console.error('[DashboardPage] Không thể tải bài viết blog:', err)
+      })
+      .finally(() => {
+        if (isActive) setBlogLoading(false)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   function handlePrevDay() {
     const [y, m, d] = selectedDate.split('-').map(Number)
@@ -346,8 +380,8 @@ export default function DashboardPage() {
     maintain_weight: 'Duy trì cân nặng',
   }
   const goalText = healthProfile?.nutritionGoal?.goal
-    ? `⚑ Mục tiêu: ${goalTitles[healthProfile.nutritionGoal.goal] || 'Dinh dưỡng cá nhân hóa'} (${targetCalo} kcal/ngày)`
-    : '⚑ Mục tiêu dinh dưỡng: Chưa thiết lập'
+    ? `Mục tiêu: ${goalTitles[healthProfile.nutritionGoal.goal] || 'Dinh dưỡng cá nhân hóa'} (${targetCalo} kcal/ngày)`
+    : 'Mục tiêu dinh dưỡng: Chưa thiết lập'
 
   function getAiWelcomeAdvice() {
     if (eatenCalo === 0 && burnedCalo === 0) {
@@ -365,14 +399,20 @@ export default function DashboardPage() {
     return `Bạn đang kiểm soát dinh dưỡng rất tốt! Đã nạp ${eatenCalo.toLocaleString('vi-VN')} / ${targetCalo.toLocaleString('vi-VN')} kcal với ${eatenProtein}g Protein. Cố gắng tiếp tục duy trì phong độ nhé!`
   }
 
-  // Danh sách món ăn thực tế hôm nay
+  // Danh sách món ăn của ngày đang chọn (backend đã sắp xếp mới nhất lên đầu)
   const meals = dashboardData?.meals || []
+  // 3 món mới nhất trong ngày hiện tại theo yêu cầu người dùng
+  const todayLatestMeals = meals.slice(0, 3)
+
   // Danh sách bài tập thực tế hôm nay
   const exercises = dashboardData?.exercises || []
   // Dữ liệu biểu đồ 7 ngày gần nhất
   const weeklyDays = dashboardData?.weeklyDays || []
   const maxCaloInWeek = Math.max(targetCalo, ...weeklyDays.map((d) => Math.max(d.caloriesIn || 0, d.caloriesOut || 0))) || 2000
   const avgDeficit = dashboardData?.avgDeficit || 0
+  const streak = dashboardData?.streak || 0
+  // Mục tiêu tiêu hao từ profile (exercise target hoặc ~20% TDEE, tối thiểu 300 kcal)
+  const burnTarget = Math.max(300, Math.round((healthProfile?.healthMetrics?.tdee || 2000) * 0.2))
 
   const isToday = selectedDate === todayStr
 
@@ -408,7 +448,6 @@ export default function DashboardPage() {
             <Link to="/profile" className="goal-pill" style={{ textDecoration: 'none' }} title="Bấm để xem & cập nhật mục tiêu trong hồ sơ">
               {goalText}
             </Link>
-            <small>● NutriLens Vision v2.4 Sẵn sàng (99.2%)</small>
           </div>
           <div className="day-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
@@ -473,31 +512,37 @@ export default function DashboardPage() {
         {/* INTRO GRID: TỔNG QUAN NĂNG LƯỢNG & SCANNER */}
         <section className="dashboard-intro-grid">
           <article className="welcome-panel">
-            <span className="eyebrow">✦ Chỉ số chuyển hóa & Năng lượng AI</span>
+            <span className="eyebrow">Tổng quan năng lượng &amp; Chuyển hóa</span>
             <h1>Xin chào {firstName}!</h1>
             <p>{getAiWelcomeAdvice()}</p>
             <div className="welcome-stats">
               <span>
-                ◉ <b>Đã nạp</b>
+                <b>Đã nạp</b>
                 <strong>{eatenCalo.toLocaleString('vi-VN')} / {targetCalo.toLocaleString('vi-VN')} kcal</strong>
               </span>
               <span>
-                ◷ <b>Vận động tiêu hao</b>
+                <b>Vận động tiêu hao</b>
                 <strong>{burnedCalo > 0 ? `-${burnedCalo.toLocaleString('vi-VN')} kcal (${exerciseMinutes}p)` : 'Chưa ghi nhận'}</strong>
               </span>
               <span>
-                ⌁ <b>Calo ròng</b>
+                <b>Calo ròng</b>
                 <strong>
                   {netCalories >= 0 ? `+${netCalories.toLocaleString('vi-VN')}` : netCalories.toLocaleString('vi-VN')} kcal
                 </strong>
               </span>
+              {streak > 0 && (
+                <span>
+                  <b>🔥 Chuỗi ngày</b>
+                  <strong>{streak} ngày liên tiếp</strong>
+                </span>
+              )}
             </div>
           </article>
 
           <article className="scanner-panel">
             <div className="scanner-heading">
-              <span>● AI LIVE SCANNER</span>
-              <small onClick={() => navigate('/meal-diary')} style={{ cursor: 'pointer' }}>↻ Lịch sử bữa ăn</small>
+              <span>Nhận diện món ăn</span>
+              <small onClick={() => navigate('/meal-diary')} style={{ cursor: 'pointer' }}>Lịch sử bữa ăn</small>
             </div>
             <div
               className="scanner-box"
@@ -516,7 +561,7 @@ export default function DashboardPage() {
             >
               <i className="bi bi-camera2" />
               <strong>Chụp ảnh hoặc kéo thả món ăn</strong>
-              <small>Hỗ trợ nhận diện Phở, Gỏi cuốn, Cơm tấm &amp; 1,200+ món Việt</small>
+              <small>Nhận diện nhanh món ăn &amp; phân tích calo bằng AI</small>
             </div>
             <div className="scanner-actions">
               <button type="button" className="scanner-button" onClick={openFoodCamera}>
@@ -568,47 +613,40 @@ export default function DashboardPage() {
         <section className="dashboard-columns">
           <article className="content-panel meal-panel">
             <PanelHeading
-              title={`🍴 Nhật ký trực quan: Món ăn ngày ${selectedDate === todayStr ? 'hôm nay' : selectedDate}`}
-              subtitle="Tự động phân tích nguyên liệu và ước tính calo hình ảnh nhận diện AI"
+              title={`Món ăn ${selectedDate === todayStr ? 'hôm nay' : selectedDate} (3 món mới nhất)`}
+              subtitle="Danh sách 3 món ăn mới nhất được ghi nhận trong ngày"
               action={
                 <span className="heading-chip">
-                  {meals.length > 0 ? `${meals.length} món đã ghi nhận` : 'Chưa có món ăn'}
+                  {todayLatestMeals.length > 0 ? `${todayLatestMeals.length} món mới nhất` : 'Chưa có món ăn'}
                 </span>
               }
             />
 
             {statsLoading ? (
               <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
-                <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Đang tải nhật ký món ăn...
+                <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Đang tải danh sách món ăn...
               </div>
-            ) : meals.length === 0 ? (
+            ) : todayLatestMeals.length === 0 ? (
               <div style={{ padding: '36px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', margin: '14px 0', border: '1.5px dashed #cbd5e1' }}>
-                <i className="bi bi-egg-fried" style={{ fontSize: '2.5rem', color: '#94a3b8', display: 'block', marginBottom: '8px' }} />
-                <strong style={{ display: 'block', fontSize: '1rem', color: '#334155', marginBottom: '4px' }}>
-                  Chưa có món ăn nào trong ngày này
+                <i className="bi bi-journal-x" style={{ fontSize: '2.4rem', color: '#94a3b8', display: 'block', marginBottom: '8px' }} />
+                <strong style={{ display: 'block', fontSize: '0.98rem', color: '#334155', marginBottom: '4px' }}>
+                  Chưa có món ăn nào trong ngày {selectedDate === todayStr ? 'hôm nay' : selectedDate}
                 </strong>
                 <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.85rem' }}>
-                  Hãy dùng camera AI quét món ăn hoặc bấm vào để ghi lại bữa ăn của bạn!
+                  Món ăn được nhận diện từ mục quét phía trên sẽ hiển thị tại đây.
                 </p>
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
                   <button
                     type="button"
-                    onClick={openFoodCamera}
-                    style={{ padding: '8px 16px', background: '#059669', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
-                  >
-                    <i className="bi bi-camera" /> Quét món ăn AI
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => navigate(`/meal-diary?date=${selectedDate}`)}
-                    style={{ padding: '8px 16px', background: '#fff', color: '#334155', border: '1px solid #cbd5e1', borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
+                    style={{ padding: '8px 18px', background: '#008560', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}
                   >
-                    <i className="bi bi-journal-plus" /> Mở nhật ký chi tiết
+                    <i className="bi bi-journal-text" /> Xem nhật ký bữa ăn
                   </button>
                 </div>
               </div>
             ) : (
-              meals.map((meal) => {
+              todayLatestMeals.map((meal) => {
                 const meta = mealTypeInfo(meal.mealType)
                 const imageSrc = resolveMediaUrl(meal.imageUrl)
                 return (
@@ -630,12 +668,7 @@ export default function DashboardPage() {
                         <span>Protein {meal.protein}g</span>
                         <span>Carbs {meal.carbs}g</span>
                         <span>Fat {meal.fat}g</span>
-                        {meal.fiber > 0 && <span>Chất xơ {meal.fiber}g</span>}
-                        {meal.sodium > 0 && <span>Natri {meal.sodium}mg</span>}
                       </div>
-                      <small className="ai-note">
-                        ◉ <b>Đánh giá dinh dưỡng:</b> Cung cấp {meal.calories} kcal ({meal.calories > 0 ? Math.round((meal.protein * 4 / meal.calories) * 100) : 0}% calo từ chất đạm).
-                      </small>
                     </div>
                     <strong className="meal-kcal">{meal.calories} kcal</strong>
                   </div>
@@ -644,7 +677,7 @@ export default function DashboardPage() {
             )}
 
             <div className="meal-footer">
-              ◉ <b>Tổng năng lượng các bữa ăn:</b>
+              <b>Tổng năng lượng các bữa ăn:</b>
               <span>{eatenCalo.toLocaleString('vi-VN')} kcal ({meals.length} món)</span>
               <small>Xem và quản lý thực đơn đầy đủ tại trang Nhật ký bữa ăn</small>
               <button type="button" onClick={() => navigate(`/meal-diary?date=${selectedDate}`)}>
@@ -667,12 +700,12 @@ export default function DashboardPage() {
         <section className="dashboard-columns lower-grid" style={{ gridTemplateColumns: '1fr' }}>
           <article className="content-panel chart-panel">
             <PanelHeading
-              title="⌁ Cân bằng chuyển hóa tuần: Năng lượng Nạp vào vs Tiêu hao"
-              subtitle="Dữ liệu tổng hợp đối soát 7 ngày gần nhất kết nối nhật ký bữa ăn & tập luyện"
+              title="Cân bằng năng lượng tuần: Nạp vào vs Tiêu hao"
+              subtitle="Dữ liệu tổng hợp 7 ngày gần nhất giữa bữa ăn và vận động"
               action={
                 <div className="chart-legend">
-                  <span>● Nạp vào (kcal)</span>
-                  <span>● Tiêu hao (kcal)</span>
+                  <span>Nạp vào (kcal)</span>
+                  <span>Tiêu hao (kcal)</span>
                 </div>
               }
             />
@@ -726,7 +759,7 @@ export default function DashboardPage() {
         <section className="content-panel workout-panel">
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">✦ Hoạt động thể chất &amp; Đốt mỡ</span>
+              <span className="eyebrow">Hoạt động thể chất &amp; Vận động</span>
               <h2>Bài tập ngày {selectedDate === todayStr ? 'hôm nay' : selectedDate}</h2>
               <p>
                 Đã ghi nhận <b>{workoutCount} bài tập</b> · Tiêu hao <b>{burnedCalo} kcal</b> ({exerciseMinutes} phút vận động)
@@ -778,10 +811,10 @@ export default function DashboardPage() {
             <div className="energy-box">
               <b>Tổng quan thể lực</b>
               <span>
-                Tiến độ tiêu hao <strong>{burnedCalo} / 400 kcal ({Math.min(100, Math.round((burnedCalo / 400) * 100))}%)</strong>
+                Tiến độ tiêu hao <strong>{burnedCalo} / {burnTarget} kcal ({Math.min(100, Math.round((burnedCalo / burnTarget) * 100))}%)</strong>
               </span>
               <div className="energy-progress">
-                <i style={{ width: `${Math.min(100, Math.round((burnedCalo / 400) * 100))}%` }} />
+                <i style={{ width: `${Math.min(100, Math.round((burnedCalo / burnTarget) * 100))}%` }} />
               </div>
               <div className="energy-values">
                 <b>
@@ -798,7 +831,7 @@ export default function DashboardPage() {
                 </b>
               </div>
               <p>
-                ◉ <b>AI Coach:</b> {burnedCalo >= 300 ? 'Tuyệt vời! Bạn đã hoàn thành mức vận động lý tưởng hôm nay để tăng cường trao đổi chất.' : 'Dành thêm 15-20 phút đi bộ nhanh hoặc nhảy dây để đạt mốc 300 kcal tiêu hao nhé!'}
+                <b>Gợi ý vận động:</b> {burnedCalo >= burnTarget ? 'Tuyệt vời! Bạn đã hoàn thành mức vận động lý tưởng hôm nay để tăng cường trao đổi chất.' : `Dành thêm 15-20 phút đi bộ nhanh hoặc nhảy dây để đạt mốc ${burnTarget} kcal tiêu hao nhé!`}
               </p>
             </div>
           </div>
@@ -807,20 +840,38 @@ export default function DashboardPage() {
         {/* BÀI VIẾT & TIN TỨC */}
         <section className="content-panel articles-panel">
           <PanelHeading
-            title="✦ Kiến thức & Đời sống"
-            subtitle="Cập nhật kiến thức dinh dưỡng khoa học, mẹo ăn uống lành mạnh và công nghệ AI"
+            title="Kiến thức & Đời sống"
+            subtitle="Cập nhật kiến thức dinh dưỡng khoa học, mẹo ăn uống lành mạnh và lối sống cân bằng"
             action={<Link to="/articles">Xem tất cả bài viết →</Link>}
           />
-          <div className="article-grid">
-            {articles.map(([title, tag, time]) => (
-              <article key={title}>
-                <span>{tag}</span>
-                <h3>{title}</h3>
-                <small>{time}</small>
-                <Link to="/articles">Đọc tiếp →</Link>
-              </article>
-            ))}
-          </div>
+          {blogLoading ? (
+            <div style={{ padding: '28px', textAlign: 'center', color: '#64748b' }}>
+              <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Đang tải bài viết...
+            </div>
+          ) : blogArticles.length === 0 ? (
+            <div style={{ padding: '28px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+              Chưa có bài viết nào được xuất bản.
+            </div>
+          ) : (
+            <div className="article-grid">
+              {blogArticles.map((article) => {
+                const category = formatArticleCategory(article)
+                const publishDate = formatArticleDate(article.publishedAt || article.createdAt)
+                return (
+                  <article key={article._id}>
+                    <span>{category}</span>
+                    <h3 title={article.title}>
+                      <Link to={`/articles/${article._id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                        {article.title}
+                      </Link>
+                    </h3>
+                    <small>{publishDate}</small>
+                    <Link to={`/articles/${article._id}`}>Đọc tiếp →</Link>
+                  </article>
+                )
+              })}
+            </div>
+          )}
         </section>
       </main>
 

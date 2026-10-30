@@ -932,8 +932,11 @@ async function getDashboardStats(req, res) {
     const currentWeight = latestWeightLog?.weightKg || profile?.currentWeightKg || 60;
     const waterTargetMl = Math.max(2000, Math.round(currentWeight * 35));
 
-    // 3. Lấy MealLogs của ngày đã chọn
-    const mealLogs = await MealLog.find({ userId, date: selectedDate }).sort({ createdAt: 1 }).lean();
+    // 3. Lấy MealLogs của ngày đã chọn và 5 món mới nhất trong toàn bộ lịch sử nhật ký
+    const [mealLogs, latestMealDocs] = await Promise.all([
+      MealLog.find({ userId, date: selectedDate }).sort({ createdAt: -1 }).lean(),
+      MealLog.find({ userId }).sort({ createdAt: -1, date: -1 }).limit(5).lean(),
+    ]);
 
     let eatenCalories = 0;
     let eatenProtein = 0;
@@ -942,7 +945,7 @@ async function getDashboardStats(req, res) {
     let eatenFiber = 0;
     let eatenSodium = 0;
 
-    const meals = mealLogs.map((log) => {
+    function formatMealItem(log) {
       const s = log.servings || 1;
       const cal = Math.round((log.nutrition?.calories || 0) * s);
       const pro = Math.round((log.nutrition?.protein || 0) * s * 10) / 10;
@@ -951,17 +954,11 @@ async function getDashboardStats(req, res) {
       const fiber = Math.round((log.nutrition?.fiber || 0) * s * 10) / 10;
       const sodium = Math.round((log.nutrition?.sodium || 0) * s * 10) / 10;
 
-      eatenCalories += cal;
-      eatenProtein += pro;
-      eatenCarbs += carb;
-      eatenFat += fat;
-      eatenFiber += fiber;
-      eatenSodium += sodium;
-
       return {
         _id: log._id,
         foodSlug: log.foodSlug,
         foodName: log.foodName,
+        date: log.date,
         mealType: log.mealType || 'lunch',
         servings: s,
         imageUrl: log.imageUrl,
@@ -974,7 +971,20 @@ async function getDashboardStats(req, res) {
         sodium,
         createdAt: log.createdAt,
       };
+    }
+
+    const meals = mealLogs.map((log) => {
+      const item = formatMealItem(log);
+      eatenCalories += item.calories;
+      eatenProtein += item.protein;
+      eatenCarbs += item.carbs;
+      eatenFat += item.fat;
+      eatenFiber += item.fiber;
+      eatenSodium += item.sodium;
+      return item;
     });
+
+    const latestMeals = latestMealDocs.map(formatMealItem);
 
     // 4. Lấy ExerciseLogs của ngày đã chọn
     const exerciseLogs = await ExerciseLog.find({ userId, date: selectedDate }).sort({ createdAt: 1 }).lean();
@@ -1045,14 +1055,14 @@ async function getDashboardStats(req, res) {
     const d30 = String(thirtyDaysAgoDate.getDate()).padStart(2, '0');
     const thirtyDaysAgoStr = `${y30}-${m30}-${d30}`;
 
-    const [recentMeals, recentExercises] = await Promise.all([
+    const [streakMeals, streakExercises] = await Promise.all([
       MealLog.find({ userId, date: { $gte: thirtyDaysAgoStr } }).select("date").lean(),
       ExerciseLog.find({ userId, date: { $gte: thirtyDaysAgoStr } }).select("date").lean(),
     ]);
 
     const loggedDates = new Set([
-      ...recentMeals.map((item) => item.date),
-      ...recentExercises.map((item) => item.date),
+      ...streakMeals.map((item) => item.date),
+      ...streakExercises.map((item) => item.date),
     ]);
 
     let streak = 0;
@@ -1101,13 +1111,14 @@ async function getDashboardStats(req, res) {
         mealCount: meals.length,
       },
       todayExercise: {
-        caloriesBurned,
+        caloriesBurned: burnedCalories,
         durationMinutes: exerciseMinutes,
         workoutCount: exercises.length,
       },
       netCalories,
       remainingCalories,
       meals,
+      latestMeals,
       exercises,
       weeklyDays,
       streak: Math.max(streak, 0),
