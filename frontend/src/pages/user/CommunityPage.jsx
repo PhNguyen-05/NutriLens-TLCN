@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
@@ -61,6 +61,69 @@ function formatRelativeTime(dateInput) {
   }).format(date)
 }
 
+// Hàm chuẩn hóa tiếng Việt bỏ dấu để tìm kiếm gợi ý mượt mà
+function normalizeVietnamese(str) {
+  return String(str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .trim()
+}
+
+// Định dạng nội dung bài viết: highlight các mention @NgườiDùng hoặc @ChủĐề hoặc #Hashtag
+function renderFormattedContent(content, onTagClick) {
+  if (!content) return null
+  const lines = String(content).split('\n')
+
+  return lines.map((line, lineIdx) => {
+    const regex = /(@[a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9\s]+?)(?=[,\.!\?;\n\r]|$|\s{2,}|@|#)|\B(#[a-zA-Z0-9_\u00C0-\u024F\u1EA0-\u1EF9]+)/g
+    const parts = []
+    let lastIndex = 0
+    let match
+
+    while ((match = regex.exec(line)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(line.substring(lastIndex, match.index))
+      }
+      const token = match[0].trim()
+      const isTag = token.startsWith('@') && COMMUNITY_TAGS.includes(token.slice(1))
+
+      parts.push(
+        <span
+          key={`token-${lineIdx}-${match.index}`}
+          className="mention-highlight"
+          onClick={
+            isTag && typeof onTagClick === 'function'
+              ? (e) => {
+                  e.stopPropagation()
+                  onTagClick(token.slice(1))
+                }
+              : undefined
+          }
+          style={isTag ? { cursor: 'pointer' } : undefined}
+          title={isTag ? `Nhấn để lọc theo chủ đề "${token.slice(1)}"` : undefined}
+        >
+          {match[0]}
+        </span>
+      )
+      lastIndex = match.index + match[0].length
+    }
+
+    if (lastIndex < line.length) {
+      parts.push(line.substring(lastIndex))
+    }
+
+    return (
+      <span key={`line-${lineIdx}`}>
+        {parts.length > 0 ? parts : line}
+        {lineIdx < lines.length - 1 && <br />}
+      </span>
+    )
+  })
+}
+
 export default function CommunityPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -99,8 +162,41 @@ export default function CommunityPage() {
   // Lightbox xem ảnh lớn
   const [lightboxImage, setLightboxImage] = useState(null)
 
-  // Ref input file
+  // Ref input file, textarea và dropdown gợi ý tag/mention
   const fileInputRef = useRef(null)
+  const textareaRef = useRef(null)
+  const mentionMenuRef = useRef(null)
+
+  // State cho tính năng Gợi ý gắn thẻ (Mention @)
+  const [mentionData, setMentionData] = useState({ users: [], tags: [] })
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [showMentionMenu, setShowMentionMenu] = useState(false)
+  const [mentionStartIndex, setMentionStartIndex] = useState(0)
+  const [mentionCursorIndex, setMentionCursorIndex] = useState(0)
+  const [activeMentionIndex, setActiveMentionIndex] = useState(0)
+
+  // State xác nhận xóa bài viết (Modal in-app thay cho window.confirm / localhost)
+  const [deleteConfirmPost, setDeleteConfirmPost] = useState(null)
+  const [deletePostSubmitting, setDeletePostSubmitting] = useState(false)
+
+  // State chỉnh sửa bài viết
+  const [editingPost, setEditingPost] = useState(null)
+  const [editContent, setEditContent] = useState('')
+  const [editTag, setEditTag] = useState('Chia sẻ chung')
+  const [editSelectedImageFile, setEditSelectedImageFile] = useState(null)
+  const [editImagePreviewUrl, setEditImagePreviewUrl] = useState('')
+  const [editRemoveImage, setEditRemoveImage] = useState(false)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const editFileInputRef = useRef(null)
+  const editTextareaRef = useRef(null)
+  const editMentionMenuRef = useRef(null)
+
+  // Mention cho Modal Chỉnh sửa bài viết
+  const [editShowMentionMenu, setEditShowMentionMenu] = useState(false)
+  const [editMentionQuery, setEditMentionQuery] = useState('')
+  const [editMentionStartIndex, setEditMentionStartIndex] = useState(0)
+  const [editMentionCursorIndex, setEditMentionCursorIndex] = useState(0)
+  const [editActiveMentionIndex, setEditActiveMentionIndex] = useState(0)
 
   const firstName = user?.fullName
     ? user.fullName.trim().split(/\s+/).slice(-1)[0]
@@ -127,6 +223,12 @@ export default function CommunityPage() {
       })
       .catch((err) => {
         console.error('[CommunityPage] Không thể tải bài viết:', err)
+        if (isActive) {
+          // UC29 Ngoại lệ 4c / 5c: Lỗi khi truy vấn dữ liệu
+          const errorMsg =
+            err.response?.data?.message || 'Không thể tải kết quả, vui lòng thử lại'
+          setFeedbackError(errorMsg)
+        }
       })
       .finally(() => {
         if (isActive) setLoading(false)
@@ -152,6 +254,330 @@ export default function CommunityPage() {
     }
   }, [feedbackError])
 
+  // --- TẢI DỮ LIỆU GỢI Ý GẮN THẺ (MENTION @) ---
+  useEffect(() => {
+    let isActive = true
+    axiosInstance
+      .get('/community/mention-suggestions')
+      .then(({ data }) => {
+        if (!isActive) return
+        setMentionData({
+          users: Array.isArray(data?.users) ? data.users : [],
+          tags:
+            Array.isArray(data?.tags) && data.tags.length > 0
+              ? data.tags
+              : COMMUNITY_TAGS.filter((t) => t !== 'Tất cả'),
+        })
+      })
+      .catch((err) => {
+        console.error('[CommunityPage] Không thể tải danh sách gợi ý mention:', err)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [isModalOpen])
+
+  // Lắng nghe click ngoài dropdown để tự đóng menu gợi ý
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (
+        mentionMenuRef.current &&
+        !mentionMenuRef.current.contains(e.target) &&
+        textareaRef.current &&
+        !textareaRef.current.contains(e.target)
+      ) {
+        setShowMentionMenu(false)
+      }
+    }
+
+    if (showMentionMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showMentionMenu])
+
+  // Danh sách gợi ý sau khi lọc theo từ khóa sau ký tự @
+  const filteredMentions = useMemo(() => {
+    if (!showMentionMenu) return []
+    const normQuery = normalizeVietnamese(mentionQuery)
+
+    // 1. Lọc thành viên
+    const matchedUsers = (mentionData.users || [])
+      .filter((u) => {
+        if (!normQuery) return true
+        return (
+          normalizeVietnamese(u.fullName).includes(normQuery) ||
+          normalizeVietnamese(u.email).includes(normQuery)
+        )
+      })
+      .slice(0, 8)
+      .map((u) => ({
+        type: 'user',
+        id: u.id || u._id,
+        text: u.fullName,
+        subtitle: u.role === 'admin' ? 'Quản trị viên' : u.email || 'Thành viên',
+        avatarUrl: u.avatarUrl,
+        role: u.role,
+      }))
+
+    // 2. Lọc chủ đề / Tag cộng đồng
+    const allTags =
+      mentionData.tags && mentionData.tags.length > 0
+        ? mentionData.tags
+        : COMMUNITY_TAGS.filter((t) => t !== 'Tất cả')
+
+    const matchedTags = allTags
+      .filter((t) => {
+        if (t === 'Tất cả') return false
+        if (!normQuery) return true
+        return normalizeVietnamese(t).includes(normQuery)
+      })
+      .map((t) => {
+        const meta = TAG_COLOR_MAP[t] || {
+          bg: '#ecfdf5',
+          text: '#059669',
+          icon: 'bi-tag',
+        }
+        return {
+          type: 'tag',
+          id: t,
+          text: t,
+          subtitle: 'Chủ đề bài viết',
+          icon: meta.icon,
+          color: meta.text,
+          bg: meta.bg,
+        }
+      })
+
+    return [...matchedUsers, ...matchedTags]
+  }, [showMentionMenu, mentionQuery, mentionData])
+
+  // Lắng nghe click ngoài edit mention menu để tự đóng
+  useEffect(() => {
+    function handleClickOutsideEdit(e) {
+      if (
+        editMentionMenuRef.current &&
+        !editMentionMenuRef.current.contains(e.target) &&
+        editTextareaRef.current &&
+        !editTextareaRef.current.contains(e.target)
+      ) {
+        setEditShowMentionMenu(false)
+      }
+    }
+
+    if (editShowMentionMenu) {
+      document.addEventListener('mousedown', handleClickOutsideEdit)
+      return () => document.removeEventListener('mousedown', handleClickOutsideEdit)
+    }
+  }, [editShowMentionMenu])
+
+  // Danh sách gợi ý tag/mention cho Modal Chỉnh sửa bài viết
+  const filteredEditMentions = useMemo(() => {
+    if (!editShowMentionMenu) return []
+    const normQuery = normalizeVietnamese(editMentionQuery)
+
+    const matchedUsers = (mentionData.users || [])
+      .filter((u) => {
+        if (!normQuery) return true
+        return (
+          normalizeVietnamese(u.fullName).includes(normQuery) ||
+          normalizeVietnamese(u.email).includes(normQuery)
+        )
+      })
+      .slice(0, 8)
+      .map((u) => ({
+        type: 'user',
+        id: u.id || u._id,
+        text: u.fullName,
+        subtitle: u.role === 'admin' ? 'Quản trị viên' : u.email || 'Thành viên',
+        avatarUrl: u.avatarUrl,
+        role: u.role,
+      }))
+
+    const allTags =
+      mentionData.tags && mentionData.tags.length > 0
+        ? mentionData.tags
+        : COMMUNITY_TAGS.filter((t) => t !== 'Tất cả')
+
+    const matchedTags = allTags
+      .filter((t) => {
+        if (t === 'Tất cả') return false
+        if (!normQuery) return true
+        return normalizeVietnamese(t).includes(normQuery)
+      })
+      .map((t) => {
+        const meta = TAG_COLOR_MAP[t] || {
+          bg: '#ecfdf5',
+          text: '#059669',
+          icon: 'bi-tag',
+        }
+        return {
+          type: 'tag',
+          id: t,
+          text: t,
+          subtitle: 'Chủ đề bài viết',
+          icon: meta.icon,
+          color: meta.text,
+          bg: meta.bg,
+        }
+      })
+
+    return [...matchedUsers, ...matchedTags]
+  }, [editShowMentionMenu, editMentionQuery, mentionData])
+
+  useEffect(() => {
+    if (editActiveMentionIndex >= filteredEditMentions.length && filteredEditMentions.length > 0) {
+      setEditActiveMentionIndex(0)
+    }
+  }, [filteredEditMentions.length, editActiveMentionIndex])
+
+  // Giữ activeMentionIndex trong khoảng hợp lệ khi danh sách gợi ý thay đổi
+  useEffect(() => {
+    if (activeMentionIndex >= filteredMentions.length && filteredMentions.length > 0) {
+      setActiveMentionIndex(0)
+    }
+  }, [filteredMentions.length, activeMentionIndex])
+
+  // Kiểm tra vị trí con trỏ để kích hoạt menu gợi ý khi gõ @
+  function checkMentionTrigger(text, cursor) {
+    const textBefore = text.slice(0, cursor)
+    const match = textBefore.match(/(?:^|\s)@([^\n\r@]{0,25})$/)
+    if (match) {
+      const atSymbolOffset = match[0].indexOf('@')
+      const atIndex = match.index + atSymbolOffset
+      const query = match[1]
+
+      // Cho phép tối đa 1 khoảng trắng (hỗ trợ họ và tên 2 từ)
+      if (query.split(/\s+/).length <= 2) {
+        setShowMentionMenu(true)
+        setMentionQuery(query)
+        setMentionStartIndex(atIndex)
+        setMentionCursorIndex(cursor)
+        setActiveMentionIndex(0)
+        return
+      }
+    }
+    setShowMentionMenu(false)
+  }
+
+  function handleTextareaChange(e) {
+    const value = e.target.value
+    const cursor = e.target.selectionStart
+    setPostContent(value)
+    if (feedbackError) setFeedbackError('')
+    checkMentionTrigger(value, cursor)
+  }
+
+  function handleTextareaCursorMove(e) {
+    checkMentionTrigger(e.target.value, e.target.selectionStart)
+  }
+
+  function handleTextareaKeyDown(e) {
+    if (!showMentionMenu || filteredMentions.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveMentionIndex((prev) => (prev + 1) % filteredMentions.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveMentionIndex(
+        (prev) => (prev - 1 + filteredMentions.length) % filteredMentions.length
+      )
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      const selectedItem = filteredMentions[activeMentionIndex]
+      if (selectedItem) {
+        handleSelectMention(selectedItem)
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setShowMentionMenu(false)
+    }
+  }
+
+  function handleSelectMention(item) {
+    const before = postContent.slice(0, mentionStartIndex)
+    const after = postContent.slice(mentionCursorIndex)
+    const mentionText = `@${item.text} `
+    const nextContent = `${before}${mentionText}${after}`
+
+    setPostContent(nextContent)
+    setShowMentionMenu(false)
+
+    // Nếu chọn Tag chủ đề thì đồng bộ với bộ chọn chủ đề bài viết
+    if (item.type === 'tag') {
+      setPostTag(item.text)
+    }
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        const newPos = mentionStartIndex + mentionText.length
+        textareaRef.current.setSelectionRange(newPos, newPos)
+      }
+    }, 10)
+  }
+
+  function handleInsertQuickTag(tagName) {
+    const tagText = `@${tagName} `
+    let nextContent = postContent
+    if (!nextContent) {
+      nextContent = tagText
+    } else if (nextContent.endsWith(' ')) {
+      nextContent += tagText
+    } else {
+      nextContent += ' ' + tagText
+    }
+    setPostContent(nextContent)
+    setPostTag(tagName)
+    setShowMentionMenu(false)
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        const len = nextContent.length
+        textareaRef.current.setSelectionRange(len, len)
+      }
+    }, 10)
+  }
+
+  // --- UC29: TÌM KIẾM / LỌC BÀI ĐĂNG THEO TAG ---
+
+  // Luồng chính 1 - 5: Thực hiện tìm kiếm từ khóa
+  function handleExecuteSearch(customQuery = null) {
+    const query = customQuery !== null ? customQuery : searchQuery
+    const trimmed = String(query || '').trim()
+
+    // Ngoại lệ 3a / 4a: Điều kiện tìm kiếm không hợp lệ
+    if (trimmed.length > 100) {
+      setFeedbackError('Thông tin tìm kiếm không hợp lệ. Từ khóa không được vượt quá 100 ký tự.')
+      return
+    }
+
+    setFeedbackError('')
+    setActiveSearch(trimmed)
+  }
+
+  // Luồng thay thế 1b / 2b: Xóa từ khóa tìm kiếm
+  function handleClearSearch() {
+    setSearchQuery('')
+    setActiveSearch('')
+  }
+
+  // Luồng chính & Thay thế: Chọn Tag lọc chủ đề
+  function handleSelectTag(tag) {
+    setSelectedTag(tag)
+    setFeedbackError('')
+  }
+
+  // Luồng thay thế 1b / 2b: Xóa tất cả bộ lọc và từ khóa, quay về mặc định
+  function handleResetAllFilters() {
+    setSearchQuery('')
+    setActiveSearch('')
+    setSelectedTag('Tất cả')
+    setFeedbackError('')
+  }
+
   // --- XỬ LÝ ĐĂNG BÀI VIẾT (UC26) ---
 
   // Luồng chính 1: Mở biểu mẫu đăng bài
@@ -161,6 +587,9 @@ export default function CommunityPage() {
     setSelectedImageFile(null)
     setImagePreviewUrl('')
     setFeedbackError('')
+    setShowMentionMenu(false)
+    setMentionQuery('')
+    setActiveMentionIndex(0)
     setIsModalOpen(true)
   }
 
@@ -169,6 +598,8 @@ export default function CommunityPage() {
     setIsModalOpen(false)
     setPostContent('')
     setSelectedImageFile(null)
+    setShowMentionMenu(false)
+    setMentionQuery('')
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl)
       setImagePreviewUrl('')
@@ -264,6 +695,8 @@ export default function CommunityPage() {
       setIsModalOpen(false)
       setPostContent('')
       setSelectedImageFile(null)
+      setShowMentionMenu(false)
+      setMentionQuery('')
       if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl)
         setImagePreviewUrl('')
@@ -278,10 +711,11 @@ export default function CommunityPage() {
     }
   }
 
-  // --- TƯƠNG TÁC LIKE BÀI VIẾT ---
+  // --- UC28: THÍCH / BỎ THÍCH BÀI ĐĂNG (LUỒNG CHÍNH 1-6 & THAY THẾ 1a-4a) ---
   async function handleToggleLike(postId) {
     try {
       const { data } = await axiosInstance.post(`/community/posts/${postId}/like`)
+      // Cập nhật trạng thái thích và số lượt thích ngay tức thì
       setPosts((prev) =>
         prev.map((p) =>
           p._id === postId
@@ -290,7 +724,16 @@ export default function CommunityPage() {
         )
       )
     } catch (err) {
-      console.error('[CommunityPage] Lỗi like bài viết:', err)
+      console.error('[CommunityPage] Lỗi cập nhật trạng thái thích:', err)
+      // Ngoại lệ 2a / 3a: Bài đăng không còn tồn tại
+      // Ngoại lệ 3b / 4b: Không thể cập nhật trạng thái thích do lỗi hệ thống
+      const errorMsg =
+        err.response?.data?.message || 'Không thể cập nhật trạng thái thích, vui lòng thử lại'
+      setFeedbackError(errorMsg)
+
+      if (err.response?.status === 404) {
+        setPosts((prev) => prev.filter((p) => p._id !== postId))
+      }
     }
   }
 
@@ -460,28 +903,239 @@ export default function CommunityPage() {
     }
   }
 
-  // --- XÓA BÀI VIẾT ---
-  async function handleDeletePost(postId) {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bài viết này không?')) return
+  // --- XỬ LÝ CHỈNH SỬA BÀI VIẾT ---
+  function handleOpenEditModal(post) {
+    setEditingPost(post)
+    setEditContent(post.content || '')
+    setEditTag(post.tag || 'Chia sẻ chung')
+    setEditSelectedImageFile(null)
+    setEditImagePreviewUrl(post.imageUrl ? resolveMediaUrl(post.imageUrl) : '')
+    setEditRemoveImage(false)
+    setEditShowMentionMenu(false)
+    setEditMentionQuery('')
+    setEditActiveMentionIndex(0)
+    setFeedbackError('')
+  }
 
-    try {
-      await axiosInstance.delete(`/community/posts/${postId}`)
-      setPosts((prev) => prev.filter((p) => p._id !== postId))
-      setFeedbackSuccess('Đã xóa bài viết thành công')
-    } catch (err) {
-      console.error('[CommunityPage] Lỗi xóa bài:', err)
-      setFeedbackError(err.response?.data?.message || 'Không thể xóa bài viết')
+  function handleCancelEditPost() {
+    setEditingPost(null)
+    setEditContent('')
+    setEditSelectedImageFile(null)
+    if (editImagePreviewUrl && editImagePreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(editImagePreviewUrl)
+    }
+    setEditImagePreviewUrl('')
+    setEditRemoveImage(false)
+    setEditShowMentionMenu(false)
+    setEditMentionQuery('')
+    setFeedbackError('')
+  }
+
+  function validateAndSetEditImage(file) {
+    if (!file) return
+
+    const fileType = (file.type || '').toLowerCase()
+    const fileName = (file.name || '').toLowerCase()
+    const hasValidMime = ALLOWED_IMAGE_TYPES.includes(fileType) || fileType.startsWith('image/')
+    const hasValidExt = /\.(jpe?g|png|webp|gif|jfif|bmp)$/i.test(fileName)
+
+    if (!hasValidMime && !hasValidExt) {
+      setFeedbackError('Hình ảnh không hợp lệ. Vui lòng chọn ảnh có định dạng JPG, PNG, WEBP hoặc GIF.')
+      return
+    }
+
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      setFeedbackError('Hình ảnh không hợp lệ. Dung lượng ảnh không được vượt quá 5MB.')
+      return
+    }
+
+    setFeedbackError('')
+    setEditSelectedImageFile(file)
+    setEditRemoveImage(false)
+    const preview = URL.createObjectURL(file)
+    setEditImagePreviewUrl(preview)
+  }
+
+  function handleEditFileSelected(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    validateAndSetEditImage(file)
+  }
+
+  function handleEditFileDrop(event) {
+    event.preventDefault()
+    const file = event.dataTransfer?.files?.[0]
+    validateAndSetEditImage(file)
+  }
+
+  function handleRemoveEditImage() {
+    setEditSelectedImageFile(null)
+    if (editImagePreviewUrl && editImagePreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(editImagePreviewUrl)
+    }
+    setEditImagePreviewUrl('')
+    setEditRemoveImage(true)
+  }
+
+  function checkEditMentionTrigger(text, cursor) {
+    const textBefore = text.slice(0, cursor)
+    const match = textBefore.match(/(?:^|\s)@([^\n\r@]{0,25})$/)
+    if (match) {
+      const atSymbolOffset = match[0].indexOf('@')
+      const atIndex = match.index + atSymbolOffset
+      const query = match[1]
+
+      if (query.split(/\s+/).length <= 2) {
+        setEditShowMentionMenu(true)
+        setEditMentionQuery(query)
+        setEditMentionStartIndex(atIndex)
+        setEditMentionCursorIndex(cursor)
+        setEditActiveMentionIndex(0)
+        return
+      }
+    }
+    setEditShowMentionMenu(false)
+  }
+
+  function handleEditTextareaChange(e) {
+    const value = e.target.value
+    const cursor = e.target.selectionStart
+    setEditContent(value)
+    if (feedbackError) setFeedbackError('')
+    checkEditMentionTrigger(value, cursor)
+  }
+
+  function handleEditTextareaCursorMove(e) {
+    checkEditMentionTrigger(e.target.value, e.target.selectionStart)
+  }
+
+  function handleEditTextareaKeyDown(e) {
+    if (!editShowMentionMenu || filteredEditMentions.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setEditActiveMentionIndex((prev) => (prev + 1) % filteredEditMentions.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setEditActiveMentionIndex(
+        (prev) => (prev - 1 + filteredEditMentions.length) % filteredEditMentions.length
+      )
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      const selectedItem = filteredEditMentions[editActiveMentionIndex]
+      if (selectedItem) {
+        handleSelectEditMention(selectedItem)
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setEditShowMentionMenu(false)
     }
   }
 
-  // --- SAO CHÉP LIÊN KẾT BÀI VIẾT ---
-  function handleSharePost(postId) {
-    const shareUrl = `${window.location.origin}/community#post-${postId}`
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(shareUrl)
-      setFeedbackSuccess('Đã sao chép liên kết bài viết vào bộ nhớ tạm')
+  function handleSelectEditMention(item) {
+    const before = editContent.slice(0, editMentionStartIndex)
+    const after = editContent.slice(editMentionCursorIndex)
+    const mentionText = `@${item.text} `
+    const nextContent = `${before}${mentionText}${after}`
+
+    setEditContent(nextContent)
+    setEditShowMentionMenu(false)
+
+    if (item.type === 'tag') {
+      setEditTag(item.text)
+    }
+
+    setTimeout(() => {
+      if (editTextareaRef.current) {
+        editTextareaRef.current.focus()
+        const newPos = editMentionStartIndex + mentionText.length
+        editTextareaRef.current.setSelectionRange(newPos, newPos)
+      }
+    }, 10)
+  }
+
+  function handleInsertEditQuickTag(tagName) {
+    const tagText = `@${tagName} `
+    let nextContent = editContent
+    if (!nextContent) {
+      nextContent = tagText
+    } else if (nextContent.endsWith(' ')) {
+      nextContent += tagText
     } else {
-      setFeedbackSuccess('Bài viết ID: ' + postId)
+      nextContent += ' ' + tagText
+    }
+    setEditContent(nextContent)
+    setEditTag(tagName)
+    setEditShowMentionMenu(false)
+    setTimeout(() => {
+      if (editTextareaRef.current) {
+        editTextareaRef.current.focus()
+        const len = nextContent.length
+        editTextareaRef.current.setSelectionRange(len, len)
+      }
+    }, 10)
+  }
+
+  async function handleSubmitEditPost(e) {
+    if (e) e.preventDefault()
+    if (!editingPost) return
+
+    const trimmed = editContent.trim()
+    if (!trimmed) {
+      setFeedbackError('Nội dung bài viết không được để trống')
+      return
+    }
+
+    setEditSubmitting(true)
+    try {
+      const formData = new FormData()
+      formData.append('content', trimmed)
+      formData.append('tag', editTag || 'Chia sẻ chung')
+      if (editRemoveImage) {
+        formData.append('removeImage', 'true')
+      } else if (editSelectedImageFile) {
+        formData.append('image', editSelectedImageFile)
+      }
+
+      const { data } = await axiosInstance.put(`/community/posts/${editingPost._id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+
+      if (data?.post) {
+        setPosts((prev) =>
+          prev.map((p) => (p._id === data.post._id ? data.post : p))
+        )
+      }
+
+      setFeedbackSuccess(data.message || 'Cập nhật bài viết thành công')
+      handleCancelEditPost()
+    } catch (err) {
+      console.error('[CommunityPage] Lỗi cập nhật bài:', err)
+      setFeedbackError(err.response?.data?.message || 'Không thể cập nhật bài viết, vui lòng thử lại')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  // --- XÁC NHẬN XÓA BÀI VIẾT (Thay thế hoàn toàn window.confirm / không còn thông báo localhost) ---
+  function handlePromptDeletePost(post) {
+    setDeleteConfirmPost(post)
+  }
+
+  async function handleConfirmDeletePost() {
+    if (!deleteConfirmPost) return
+
+    setDeletePostSubmitting(true)
+    try {
+      await axiosInstance.delete(`/community/posts/${deleteConfirmPost._id}`)
+      setPosts((prev) => prev.filter((p) => p._id !== deleteConfirmPost._id))
+      setFeedbackSuccess('Đã xóa bài viết thành công')
+      setDeleteConfirmPost(null)
+    } catch (err) {
+      console.error('[CommunityPage] Lỗi xóa bài:', err)
+      setFeedbackError(err.response?.data?.message || 'Không thể xóa bài viết, vui lòng thử lại')
+    } finally {
+      setDeletePostSubmitting(false)
     }
   }
 
@@ -501,33 +1155,38 @@ export default function CommunityPage() {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <div className="community-header-search">
-            <i className="bi bi-search" />
+          <form
+            className="community-header-search"
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleExecuteSearch()
+            }}
+          >
+            <button
+              type="submit"
+              className="search-submit-icon-btn"
+              title="Bấm để tìm kiếm (hoặc nhấn Enter)"
+              aria-label="Tìm kiếm"
+            >
+              <i className="bi bi-search" />
+            </button>
             <input
               type="text"
               placeholder="Tìm kiếm bài viết, công thức..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  setActiveSearch(searchQuery.trim())
-                }
-              }}
             />
-            {activeSearch && (
+            {searchQuery && (
               <button
                 type="button"
                 className="clear-search-btn"
-                onClick={() => {
-                  setSearchQuery('')
-                  setActiveSearch('')
-                }}
+                onClick={handleClearSearch}
                 title="Xóa tìm kiếm"
               >
                 <i className="bi bi-x-circle-fill" />
               </button>
             )}
-          </div>
+          </form>
           <button
             type="button"
             className="community-post-btn-quick"
@@ -688,18 +1347,45 @@ export default function CommunityPage() {
               </div>
             </div>
 
-            {/* BỘ LỌC ĐANG CHỌN (NẾU CÓ) */}
-            {selectedTag !== 'Tất cả' && (
-              <div className="active-tag-banner">
-                <span>
-                  Đang xem chủ đề: <strong>{selectedTag}</strong>
-                </span>
+            {/* UC29: BANNER ĐIỀU KIỆN TÌM KIẾM / LỌC (LUỒNG CHÍNH 5 & THAY THẾ 1b) */}
+            {(selectedTag !== 'Tất cả' || activeSearch) && (
+              <div className="active-filter-banner">
+                <div className="filter-chips-wrap">
+                  <span className="filter-lead">
+                    <i className="bi bi-funnel-fill" /> Đang lọc:
+                  </span>
+                  {selectedTag !== 'Tất cả' && (
+                    <span className="filter-pill">
+                      Chủ đề: <strong>{selectedTag}</strong>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTag('Tất cả')}
+                        title="Bỏ lọc chủ đề này"
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    </span>
+                  )}
+                  {activeSearch && (
+                    <span className="filter-pill">
+                      Từ khóa: <strong>"{activeSearch}"</strong>
+                      <button
+                        type="button"
+                        onClick={handleClearSearch}
+                        title="Bỏ tìm kiếm từ khóa này"
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
-                  onClick={() => setSelectedTag('Tất cả')}
-                  title="Bỏ lọc chủ đề"
+                  className="filter-reset-all-btn"
+                  onClick={handleResetAllFilters}
+                  title="Xóa tất cả điều kiện lọc và tìm kiếm"
                 >
-                  Xóa lọc <i className="bi bi-x-lg" />
+                  <i className="bi bi-arrow-counterclockwise" /> Xóa tất cả lọc
                 </button>
               </div>
             )}
@@ -720,20 +1406,47 @@ export default function CommunityPage() {
               </div>
             ) : posts.length === 0 ? (
               <div className="community-card empty-feed-card">
-                <i className="bi bi-chat-heart" />
-                <h3>Chưa có bài viết nào</h3>
-                <p>
-                  {selectedTag !== 'Tất cả'
-                    ? `Chưa có bài viết nào trong chủ đề "${selectedTag}". Hãy là người đầu tiên chia sẻ nhé!`
-                    : 'Hãy là người đầu tiên chia sẻ công thức món ăn hoặc kinh nghiệm dinh dưỡng hôm nay!'}
-                </p>
-                <button
-                  type="button"
-                  className="community-btn-primary"
-                  onClick={() => handleOpenCreateModal(selectedTag !== 'Tất cả' ? selectedTag : 'Chia sẻ chung')}
-                >
-                  <i className="bi bi-pencil-square" /> Đăng bài ngay
-                </button>
+                {activeSearch || selectedTag !== 'Tất cả' ? (
+                  <>
+                    <i className="bi bi-search" style={{ fontSize: '42px', color: '#94a3b8', marginBottom: '12px', display: 'inline-block' }} />
+                    {/* UC29 Ngoại lệ 4b / 5b: Không tìm thấy bài đăng phù hợp */}
+                    <h3>Không tìm thấy kết quả phù hợp</h3>
+                    <p>
+                      Không tìm thấy bài đăng nào phù hợp với {activeSearch ? `từ khóa "${activeSearch}"` : ''}{activeSearch && selectedTag !== 'Tất cả' ? ' thuộc ' : ''}{selectedTag !== 'Tất cả' ? `chủ đề "${selectedTag}"` : ''}. Vui lòng thử từ khóa khác hoặc xóa điều kiện lọc để xem thêm bài đăng.
+                    </p>
+                    <div className="empty-actions-wrap">
+                      <button
+                        type="button"
+                        className="community-btn-secondary"
+                        onClick={handleResetAllFilters}
+                      >
+                        <i className="bi bi-arrow-counterclockwise" /> Xóa bộ lọc &amp; Tải lại
+                      </button>
+                      <button
+                        type="button"
+                        className="community-btn-primary"
+                        onClick={() => handleOpenCreateModal(selectedTag !== 'Tất cả' ? selectedTag : 'Chia sẻ chung')}
+                      >
+                        <i className="bi bi-pencil-square" /> Tạo bài viết mới
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-chat-heart" />
+                    <h3>Chưa có bài viết nào</h3>
+                    <p>
+                      Hãy là người đầu tiên chia sẻ công thức món ăn hoặc kinh nghiệm dinh dưỡng hôm nay!
+                    </p>
+                    <button
+                      type="button"
+                      className="community-btn-primary"
+                      onClick={() => handleOpenCreateModal('Chia sẻ chung')}
+                    >
+                      <i className="bi bi-pencil-square" /> Đăng bài ngay
+                    </button>
+                  </>
+                )}
               </div>
             ) : (
               <div className="community-posts-list">
@@ -789,26 +1502,48 @@ export default function CommunityPage() {
                             </div>
                             <span className="post-time" title={post.createdAt}>
                               <i className="bi bi-clock" /> {formatRelativeTime(post.createdAt)}
+                              {post.isEdited && (
+                                <span
+                                  className="post-edited-indicator"
+                                  title={
+                                    post.editedAt
+                                      ? `Chỉnh sửa lúc ${formatRelativeTime(post.editedAt)}`
+                                      : 'Đã chỉnh sửa'
+                                  }
+                                >
+                                  · (Đã chỉnh sửa)
+                                </span>
+                              )}
                             </span>
                           </div>
                         </div>
 
-                        {/* MENU TÙY CHỌN (XÓA BÀI NẾU LÀ TÁC GIẢ HOẶC ADMIN) */}
+                        {/* MENU TÙY CHỌN (CHỈNH SỬA & XÓA BÀI NẾU LÀ TÁC GIẢ HOẶC ADMIN) */}
                         {(isAuthor || isAdmin) && (
-                          <button
-                            type="button"
-                            className="post-delete-btn"
-                            title="Xóa bài viết"
-                            onClick={() => handleDeletePost(post._id)}
-                          >
-                            <i className="bi bi-trash" />
-                          </button>
+                          <div className="post-header-actions">
+                            <button
+                              type="button"
+                              className="post-action-icon-btn post-edit-btn"
+                              title="Chỉnh sửa bài viết"
+                              onClick={() => handleOpenEditModal(post)}
+                            >
+                              <i className="bi bi-pencil-square" />
+                            </button>
+                            <button
+                              type="button"
+                              className="post-action-icon-btn post-delete-btn"
+                              title="Xóa bài viết"
+                              onClick={() => handlePromptDeletePost(post)}
+                            >
+                              <i className="bi bi-trash" />
+                            </button>
+                          </div>
                         )}
                       </div>
 
                       {/* NỘI DUNG VĂN BẢN */}
                       <div className="post-body">
-                        <p className="post-text">{post.content}</p>
+                        <p className="post-text">{renderFormattedContent(post.content, handleSelectTag)}</p>
                       </div>
 
                       {/* HÌNH ẢNH MINH HỌA (NẾU CÓ) */}
@@ -839,7 +1574,7 @@ export default function CommunityPage() {
                         </span>
                       </div>
 
-                      {/* THANH NÚT TƯƠNG TÁC (LIKE, COMMENT, SHARE - FB STYLE) */}
+                      {/* THANH NÚT TƯƠNG TÁC (LIKE, COMMENT - BỎ NÚT CHIA SẺ) */}
                       <div className="post-actions-bar">
                         <button
                           type="button"
@@ -857,15 +1592,6 @@ export default function CommunityPage() {
                         >
                           <i className="bi bi-chat-text" />
                           <span>Bình luận</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          className="post-footer-btn"
-                          onClick={() => handleSharePost(post._id)}
-                        >
-                          <i className="bi bi-share" />
-                          <span>Chia sẻ</span>
                         </button>
                       </div>
 
@@ -991,7 +1717,9 @@ export default function CommunityPage() {
                                           <div className="comment-author-name">
                                             {cAuthor.fullName || 'Thành viên'}
                                           </div>
-                                          <div className="comment-content">{c.content}</div>
+                                          <div className="comment-content">
+                                            {renderFormattedContent(c.content, handleSelectTag)}
+                                          </div>
                                         </div>
                                         <div className="comment-footer-actions">
                                           <span className="comment-time">
@@ -1172,16 +1900,123 @@ export default function CommunityPage() {
 
               {/* NHẬP NỘI DUNG BÀI VIẾT (BƯỚC 3 & NGOẠI LỆ 3a) */}
               <div className="modal-textarea-wrap">
+                {/* Gợi ý gắn thẻ nhanh */}
+                <div className="quick-mention-bar">
+                  <span className="quick-mention-label">
+                    <i className="bi bi-magic" /> Gợi ý gắn thẻ:
+                  </span>
+                  <div className="quick-mention-chips">
+                    {COMMUNITY_TAGS.filter((t) => t !== 'Tất cả').map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className="quick-mention-chip"
+                        onClick={() => handleInsertQuickTag(tag)}
+                        title={`Bấm để chèn @${tag}`}
+                      >
+                        <i className="bi bi-at" />{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <textarea
+                  ref={textareaRef}
                   rows={5}
-                  placeholder={`${firstName} ơi, bạn muốn chia sẻ điều gì về dinh dưỡng, công thức hay bài tập hôm nay?...`}
+                  placeholder={`${firstName} ơi, bạn muốn chia sẻ điều gì về dinh dưỡng, công thức hay bài tập hôm nay? Gõ @ để gắn thẻ thành viên hoặc chủ đề...`}
                   value={postContent}
-                  onChange={(e) => {
-                    setPostContent(e.target.value)
-                    if (feedbackError) setFeedbackError('')
-                  }}
+                  onChange={handleTextareaChange}
+                  onKeyDown={handleTextareaKeyDown}
+                  onClick={handleTextareaCursorMove}
+                  onKeyUp={handleTextareaCursorMove}
                   autoFocus
                 />
+
+                {/* POPUP MENU GỢI Ý KHI GÕ @ */}
+                {showMentionMenu && (
+                  <div className="mention-dropdown-menu" ref={mentionMenuRef}>
+                    <div className="mention-dropdown-header">
+                      <div className="mention-header-title">
+                        <i className="bi bi-at" /> Gợi ý gắn thẻ {mentionQuery ? `cho "${mentionQuery}"` : ''}
+                      </div>
+                      <button
+                        type="button"
+                        className="mention-dropdown-close"
+                        onClick={() => setShowMentionMenu(false)}
+                        title="Đóng menu gợi ý (Esc)"
+                      >
+                        <i className="bi bi-x" />
+                      </button>
+                    </div>
+
+                    <div className="mention-dropdown-body">
+                      {filteredMentions.length === 0 ? (
+                        <div className="mention-empty-hint">
+                          <i className="bi bi-search" /> Không tìm thấy gợi ý phù hợp
+                        </div>
+                      ) : (
+                        filteredMentions.map((item, index) => {
+                          const isActive = index === activeMentionIndex
+                          return (
+                            <div
+                              key={`${item.type}-${item.id}`}
+                              className={`mention-item ${isActive ? 'is-active' : ''}`}
+                              onMouseEnter={() => setActiveMentionIndex(index)}
+                              onClick={() => handleSelectMention(item)}
+                            >
+                              {item.type === 'user' ? (
+                                <div className="mention-avatar-wrap">
+                                  {item.avatarUrl ? (
+                                    <img
+                                      src={resolveMediaUrl(item.avatarUrl)}
+                                      alt={item.text}
+                                      className="mention-avatar"
+                                    />
+                                  ) : (
+                                    <div className="mention-avatar-fallback">
+                                      {item.text.charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div
+                                  className="mention-tag-icon"
+                                  style={{ backgroundColor: item.bg, color: item.color }}
+                                >
+                                  <i className={`bi ${item.icon}`} />
+                                </div>
+                              )}
+
+                              <div className="mention-item-info">
+                                <div className="mention-item-name">
+                                  <span className="mention-item-at">@</span>
+                                  <strong>{item.text}</strong>
+                                  {item.role === 'admin' && (
+                                    <span className="mention-badge-admin">Admin</span>
+                                  )}
+                                  {item.type === 'tag' && (
+                                    <span className="mention-badge-tag">Chủ đề</span>
+                                  )}
+                                </div>
+                                <div className="mention-item-sub">{item.subtitle}</div>
+                              </div>
+
+                              <div className="mention-item-enter-hint">
+                                <i className="bi bi-arrow-return-left" />
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    <div className="mention-dropdown-footer">
+                      <span>
+                        Dùng <strong>↑</strong> <strong>↓</strong> và <strong>Enter</strong> để chọn, <strong>Esc</strong> để thoát
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ĐÍNH KÈM HÌNH ẢNH (BƯỚC 4, LUỒNG 4b, NGOẠI LỆ 4b) */}
@@ -1315,6 +2150,349 @@ export default function CommunityPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA BÀI VIẾT (Thay thế hoàn toàn window.confirm / không còn thông báo localhost) */}
+      {deleteConfirmPost && (
+        <div
+          className="community-modal-backdrop"
+          onClick={() => !deletePostSubmitting && setDeleteConfirmPost(null)}
+        >
+          <div
+            className="community-modal delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-delete-post-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="community-modal-header">
+              <h3 id="modal-delete-post-title">
+                <i className="bi bi-trash3-fill" style={{ color: '#ef4444', marginRight: '8px' }} />
+                Xác nhận xóa bài viết
+              </h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => !deletePostSubmitting && setDeleteConfirmPost(null)}
+                title="Hủy"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+            <div className="community-modal-body">
+              <p className="delete-modal-desc">
+                Bạn có chắc chắn muốn xóa bài viết này không? Bài viết sẽ được gỡ khỏi bảng tin cộng đồng và hành động này không thể hoàn tác.
+              </p>
+              {deleteConfirmPost.content && (
+                <div className="delete-comment-quote">
+                  <i className="bi bi-chat-quote-fill" />
+                  <span>
+                    "{deleteConfirmPost.content.length > 140
+                      ? deleteConfirmPost.content.slice(0, 140) + '...'
+                      : deleteConfirmPost.content}"
+                  </span>
+                </div>
+              )}
+              <div className="community-modal-footer">
+                <button
+                  type="button"
+                  className="community-btn-secondary"
+                  onClick={() => setDeleteConfirmPost(null)}
+                  disabled={deletePostSubmitting}
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger-confirm"
+                  onClick={handleConfirmDeletePost}
+                  disabled={deletePostSubmitting}
+                >
+                  {deletePostSubmitting ? (
+                    <>
+                      <i className="bi bi-arrow-repeat spin" /> Đang xóa...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-trash-fill" /> Xác nhận xóa
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CHỈNH SỬA BÀI VIẾT */}
+      {editingPost && (
+        <div className="community-modal-backdrop" onClick={handleCancelEditPost}>
+          <div
+            className="community-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-edit-post-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="community-modal-header">
+              <h3 id="modal-edit-post-title">
+                <i className="bi bi-pencil-square" style={{ color: '#059669', marginRight: '8px' }} />
+                Chỉnh sửa bài viết
+              </h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={handleCancelEditPost}
+                title="Đóng"
+                disabled={editSubmitting}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitEditPost} className="community-modal-body">
+              {/* THÔNG TIN TÁC GIẢ BÀI VIẾT */}
+              <div className="modal-user-row">
+                {user?.avatarUrl ? (
+                  <img
+                    src={resolveMediaUrl(user.avatarUrl)}
+                    alt={user.fullName}
+                    className="avatar-sm"
+                  />
+                ) : (
+                  <div className="avatar-sm-fallback">{firstName.charAt(0).toUpperCase()}</div>
+                )}
+                <div>
+                  <strong className="modal-user-name">{user?.fullName || 'Bạn'}</strong>
+                  <div className="modal-privacy-chip">
+                    <i className="bi bi-pencil-fill" /> Đang chỉnh sửa nội dung
+                  </div>
+                </div>
+              </div>
+
+              {/* CHỌN CHỦ ĐỀ CHO BÀI VIẾT */}
+              <div className="modal-tag-selector">
+                <label htmlFor="edit-post-tag-select">
+                  <i className="bi bi-tag-fill" /> Chọn chủ đề bài viết:
+                </label>
+                <select
+                  id="edit-post-tag-select"
+                  value={editTag}
+                  onChange={(e) => setEditTag(e.target.value)}
+                  disabled={editSubmitting}
+                >
+                  {COMMUNITY_TAGS.filter((t) => t !== 'Tất cả').map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* NHẬP NỘI DUNG BÀI VIẾT */}
+              <div className="modal-textarea-wrap">
+                {/* Gợi ý gắn thẻ nhanh */}
+                <div className="quick-mention-bar">
+                  <span className="quick-mention-label">
+                    <i className="bi bi-magic" /> Gợi ý gắn thẻ:
+                  </span>
+                  <div className="quick-mention-chips">
+                    {COMMUNITY_TAGS.filter((t) => t !== 'Tất cả').map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        className="quick-mention-chip"
+                        onClick={() => handleInsertEditQuickTag(tag)}
+                        title={`Bấm để chèn @${tag}`}
+                        disabled={editSubmitting}
+                      >
+                        <i className="bi bi-at" />{tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <textarea
+                  ref={editTextareaRef}
+                  rows={5}
+                  placeholder="Cập nhật nội dung bài viết... Gõ @ để gắn thẻ thành viên hoặc chủ đề..."
+                  value={editContent}
+                  onChange={handleEditTextareaChange}
+                  onKeyDown={handleEditTextareaKeyDown}
+                  onClick={handleEditTextareaCursorMove}
+                  onKeyUp={handleEditTextareaCursorMove}
+                  disabled={editSubmitting}
+                  autoFocus
+                />
+
+                {/* MENU GỢI Ý KHI GÕ @ TRONG EDIT MODAL */}
+                {editShowMentionMenu && (
+                  <div className="mention-dropdown-menu" ref={editMentionMenuRef}>
+                    <div className="mention-dropdown-header">
+                      <div className="mention-header-title">
+                        <i className="bi bi-at" /> Gợi ý gắn thẻ {editMentionQuery ? `cho "${editMentionQuery}"` : ''}
+                      </div>
+                      <button
+                        type="button"
+                        className="mention-dropdown-close"
+                        onClick={() => setEditShowMentionMenu(false)}
+                        title="Đóng menu gợi ý (Esc)"
+                      >
+                        <i className="bi bi-x" />
+                      </button>
+                    </div>
+
+                    <div className="mention-dropdown-body">
+                      {filteredEditMentions.length === 0 ? (
+                        <div className="mention-empty-hint">
+                          <i className="bi bi-search" /> Không tìm thấy gợi ý phù hợp
+                        </div>
+                      ) : (
+                        filteredEditMentions.map((item, index) => {
+                          const isActive = index === editActiveMentionIndex
+                          return (
+                            <div
+                              key={`${item.type}-${item.id}`}
+                              className={`mention-item ${isActive ? 'is-active' : ''}`}
+                              onMouseEnter={() => setEditActiveMentionIndex(index)}
+                              onClick={() => handleSelectEditMention(item)}
+                            >
+                              {item.type === 'user' ? (
+                                <div className="mention-avatar-wrap">
+                                  {item.avatarUrl ? (
+                                    <img
+                                      src={resolveMediaUrl(item.avatarUrl)}
+                                      alt={item.text}
+                                      className="mention-avatar"
+                                    />
+                                  ) : (
+                                    <div className="mention-avatar-fallback">
+                                      {item.text.charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div
+                                  className="mention-tag-icon"
+                                  style={{ backgroundColor: item.bg, color: item.color }}
+                                >
+                                  <i className={`bi ${item.icon}`} />
+                                </div>
+                              )}
+
+                              <div className="mention-item-info">
+                                <div className="mention-item-name">
+                                  <span className="mention-item-at">@</span>
+                                  <strong>{item.text}</strong>
+                                  {item.role === 'admin' && (
+                                    <span className="mention-badge-admin">Admin</span>
+                                  )}
+                                  {item.type === 'tag' && (
+                                    <span className="mention-badge-tag">Chủ đề</span>
+                                  )}
+                                </div>
+                                <div className="mention-item-sub">{item.subtitle}</div>
+                              </div>
+
+                              <div className="mention-item-enter-hint">
+                                <i className="bi bi-arrow-return-left" />
+                              </div>
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    <div className="mention-dropdown-footer">
+                      <span>
+                        Dùng <strong>↑</strong> <strong>↓</strong> và <strong>Enter</strong> để chọn, <strong>Esc</strong> để thoát
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* HÌNH ẢNH MINH HỌA */}
+              <div className="modal-media-section">
+                {editImagePreviewUrl && !editRemoveImage ? (
+                  <div className="modal-image-preview-box">
+                    <img src={editImagePreviewUrl} alt="Xem trước ảnh minh họa" />
+                    <button
+                      type="button"
+                      className="remove-image-btn"
+                      onClick={handleRemoveEditImage}
+                      title="Gỡ ảnh minh họa"
+                      disabled={editSubmitting}
+                    >
+                      <i className="bi bi-x-circle-fill" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className="modal-upload-trigger"
+                    onClick={() => editFileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleEditFileDrop}
+                  >
+                    <i className="bi bi-image" />
+                    <div>
+                      <strong>
+                        {editRemoveImage
+                          ? 'Đã gỡ ảnh — Nhấn để chọn ảnh mới nếu muốn'
+                          : 'Thêm hình ảnh minh họa cho bài viết'}
+                      </strong>
+                      <small>Hỗ trợ định dạng JPG, PNG, WEBP tối đa 5MB</small>
+                    </div>
+                  </div>
+                )}
+
+                <input
+                  ref={editFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  style={{ display: 'none' }}
+                  onChange={handleEditFileSelected}
+                  disabled={editSubmitting}
+                />
+              </div>
+
+              {/* THÔNG BÁO LỖI INLINE NẾU CÓ */}
+              {feedbackError && (
+                <div className="modal-inline-error">
+                  <i className="bi bi-exclamation-triangle-fill" />
+                  <span>{feedbackError}</span>
+                </div>
+              )}
+
+              {/* NÚT HÀNH ĐỘNG MODAL: HỦY VÀ LƯU THAY ĐỔI */}
+              <div className="community-modal-footer">
+                <button
+                  type="button"
+                  className="community-btn-secondary"
+                  onClick={handleCancelEditPost}
+                  disabled={editSubmitting}
+                >
+                  Hủy thao tác
+                </button>
+                <button
+                  type="submit"
+                  className="community-btn-primary"
+                  disabled={editSubmitting || !editContent.trim()}
+                >
+                  {editSubmitting ? (
+                    <>
+                      <i className="bi bi-arrow-repeat spin" /> Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-check2-circle" /> Lưu thay đổi
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -66,6 +66,14 @@ const communityPostSchema = new mongoose.Schema(
       default: 'published',
       index: true,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+      default: null,
+    },
     likes: [
       {
         type: mongoose.Schema.Types.ObjectId,

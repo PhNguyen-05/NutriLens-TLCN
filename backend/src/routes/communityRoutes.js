@@ -6,10 +6,12 @@ const { optionalAuth } = require('../middleware/auth');
 const {
   createPost,
   getPosts,
+  getMentionSuggestions,
   toggleLike,
   addComment,
   updateComment,
   deleteComment,
+  updatePost,
   deletePost,
 } = require('../controllers/communityController');
 
@@ -49,6 +51,9 @@ function handleUploadError(err, req, res, next) {
 // 1. Lấy danh sách bài viết cộng đồng (xem bảng tin)
 router.get('/posts', optionalAuth, getPosts);
 
+// 1.1 Gợi ý thành viên và thẻ tag khi gõ @
+router.get('/mention-suggestions', optionalAuth, getMentionSuggestions);
+
 // 2. UC26: Đăng bài viết cộng đồng
 router.post(
   '/posts',
@@ -66,7 +71,14 @@ router.post('/posts/:id/comments', requireAuth, addComment);
 router.put('/posts/:postId/comments/:commentId', requireAuth, updateComment);
 router.delete('/posts/:postId/comments/:commentId', requireAuth, deleteComment);
 
-// 5. Xóa bài viết
+// 5. Chỉnh sửa và Xóa bài viết
+router.put(
+  '/posts/:id',
+  requireAuth,
+  postImageUpload.single('image'),
+  handleUploadError,
+  updatePost
+);
 router.delete('/posts/:id', requireAuth, deletePost);
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const path = require('path');
+const User = require('../models/User');
 const { CommunityPost, COMMUNITY_TAGS } = require('../models/CommunityPost');
 const { isCloudinaryConfigured, uploadFileToCloudinary } = require('../services/cloudinaryStorage');
 
@@ -133,8 +134,21 @@ async function getPosts(req, res) {
       filter.tag = tag;
     }
 
-    if (search && typeof search === 'string' && search.trim()) {
-      filter.content = { $regex: search.trim(), $options: 'i' };
+    // UC29: Xử lý tìm kiếm theo từ khóa
+    if (search && typeof search === 'string') {
+      const trimmedSearch = search.trim();
+      // Ngoại lệ 3a / 4a: Thông tin tìm kiếm không hợp lệ nếu vượt quá độ dài cho phép
+      if (trimmedSearch.length > 100) {
+        return res.status(400).json({ message: 'Thông tin tìm kiếm không hợp lệ' });
+      }
+      if (trimmedSearch) {
+        // Thoát ký tự đặc biệt của regex để truy vấn an toàn
+        const safeRegex = trimmedSearch.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+        filter.$or = [
+          { content: { $regex: safeRegex, $options: 'i' } },
+          { tag: { $regex: safeRegex, $options: 'i' } },
+        ];
+      }
     }
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
@@ -176,14 +190,15 @@ async function getPosts(req, res) {
     });
   } catch (error) {
     console.error('[getPosts] Lỗi lấy danh sách bài viết:', error);
+    // UC29 Ngoại lệ 4c / 5c: Lỗi hệ thống khi truy vấn dữ liệu
     return res.status(500).json({
-      message: 'Không thể tải danh sách bài viết cộng đồng',
+      message: 'Không thể tải kết quả, vui lòng thử lại',
     });
   }
 }
 
 /**
- * Thả tim / Bỏ thả tim bài viết
+ * UC28: Thích/Bỏ thích bài đăng
  * POST /api/community/posts/:id/like
  */
 async function toggleLike(req, res) {
@@ -192,17 +207,20 @@ async function toggleLike(req, res) {
     const userId = req.user.id;
 
     const post = await CommunityPost.findById(id);
+    // UC28 Ngoại lệ 2a / 3a: Bài đăng không còn tồn tại
     if (!post || post.status !== 'published') {
-      return res.status(404).json({ message: 'Bài viết không tồn tại hoặc đã bị ẩn' });
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại' });
     }
 
     const userLikedIndex = post.likes.findIndex((uid) => String(uid) === String(userId));
     let isLiked = false;
 
     if (userLikedIndex > -1) {
+      // UC28 Luồng thay thế 1a - 4a: Bỏ thích bài đăng
       post.likes.splice(userLikedIndex, 1);
       isLiked = false;
     } else {
+      // UC28 Luồng chính 3 - 5: Ghi nhận lượt thích
       post.likes.push(userId);
       isLiked = true;
     }
@@ -213,10 +231,12 @@ async function toggleLike(req, res) {
     return res.status(200).json({
       isLiked,
       likeCount: post.likeCount,
+      message: isLiked ? 'Đã thích bài đăng' : 'Đã bỏ thích bài đăng',
     });
   } catch (error) {
     console.error('[toggleLike] Lỗi:', error);
-    return res.status(500).json({ message: 'Không thể xử lý thao tác thích bài viết' });
+    // UC28 Ngoại lệ 3b / 4b: Không thể cập nhật trạng thái thích do lỗi hệ thống
+    return res.status(500).json({ message: 'Không thể cập nhật trạng thái thích, vui lòng thử lại' });
   }
 }
 
@@ -367,6 +387,101 @@ async function deleteComment(req, res) {
 }
 
 /**
+ * Chỉnh sửa bài viết
+ * PUT /api/community/posts/:id
+ */
+async function updatePost(req, res) {
+  try {
+    const { id } = req.params;
+    let { content, tag, imageUrl, removeImage } = req.body || {};
+
+    const post = await CommunityPost.findById(id);
+    if (!post || post.status === 'deleted') {
+      return res.status(404).json({ message: 'Bài viết không còn tồn tại' });
+    }
+
+    const isAuthor = String(post.authorId) === String(req.user.id);
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({ message: 'Bạn không có quyền chỉnh sửa bài viết này' });
+    }
+
+    // 1. Kiểm tra nội dung bài viết
+    content = String(content || '').trim();
+    if (!content) {
+      return res.status(400).json({ message: 'Nội dung bài viết không được để trống' });
+    }
+
+    // 2. Kiểm tra tag / chủ đề
+    tag = String(tag || '').trim();
+    if (!tag || !COMMUNITY_TAGS.includes(tag)) {
+      tag = post.tag || 'Chia sẻ chung';
+    }
+
+    post.content = content;
+    post.tag = tag;
+
+    // 3. Xử lý ảnh minh họa
+    if (removeImage === 'true' || removeImage === true) {
+      post.imageUrl = null;
+    } else if (req.file) {
+      const file = req.file;
+      const isAllowedMime = ALLOWED_MIME_TYPES.includes(file.mimetype) || file.mimetype?.startsWith('image/');
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isAllowedExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.jfif', '.bmp'].includes(ext);
+
+      if (!isAllowedMime && !isAllowedExt) {
+        return res.status(400).json({ message: 'Hình ảnh không hợp lệ' });
+      }
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        return res.status(400).json({ message: 'Hình ảnh không hợp lệ. Dung lượng ảnh vượt quá 5MB.' });
+      }
+
+      if (isCloudinaryConfigured()) {
+        const uploadResult = await uploadFileToCloudinary(file, 'community_posts');
+        post.imageUrl = uploadResult.secure_url;
+      } else {
+        post.imageUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+      }
+    } else if (imageUrl && typeof imageUrl === 'string') {
+      const trimmedUrl = imageUrl.trim();
+      if (trimmedUrl.startsWith('data:image/') || /^https?:\/\//i.test(trimmedUrl)) {
+        post.imageUrl = trimmedUrl;
+      }
+    }
+
+    post.isEdited = true;
+    post.editedAt = new Date();
+    await post.save();
+
+    const populatedPost = await CommunityPost.findById(post._id)
+      .populate('authorId', 'fullName email avatarUrl role')
+      .populate('comments.authorId', 'fullName email avatarUrl role')
+      .lean();
+
+    const currentUserId = req.user?.id ? String(req.user.id) : null;
+    const isLiked = currentUserId
+      ? (populatedPost.likes || []).some((uid) => String(uid) === currentUserId)
+      : false;
+
+    return res.status(200).json({
+      message: 'Cập nhật bài viết thành công',
+      post: {
+        ...populatedPost,
+        isLiked,
+        likeCount: populatedPost.likes ? populatedPost.likes.length : 0,
+        commentCount: populatedPost.comments ? populatedPost.comments.length : 0,
+      },
+    });
+  } catch (error) {
+    console.error('[updatePost] Lỗi:', error);
+    return res.status(500).json({ message: 'Không thể cập nhật bài viết, vui lòng thử lại' });
+  }
+}
+
+/**
  * Xóa bài viết
  * DELETE /api/community/posts/:id
  */
@@ -397,12 +512,62 @@ async function deletePost(req, res) {
   }
 }
 
+/**
+ * Lấy danh sách gợi ý thành viên & thẻ tag khi người dùng gõ @ trong bài viết
+ * GET /api/community/mention-suggestions?q=...
+ */
+async function getMentionSuggestions(req, res) {
+  try {
+    const { q = '' } = req.query;
+    const queryStr = String(q || '').trim();
+
+    // 1. Tìm kiếm User (active)
+    let userFilter = { status: { $ne: 'locked' } };
+    if (queryStr) {
+      const safeRegex = queryStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      userFilter.$or = [
+        { fullName: { $regex: safeRegex, $options: 'i' } },
+        { email: { $regex: safeRegex, $options: 'i' } },
+      ];
+    }
+
+    const users = await User.find(userFilter)
+      .select('fullName email avatarUrl role')
+      .sort({ role: -1, createdAt: -1 })
+      .limit(15)
+      .lean();
+
+    // 2. Tìm kiếm chủ đề / Tag cộng đồng phù hợp
+    const matchedTags = COMMUNITY_TAGS.filter((tag) => {
+      if (tag === 'Tất cả') return false;
+      if (!queryStr) return true;
+      return tag.toLowerCase().includes(queryStr.toLowerCase());
+    });
+
+    return res.status(200).json({
+      users: users.map((u) => ({
+        id: u._id,
+        fullName: u.fullName,
+        email: u.email,
+        avatarUrl: u.avatarUrl,
+        role: u.role,
+      })),
+      tags: matchedTags,
+    });
+  } catch (error) {
+    console.error('[getMentionSuggestions] Lỗi:', error);
+    return res.status(500).json({ message: 'Không thể lấy danh sách gợi ý' });
+  }
+}
+
 module.exports = {
   createPost,
   getPosts,
+  getMentionSuggestions,
   toggleLike,
   addComment,
   updateComment,
   deleteComment,
+  updatePost,
   deletePost,
 };
