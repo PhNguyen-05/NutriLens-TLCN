@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const fs = require('fs/promises');
+const path = require('path');
+const { randomUUID } = require('crypto');
 
 const User = require('../models/User');
 const Food = require('../models/Food');
@@ -6,9 +9,29 @@ const FoodRequest = require('../models/FoodRequest');
 const Exercise = require('../models/Exercise');
 const BlogPost = require('../models/BlogPost');
 const AdminActionLog = require('../models/AdminActionLog');
-const { uploadFileToCloudinary } = require('../services/cloudinaryStorage');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
+const UNLOCK_EVIDENCE_DIRECTORY = path.join(__dirname, '../../uploads/unlock-evidence');
+const EVIDENCE_EXTENSIONS = { 'image/jpeg': '.jpg', 'image/png': '.png', 'application/pdf': '.pdf' };
+
+async function storeUnlockEvidence(file) {
+  if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
+    throw new Error('Tệp minh chứng không có dữ liệu hợp lệ');
+  }
+
+  const extension = EVIDENCE_EXTENSIONS[file.mimetype];
+  if (!extension) throw new Error('Định dạng tệp minh chứng không được hỗ trợ');
+
+  await fs.mkdir(UNLOCK_EVIDENCE_DIRECTORY, { recursive: true });
+  const filename = `${randomUUID()}${extension}`;
+  const filePath = path.join(UNLOCK_EVIDENCE_DIRECTORY, filename);
+  await fs.writeFile(filePath, file.buffer, { flag: 'wx' });
+
+  return {
+    url: `/uploads/unlock-evidence/${filename}`,
+    filePath,
+  };
+}
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -261,7 +284,10 @@ async function getUserDetail(req, res) {
 
 async function updateUserStatus(req, res) {
   const uploadedEvidence = req.files || [];
-  const storedEvidenceUrls = [];
+  const storedEvidenceFiles = [];
+  let actionLogId = null;
+  let actionLogSaved = false;
+  let userSaved = false;
 
   try {
     const { id } = req.params;
@@ -314,15 +340,6 @@ async function updateUserStatus(req, res) {
 
     const action = status === 'locked' ? 'lock_user' : 'unlock_user';
 
-    if (status === 'active') {
-      for (const file of uploadedEvidence) {
-        storedEvidenceUrls.push(await uploadFileToCloudinary(
-          file,
-          process.env.CLOUDINARY_EVIDENCE_FOLDER || 'nutrilens/unlock-evidence'
-        ));
-      }
-    }
-
     targetUser.status = status;
     targetUser.lockReason = status === 'locked' ? String(lockReason).trim() : null;
     targetUser.adminLockDurationDays = status === 'locked' ? Number(lockDurationDays) : null;
@@ -338,9 +355,7 @@ async function updateUserStatus(req, res) {
       targetUser.lockUntil = null;
     }
 
-    await targetUser.save();
-
-    await AdminActionLog.create({
+    const actionLog = new AdminActionLog({
       adminId,
       actionType: action,
       targetType: 'User',
@@ -348,13 +363,28 @@ async function updateUserStatus(req, res) {
       reason: status === 'locked' ? targetUser.lockReason : String(unlockReason || '').trim(),
       durationDays: status === 'locked' ? Number(lockDurationDays) : null,
       note: status === 'locked' ? targetUser.adminLockNote : null,
-      evidence: status === 'active' ? uploadedEvidence.map((file, index) => ({
-        url: storedEvidenceUrls[index],
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-      })) : [],
+      evidence: [],
     });
+
+    if (status === 'active') {
+      for (const file of uploadedEvidence) {
+        const storedEvidence = await storeUnlockEvidence(file);
+        storedEvidenceFiles.push(storedEvidence);
+        actionLog.evidence.push({
+          url: storedEvidence.url,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size,
+        });
+      }
+    }
+
+    await actionLog.save();
+    actionLogId = actionLog._id;
+    actionLogSaved = true;
+
+    await targetUser.save();
+    userSaved = true;
 
     const safeUser = await User.findById(targetUser._id).select(USER_LIST_FIELDS).lean();
 
@@ -364,7 +394,21 @@ async function updateUserStatus(req, res) {
     });
   } catch (err) {
     console.error('[updateUserStatus] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });
+    if (!userSaved) {
+      if (actionLogSaved) {
+        await AdminActionLog.deleteOne({ _id: actionLogId }).catch((cleanupError) => {
+          console.error('[updateUserStatus] Không thể dọn nhật ký thao tác:', cleanupError.message);
+        });
+      }
+      if (storedEvidenceFiles.length) {
+        await Promise.all(storedEvidenceFiles.map(({ filePath }) => fs.unlink(filePath).catch((cleanupError) => {
+          console.error('[updateUserStatus] Không thể dọn tệp minh chứng:', cleanupError.message);
+        })));
+      }
+    }
+    return res.status(err.status || 500).json({
+      message: err.status === 502 ? 'Không thể lưu tệp minh chứng, vui lòng thử lại' : 'Thao tác thất bại, vui lòng thử lại',
+    });
   }
 }
 

@@ -73,9 +73,16 @@ export function getAnalyticsChartPeriod(rows, { sumKeys = [], averageKeys = [] }
 }
 
 export function MonthCalendarPicker({ value, onChange, onApply }) {
+  const now = new Date()
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  const isFutureMonth = Boolean(value && value > currentMonth)
+
   return <div className="aa-date-picker aa-month-picker" role="dialog" aria-label="Chọn tháng và năm">
-    <label>Chọn tháng và năm<input type="month" value={value} onChange={(event) => onChange(event.target.value)} /></label>
-    <button type="button" onClick={onApply}>Áp dụng</button>
+    <label>Chọn tháng và năm<input type="month" value={value} max={currentMonth} onChange={(event) => {
+      const selectedMonth = event.target.value
+      if (selectedMonth && selectedMonth <= currentMonth) onChange(selectedMonth)
+    }} /></label>
+    <button type="button" onClick={onApply} disabled={!value || isFutureMonth}>Áp dụng</button>
   </div>
 }
 

@@ -838,6 +838,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .action-log-evidence { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: #247dc1; font-size: 10px; text-decoration: none; }
 .admin-action-log-panel .action-log-evidence { font-size: 12px; }
 .action-log-evidence:hover { text-decoration: underline; }
+.action-log-evidence-error { margin: 0; color: #c24348; font-size: 12px; }
 .action-log-empty { height: 120px; color: #7a91a7 !important; text-align: center; }
 .action-log-empty.error { color: #c24348 !important; }
 .action-log-empty .user-spinner { display: inline-block; margin-right: 8px; vertical-align: middle; }
@@ -8788,6 +8789,7 @@ td.fdm-td-center { text-align: center !important; }
 .aa-date-picker label { display: grid; gap: 5px; color: #64829d; font-size: 9px; }
 .aa-date-picker input { min-height: 30px; padding: 4px 6px; border: 1px solid #d8e6f0; border-radius: 5px; color: #124b83; }
 .aa-date-picker > button { height: 30px; padding: 0 11px; border: 0; border-radius: 6px; background: #078b65; color: #fff; cursor: pointer; }
+.aa-date-picker > button:disabled { opacity: .55; cursor: not-allowed; }
 .aa-food-muted { color: #d87c32; }
 .aa-food-chart-grid { display: grid; grid-template-columns: 1.55fr .9fr 1.05fr; gap: 11px; min-height: 204px; }
 .aa-food-trend-panel,
@@ -8987,7 +8989,7 @@ td.fdm-td-center { text-align: center !important; }
 .aa-trend-chart text { fill: #10528f; font-size: 8px; text-anchor: end; }
 .aa-trend-chart .aa-trend-tick { stroke: #e9f1f7; stroke-width: .6; }
 .aa-trend-chart .aa-trend-date { text-anchor: middle; font-size: 8px; }
-.aa-trend-chart .aa-trend-week-range { fill: #6389a8; text-anchor: middle; font-size: 6px; }
+.aa-trend-chart .aa-trend-week-range { fill: #6389a8; text-anchor: middle; font-size: 8px; }
 .aa-trend-area { fill: url(#aa-trend-fill); }
 .aa-trend-total,
 .aa-trend-new { fill: none; stroke-width: 1.5; }

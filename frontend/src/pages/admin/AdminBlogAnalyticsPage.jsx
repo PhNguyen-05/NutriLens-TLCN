@@ -53,10 +53,7 @@ function BlogPublishingChart({ rows, mode }) {
   const isWeekly = mode === 'month'
   const maxValue = Math.max(0, ...rows.flatMap((row) => [row.published, row.drafted]))
   const axis = blogChartAxis(maxValue)
-  const labelCount = Math.min(8, rows.length)
-  const labelIndices = new Set(Array.from({ length: labelCount }, (_, index) => (
-    labelCount === 1 ? 0 : Math.round(index * (rows.length - 1) / (labelCount - 1))
-  )))
+  const labelIndices = new Set(rows.map((_, index) => index))
   const axisLabelWidth = Math.max(34, number(axis.maximum).length * 8 + 8)
   const gridBottom = isWeekly ? 30 : 18
   const plotHeight = isWeekly ? 140 : 137

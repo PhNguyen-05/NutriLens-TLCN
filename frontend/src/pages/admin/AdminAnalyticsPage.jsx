@@ -97,21 +97,19 @@ function TrendChart({ points, mode }) {
   const y = (value) => 128 - value / axis.maximum * 120
   const totals = visiblePoints.map((point, index) => `${x(index)},${y(point.total)}`).join(' ')
   const newUsers = visiblePoints.map((point, index) => `${x(index)},${y(point.fresh)}`).join(' ')
-  const dateLabelStep = Math.max(1, Math.ceil(visiblePoints.length / 8))
   return (
     <svg className="aa-trend-chart" viewBox="0 0 540 160" role="img" aria-label={`Biểu đồ số người dùng đăng ký theo ${isWeekly ? 'tuần' : 'ngày'}`}>
       <defs><linearGradient id="aa-trend-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#02b388" stopOpacity=".18" /><stop offset="100%" stopColor="#02b388" stopOpacity="0" /></linearGradient></defs>
       {axis.ticks.map((tick) => { const lineY = 8 + (axis.maximum - tick) / axis.maximum * 120; return <g key={tick}><line x1="38" x2="520" y1={lineY} y2={lineY} /><text x="27" y={lineY + 4}>{number(tick)}</text></g> })}
       {visiblePoints.map((point, index) => {
-        const showLabel = index % dateLabelStep === 0 || index === visiblePoints.length - 1
         const startLabel = point.startDate ? `${point.startDate.slice(8, 10)}/${point.startDate.slice(5, 7)}` : ''
         const endLabel = point.endDate ? `${point.endDate.slice(8, 10)}/${point.endDate.slice(5, 7)}` : ''
         return <g key={point.date || 'empty'}>
           <title>{isWeekly ? `Tuần ${point.weekNumber}: ${formatInputDate(point.startDate)} - ${formatInputDate(point.endDate)}` : formatInputDate(point.date)}</title>
           <line className="aa-trend-tick" x1={x(index)} x2={x(index)} y1="8" y2="128" />
-          {showLabel && (isWeekly
+          {isWeekly
             ? <><text className="aa-trend-date" x={x(index)} y="140">Tuần {point.weekNumber}</text><text className="aa-trend-week-range" x={x(index)} y="151">{startLabel} – {endLabel}</text></>
-            : <text className="aa-trend-date" x={x(index)} y="150">{point.date ? `${point.date.slice(8, 10)}/${point.date.slice(5, 7)}` : ''}</text>)}
+            : <text className="aa-trend-date" x={x(index)} y="150">{point.date ? `${point.date.slice(8, 10)}/${point.date.slice(5, 7)}` : ''}</text>}
         </g>
       })}
       <polygon className="aa-trend-area" points={`38,128 ${totals} 520,128`} />

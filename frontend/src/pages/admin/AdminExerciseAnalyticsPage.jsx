@@ -72,7 +72,6 @@ function ActivityChart({ rows, mode }) {
 
 function CaloriesChart({ rows }) {
   const maxCalories = Math.max(1, ...rows.map((row) => row.calories))
-  const labelStep = Math.max(1, Math.ceil(rows.length / 8))
   const points = rows.map((row, index) => {
     const x = (index + 0.5) * 700 / Math.max(rows.length, 1)
     const y = 100 - row.calories / maxCalories * 82
@@ -83,8 +82,8 @@ function CaloriesChart({ rows }) {
     <div className="aa-exercise-axis"><span>{number(maxCalories)}</span><span>{number(maxCalories * .75)}</span><span>{number(maxCalories * .5)}</span><span>{number(maxCalories * .25)}</span><span>0</span></div>
     <div className="aa-exercise-plot">
       <div className="aa-exercise-grid-lines" />
-      <div className="aa-exercise-day-labels">{rows.map((row, index) => <div className="aa-exercise-day" key={row.date} title={`${formatInputDate(row.date)} · ${number(row.calories)} kcal`}>
-        {(index % labelStep === 0 || index === rows.length - 1) && <span>{row.date.slice(8, 10)}/{row.date.slice(5, 7)}</span>}
+      <div className="aa-exercise-day-labels">{rows.map((row) => <div className="aa-exercise-day" key={row.date} title={`${formatInputDate(row.date)} · ${number(row.calories)} kcal`}>
+        <span>{row.date.slice(8, 10)}/{row.date.slice(5, 7)}</span>
       </div>)}</div>
       <svg className="aa-exercise-calorie-line" viewBox="0 0 700 100" preserveAspectRatio="none" aria-hidden="true">
         <polygon points={`0,100 ${points} 700,100`} />

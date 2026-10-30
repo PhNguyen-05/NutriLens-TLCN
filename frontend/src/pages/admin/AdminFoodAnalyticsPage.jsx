@@ -31,31 +31,7 @@ function FoodGrowthChart({ rows, mode }) {
   const tickStep = Math.max(1, stepFactor * stepMagnitude)
   const scaleMax = Math.max(tickStep, Math.ceil(maxDaily / tickStep) * tickStep)
   const ticks = Array.from({ length: Math.floor(scaleMax / tickStep) + 1 }, (_, index) => scaleMax - index * tickStep)
-  const labelCount = Math.min(8, rows.length)
-  const activeIndexes = rows.reduce((indexes, row, index) => {
-    if ([row.added, row.activated, row.hidden].some((value) => Number(value) > 0)) indexes.push(index)
-    return indexes
-  }, [])
-  const labelIndexes = activeIndexes.length > 0 && activeIndexes.length <= 6
-    ? new Set([0, ...activeIndexes, rows.length - 1])
-    : new Set(Array.from({ length: labelCount }, (_, index) =>
-      Math.round(index * (rows.length - 1) / Math.max(labelCount - 1, 1)),
-    ))
-
-  while (labelIndexes.size < labelCount) {
-    let nextIndex = -1
-    let greatestGap = -1
-    for (let index = 0; index < rows.length; index += 1) {
-      if (labelIndexes.has(index)) continue
-      const nearestLabel = Math.min(...Array.from(labelIndexes, (labelIndex) => Math.abs(index - labelIndex)))
-      if (nearestLabel > greatestGap) {
-        greatestGap = nearestLabel
-        nextIndex = index
-      }
-    }
-    if (nextIndex < 0) break
-    labelIndexes.add(nextIndex)
-  }
+  const labelIndexes = new Set(rows.map((_, index) => index))
   const series = [
     { key: 'added', className: 'added' },
     { key: 'activated', className: 'activated' },
