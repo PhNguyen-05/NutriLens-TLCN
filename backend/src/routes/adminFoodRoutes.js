@@ -17,6 +17,7 @@ const multer = require('multer');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const {
+  getFoodAnalytics,
   listFoods,
   getFoodDetail,
   createFood,
@@ -63,6 +64,7 @@ router.post('/upload-image', (req, res) => {
   });
 });
 
+router.get('/analytics', getFoodAnalytics);
 router.get('/',             listFoods);
 router.post('/',            createFood);
 

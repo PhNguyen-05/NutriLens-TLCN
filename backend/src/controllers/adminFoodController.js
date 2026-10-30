@@ -48,6 +48,76 @@ function normalizePagination(page, limit) {
   return { page: normalizedPage, limit: normalizedLimit, skip: (normalizedPage - 1) * normalizedLimit };
 }
 
+function parseFoodAnalyticsDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : null;
+}
+
+async function getFoodAnalytics(req, res) {
+  try {
+    const from = parseFoodAnalyticsDate(req.query.from);
+    const to = parseFoodAnalyticsDate(req.query.to);
+    if (!from || !to || from > to) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê món ăn không hợp lệ' });
+    }
+
+    const start = new Date(`${from}T00:00:00.000+07:00`);
+    const endExclusive = new Date(new Date(`${to}T00:00:00.000+07:00`).getTime() + 24 * 60 * 60 * 1000);
+    if ((endExclusive.getTime() - start.getTime()) / (24 * 60 * 60 * 1000) > 366) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê tối đa là 366 ngày' });
+    }
+    const dateMatch = { $gte: start, $lt: endExclusive };
+
+    const [total, hidden, pendingRequests, categories, foodsAdded, foodStatusActions, reviewedRequests] = await Promise.all([
+      Food.countDocuments({}),
+      Food.countDocuments({ status: 'hidden' }),
+      FoodRequest.countDocuments({ requestType: 'addition', status: 'pending' }),
+      Food.aggregate([
+        { $group: { _id: { $ifNull: ['$foodGroup', 'Món khác'] }, count: { $sum: 1 } } },
+        { $sort: { count: -1, _id: 1 } },
+      ]),
+      Food.aggregate([
+        { $match: { createdAt: dateMatch } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      AdminActionLog.aggregate([
+        { $match: { targetType: 'FoodItem', actionType: { $in: ['show_food', 'hide_food'] }, createdAt: dateMatch } },
+        { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } }, action: '$actionType' }, count: { $sum: 1 } } },
+        { $sort: { '_id.date': 1 } },
+      ]),
+      FoodRequest.aggregate([
+        { $match: { requestType: 'addition', status: { $in: ['approved', 'rejected'] }, reviewedAt: dateMatch } },
+        { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$reviewedAt', timezone: 'Asia/Ho_Chi_Minh' } }, status: '$status' }, count: { $sum: 1 } } },
+        { $sort: { '_id.date': 1 } },
+      ]),
+    ]);
+
+    const daily = new Map();
+    const ensureDay = (date) => {
+      if (!daily.has(date)) daily.set(date, { date, added: 0, activated: 0, hidden: 0, approved: 0, rejected: 0 });
+      return daily.get(date);
+    };
+    foodsAdded.forEach(({ _id, count }) => { ensureDay(_id).added = count; });
+    foodStatusActions.forEach(({ _id, count }) => {
+      ensureDay(_id.date)[_id.action === 'show_food' ? 'activated' : 'hidden'] = count;
+    });
+    reviewedRequests.forEach(({ _id, count }) => {
+      ensureDay(_id.date)[_id.status] = count;
+    });
+
+    return res.status(200).json({
+      summary: { total, active: Math.max(total - hidden, 0), hidden, pendingRequests },
+      categories: categories.map(({ _id, count }) => ({ name: _id || 'Món khác', count })),
+      daily: Array.from(daily.values()).sort((left, right) => left.date.localeCompare(right.date)),
+    });
+  } catch (err) {
+    console.error('[getFoodAnalytics] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải thống kê món ăn, vui lòng thử lại' });
+  }
+}
+
 // Tạo food code theo format FOD-VN-XXXX (hệ thống tự động sinh, đảm bảo duy nhất)
 async function generateFoodCode() {
   const latest = await Food.findOne({ foodCode: /^FOD-VN-\d+$/ }).sort({ foodCode: -1 }).lean();
@@ -531,6 +601,7 @@ async function deleteFoodGroup(req, res) {
 }
 
 module.exports = {
+  getFoodAnalytics,
   listFoods,
   getFoodDetail,
   createFood,

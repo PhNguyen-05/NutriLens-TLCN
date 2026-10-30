@@ -9,29 +9,72 @@ import FoodRequestManagementPage from './FoodRequestManagementPage'
 import BlogManagementPage from './BlogManagementPage'
 
 import ExerciseManagementPage from './ExerciseManagementPage'
+import AdminAnalyticsPage from './AdminAnalyticsPage'
+import AdminFoodAnalyticsPage from './AdminFoodAnalyticsPage'
+import AdminExerciseAnalyticsPage from './AdminExerciseAnalyticsPage'
+import AdminBlogAnalyticsPage from './AdminBlogAnalyticsPage'
+import './AdminDashboardPage.css'
 
+const emptyDashboardStats = {
+  newUsers: null,
+  meals: null,
+  exercises: null,
+  articles: null,
+  pendingMeals: null,
+  lockedUsers: null,
+  draftArticles: null,
+}
 
-const reviewItems = [
-  ['🍲', 'Bún chả Hà Nội', 'CNN 98.4%', '#REQ-8491', 'Người gửi: ThuTrang98 (Hôm nay 09:15)', '585 kcal / 1 suất tiêu chuẩn', 'green'],
-  ['🍛', 'Cơm gạo lứt cá ngừ nướng sốt cam', 'AI 95.1%', '', 'Gửi bởi: BS. DinhDuong (Hôm qua 16:40)', '420 kcal / 350g khẩu phần', 'green'],
-  ['🥤', 'Sinh tố bơ chuối yến mạch', 'AI 89.2%', '', 'Gửi bởi: HoangMinh_FIT (22/10 11:20)', '310 kcal / ly 300ml', 'orange'],
-  ['🍲', 'Canh chua cá lóc miền Tây', 'AI 97.2%', '', 'Gửi bởi: LanHuong_Food', '240 kcal / tô 400ml', 'green'],
-]
+function getTodayInVietnam() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())
+}
 
-const alerts = [
-  ['User #1042 — Nguyễn Văn B.', '⚠ BMI 31.4 (Béo phì độ 2)', 'Lượng nạp cao vượt 140% theo dõi 5 ngày liên tiếp. Cần điều chỉnh cân đối đạm Nitri bổ sung.', 'VƯỢT 140% TDEE', 'critical'],
-  ['User #893 — Lê Thùy Dung', '⚠ Thiếu hụt vi chất Protein & Fe', 'Nhật ký ăn uống thiếu nghiêm trọng đạm sinh học và khoáng chất sắt.', '3 NGÀY LIỀN', 'warning'],
-  ['User #2105 — Phạm Quốc Huy', '♧ Nhịp tim đỉnh: 188 bpm', 'Nhịp tim cao bất thường vượt vùng an toàn Zone 5 sau bài Cardio cường độ cao.', 'TABATA', 'exercise'],
-]
+function formatActivityTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' }).format(date)
+}
+
+function getActivityCategory(log) {
+  if (log.targetType === 'User') return 'Người dùng'
+  if (log.targetType === 'FoodItem' || log.targetType === 'Request') return 'Món ăn'
+  if (log.targetType === 'Exercise') return 'Bài tập'
+  if (log.targetType === 'Post') return 'Bài viết'
+  return 'Hệ thống'
+}
+
+function getActivityIcon(category) {
+  if (category === 'Người dùng') return 'bi-person-fill'
+  if (category === 'Món ăn') return 'bi-cup-hot-fill'
+  if (category === 'Bài tập') return 'bi-person-walking'
+  if (category === 'Bài viết') return 'bi-file-earmark-text-fill'
+  return 'bi-clock-history'
+}
+
+function getActivityTone(category) {
+  if (category === 'Người dùng') return 'user'
+  if (category === 'Món ăn') return 'food'
+  if (category === 'Bài tập') return 'exercise'
+  if (category === 'Bài viết') return 'article'
+  return 'system'
+}
 
 export default function AdminDashboardPage() {
   const { user, handleLogout } = useAuth()
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showActionLogs, setShowActionLogs] = useState(false)
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [dashboardLoading, setDashboardLoading] = useState(true)
+  const [dashboardStats, setDashboardStats] = useState(emptyDashboardStats)
+  const [dashboardActivity, setDashboardActivity] = useState([])
+  const isAnalyticsPage = ['Báo cáo', 'FoodAnalytics', 'ExerciseAnalytics', 'BlogAnalytics'].includes(activeItem)
+  const isDashboard = activeItem === 'Dashboard' && !showActionLogs
 
   // Tự động tải số lượng yêu cầu chờ duyệt hiển thị lên badge sidebar
   useEffect(() => {
+    if (activeItem === 'Dashboard') return undefined
     let isMounted = true
     async function fetchPendingCount() {
       try {
@@ -49,14 +92,94 @@ export default function AdminDashboardPage() {
     }
   }, [activeItem])
 
+  useEffect(() => {
+    if (!isDashboard) return undefined
+
+    const controller = new AbortController()
+    const today = getTodayInVietnam()
+    const params = { from: today, to: today }
+    setDashboardLoading(true)
+
+    async function loadDashboard() {
+      const results = await Promise.allSettled([
+        axiosInstance.get('/admin/users', { params: { ...params, page: 1, limit: 6 }, signal: controller.signal }),
+        axiosInstance.get('/admin/foods/analytics', { params, signal: controller.signal }),
+        axiosInstance.get('/admin/exercises/analytics', { params, signal: controller.signal }),
+        axiosInstance.get('/admin/blog/analytics', { params, signal: controller.signal }),
+        axiosInstance.get('/admin/food-requests', { params: { limit: 1 }, signal: controller.signal }),
+        axiosInstance.get('/admin/users/action-logs', {
+          params: { ...params, page: 1, limit: 8, targetType: 'all', action: 'all', adminId: 'all' },
+          signal: controller.signal,
+        }),
+      ])
+      if (controller.signal.aborted) return
+
+      const [usersResult, foodsResult, exercisesResult, blogResult, requestsResult, logsResult] = results
+      const users = usersResult.status === 'fulfilled' ? usersResult.value.data : null
+      const foods = foodsResult.status === 'fulfilled' ? foodsResult.value.data : null
+      const exercises = exercisesResult.status === 'fulfilled' ? exercisesResult.value.data : null
+      const blogs = blogResult.status === 'fulfilled' ? blogResult.value.data : null
+      const requests = requestsResult.status === 'fulfilled' ? requestsResult.value.data : null
+      const logs = logsResult.status === 'fulfilled' ? logsResult.value.data : null
+      const todayExercise = exercises?.daily?.find((row) => row.date === today)
+      const todayFood = foods?.daily?.find((row) => row.date === today)
+      const todayBlog = blogs?.daily?.find((row) => row.date === today)
+
+      setDashboardStats({
+        newUsers: users ? users.pagination?.total ?? users.data?.length ?? 0 : null,
+        meals: foods ? todayFood?.added || 0 : null,
+        exercises: exercises ? todayExercise?.sessions || 0 : null,
+        articles: blogs ? todayBlog?.created || 0 : null,
+        pendingMeals: requests ? requests.summary?.pending || 0 : null,
+        lockedUsers: users ? users.summary?.locked || 0 : null,
+        draftArticles: blogs ? blogs.summary?.drafts || 0 : null,
+      })
+      if (requests?.summary) setPendingRequestsCount(requests.summary.pending || 0)
+
+      const newUserActivities = (users?.data || []).map((item) => ({
+        id: `user-${item._id}`,
+        category: 'Người dùng',
+        title: 'Người dùng mới',
+        detail: `${item.fullName || item.email || 'Người dùng'} đã đăng ký tài khoản mới`,
+        createdAt: item.createdAt,
+      }))
+      const adminActivities = (logs?.data || []).map((item) => {
+        const category = getActivityCategory(item)
+        return {
+          id: `log-${item._id}`,
+          category,
+          title: category,
+          detail: item.reason || item.note || 'Có thay đổi mới trong hệ thống',
+          createdAt: item.createdAt,
+        }
+      })
+      setDashboardActivity([...newUserActivities, ...adminActivities]
+        .sort((left, right) => new Date(right.createdAt) - new Date(left.createdAt))
+        .slice(0, 7))
+    }
+
+    loadDashboard().catch(() => {
+      if (!controller.signal.aborted) setDashboardActivity([])
+    }).finally(() => {
+      if (!controller.signal.aborted) setDashboardLoading(false)
+    })
+
+    return () => controller.abort()
+  }, [isDashboard, refreshKey])
+
+  function navigateAdmin(item) {
+    setActiveItem(item)
+    setShowActionLogs(item === 'Lịch sử thao tác')
+  }
+
   return (
-    <div className="admin-shell">
+    <div className={`admin-shell ${isAnalyticsPage ? 'admin-shell-analytics' : ''} ${isDashboard ? 'admin-dashboard-mode' : ''}`}>
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span><i className="bi bi-activity" /></span> NutriLes</div>
+        <div className="admin-brand"><span><i className="bi bi-heart-pulse-fill" /></span> NutriLens</div>
         <div className="admin-section-label">TỔNG QUAN</div>
         <button className={activeItem === 'Dashboard' ? 'active' : ''} onClick={() => { setActiveItem('Dashboard'); setShowActionLogs(false) }}><i className="bi bi-grid-1x2" /> Dashboard</button>
         <button className={activeItem === 'Lịch sử thao tác' ? 'active' : ''} onClick={() => { setActiveItem('Lịch sử thao tác'); setShowActionLogs(true) }}><i className="bi bi-clock-history" /> Lịch sử thao tác</button>
-        <button onClick={() => setActiveItem('Báo cáo')}><i className="bi bi-bar-chart-line" /> Thống kê & Báo cáo</button>
+        <button className={isAnalyticsPage ? 'active' : ''} onClick={() => { setActiveItem('Báo cáo'); setShowActionLogs(false) }}><i className="bi bi-bar-chart-line" /> Thống kê &amp; Báo cáo</button>
         <div className="admin-section-label">NGƯỜI DÙNG</div>
         <button className={activeItem === 'Người dùng' ? 'active' : ''} onClick={() => setActiveItem('Người dùng')}><i className="bi bi-people" /> Quản lý người dùng</button>
         <div className="admin-section-label">DINH DƯỠNG</div>
@@ -72,20 +195,29 @@ export default function AdminDashboardPage() {
         >
           <i className="bi bi-person-walking" /> Quản lý bài tập
         </button>
-        <div className="admin-section-label">CỘNG ĐỒNG & TIN TỨC</div>
-        <button onClick={() => setActiveItem('Community')}><i className="bi bi-chat-left-text" /> Kiểm duyệt Community <b className="sidebar-badge amber">5</b></button>
+        <div className="admin-section-label">TIN TỨC</div>
         <button onClick={() => { setActiveItem('Blog'); setShowActionLogs(false) }} className={activeItem === 'Blog' ? 'active' : ''}><i className="bi bi-journal-text" /> Blog y khoa</button>
         <div className="admin-sidebar-footer"><button onClick={handleLogout}><i className="bi bi-box-arrow-left" /> Đăng xuất</button></div>
       </aside>
 
       <main className="admin-content">
-        <header className={`admin-topbar ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-topbar' : ''}`}>
+        <header className={`admin-topbar ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-topbar' : ''} ${isDashboard ? 'admin-overview-topbar' : ''}`}>
           <div className={`admin-topbar-title ${activeItem === 'Lịch sử thao tác' ? 'action-log-topbar-title' : ''}`}>
             {activeItem === 'Lịch sử thao tác' && <span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span>}
             <div>
               <h1>
-                {activeItem === 'Người dùng'
+                {isDashboard
+                  ? 'Dashboard'
+                  : activeItem === 'Người dùng'
                   ? 'Quản lý người dùng'
+                  : activeItem === 'FoodAnalytics'
+                  ? 'Thống kê món ăn'
+                  : activeItem === 'ExerciseAnalytics'
+                  ? 'Thống kê bài tập'
+                  : activeItem === 'BlogAnalytics'
+                  ? 'Thống kê bài viết Blog'
+                  : activeItem === 'Báo cáo'
+                  ? 'Thống kê người dùng'
                   : activeItem === 'Lịch sử thao tác'
                   ? 'Lịch sử thao tác của Admin'
                   : activeItem === 'Món ăn'
@@ -100,8 +232,18 @@ export default function AdminDashboardPage() {
                   : 'Bảng điều khiển Vận hành NutriLes'}
               </h1>
               <p>
-                {activeItem === 'Người dùng'
+                {isDashboard
+                  ? 'Tổng quan hoạt động của hệ thống NutriLens'
+                  : activeItem === 'Người dùng'
                   ? 'Xem và quản lý thông tin người dùng, theo dõi trạng thái tài khoản.'
+                  : activeItem === 'FoodAnalytics'
+                  ? 'Theo dõi số lượng, trạng thái và biến động danh mục món ăn theo thời gian.'
+                  : activeItem === 'ExerciseAnalytics'
+                  ? 'Theo dõi lượt ghi nhận, thời lượng vận động và calories tiêu hao theo thời gian.'
+                  : activeItem === 'BlogAnalytics'
+                  ? 'Theo dõi tình trạng xuất bản, lượt xem và tương tác của các bài viết Blog.'
+                  : activeItem === 'Báo cáo'
+                  ? 'Theo dõi và phân tích chi tiết các số liệu về người dùng trong hệ thống NutriLens.'
                   : activeItem === 'Lịch sử thao tác'
                   ? 'Xem chi tiết các thao tác quản lý tài khoản, bao gồm khóa, mở khóa, cập nhật thông tin và các hành động khác.'
                   : activeItem === 'Món ăn'
@@ -118,15 +260,37 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="admin-user">
-            <button title="Thông báo"><i className="bi bi-bell" /></button>
+            <button title="Thông báo" onClick={() => navigateAdmin('Bổ sung món')}>
+              <i className="bi bi-bell" />
+            </button>
             <strong>{user?.fullName || 'Admin'}</strong>
             <span>{(user?.fullName || 'A').charAt(0)}</span>
           </div>
         </header>
 
-        <div className={`admin-body ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-body' : ''}`}>
+        <div className={`admin-body ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-body' : ''} ${isAnalyticsPage ? 'ua-admin-body' : ''}`}>
           {activeItem === 'Người dùng' ? (
             <UserManagementPage />
+          ) : activeItem === 'ExerciseAnalytics' ? (
+            <AdminExerciseAnalyticsPage onNavigate={(item) => {
+              setShowActionLogs(false)
+              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
+            }} />
+          ) : activeItem === 'BlogAnalytics' ? (
+            <AdminBlogAnalyticsPage onNavigate={(item) => {
+              setShowActionLogs(false)
+              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
+            }} />
+          ) : activeItem === 'FoodAnalytics' ? (
+            <AdminFoodAnalyticsPage onNavigate={(item) => {
+              setShowActionLogs(false)
+              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
+            }} />
+          ) : activeItem === 'Báo cáo' ? (
+            <AdminAnalyticsPage onManageUsers={() => setActiveItem('Người dùng')} onNavigate={(item) => {
+              setShowActionLogs(false)
+              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
+            }} />
           ) : activeItem === 'Lịch sử thao tác' ? (
             <AdminActionLogsModal embedded isOpen={showActionLogs} onClose={() => { setShowActionLogs(false); setActiveItem('Dashboard') }} />
           ) : activeItem === 'Món ăn' ? (
@@ -142,137 +306,90 @@ export default function AdminDashboardPage() {
 
           ) : (
             <>
-              <section className="admin-kpis">
-                <article>
-                  <span>LƯỢT QUÉT AI LENS HÔM NAY <i className="bi bi-phone" /></span>
-                  <strong>2.840 <em>+18.4%</em></strong>
-                  <small>Độ trễ: 1.38s　 Độ chính xác: <b>96.8% mAP</b></small>
-                </article>
-                <article>
-                  <span>YÊU CẦU MÓN ĂN CHỜ DUYỆT <i className="bi bi-card-text" /></span>
-                  <strong>{pendingRequestsCount} <small>món</small></strong>
-                  <small className="danger-dot">● Chờ xử lý phê duyệt</small>
-                </article>
-                <article>
-                  <span>CẢNH BÁO SỨC KHỎE KHẨN CẤP <i className="bi bi-shield-exclamation" /></span>
-                  <strong className="critical-number">04 <small>CRITICAL</small></strong>
-                  <small>Vượt 140% TDEE &amp; T <b>Can thiệp ngay</b></small>
-                </article>
-                <article>
-                  <span>TÌNH TRẠNG CỤM AI VISION <i className="bi bi-cpu" /></span>
-                  <strong className="healthy-number">100% <small>Sẵn sàng</small></strong>
-                  <small>NVIDIA T4 (Lại: 42%) <b>142ms API</b></small>
-                </article>
+              <div className="overview-toolbar">
+                <span><i className="bi bi-calendar3" />{new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())}</span>
+                <button type="button" onClick={() => setRefreshKey((current) => current + 1)} disabled={dashboardLoading}>
+                  <i className={`bi bi-arrow-clockwise ${dashboardLoading ? 'is-spinning' : ''}`} /> Làm mới
+                </button>
+              </div>
+              <section className="overview-stat-grid" aria-label="Tổng quan hoạt động hôm nay">
+                {[
+                  { label: 'Người dùng mới hôm nay', value: dashboardStats.newUsers, tone: 'green', icon: 'bi-people-fill' },
+                  { label: 'Món ăn mới hôm nay', value: dashboardStats.meals, tone: 'orange', icon: 'bi-cup-hot-fill' },
+                  { label: 'Lượt ghi nhận bài tập', value: dashboardStats.exercises, tone: 'blue', icon: 'bi-person-walking' },
+                  { label: 'Bài viết Blog mới hôm nay', value: dashboardStats.articles, tone: 'purple', icon: 'bi-file-earmark-text-fill' },
+                ].map((stat) => (
+                  <article className={'overview-stat-card ' + stat.tone} key={stat.label}>
+                    <span className="overview-stat-icon"><i className={'bi ' + stat.icon} /></span>
+                    <div className="overview-stat-copy">
+                      <p>{stat.label}</p>
+                      <strong>{stat.value == null ? '—' : stat.value.toLocaleString('vi-VN')}</strong>
+                      <small>Ghi nhận trong ngày</small>
+                    </div>
+                  </article>
+                ))}
               </section>
 
-              <section className="admin-columns">
-                <article className="admin-panel review-panel">
-                  <div className="admin-panel-heading">
-                    <div>
-                      <h2>Yêu cầu bổ sung món ăn &amp; Gắn nhãn AI mới <b>{pendingRequestsCount} chờ duyệt</b></h2>
-                      <p></p>
-                    </div>
-                    <div>
-                      <button onClick={() => setActiveItem('Bổ sung món')}>Đi đến trang phê duyệt →</button>
-                    </div>
+              <section className="overview-content-grid">
+                <article className="overview-panel overview-activity-panel">
+                  <div className="overview-panel-heading">
+                    <h2><span className="overview-heading-icon green"><i className="bi bi-clock-fill" /></span>Hoạt động mới nhất trong ngày</h2>
                   </div>
-                  {reviewItems.map(([icon, title, confidence, id, sender, calories, tone], index) => (
-                    <div className="review-row" key={title}>
-                      <span className="food-thumb">{icon}</span>
-                      <div className="review-info">
-                        <h3>{title} <b className={tone}>{confidence}</b></h3>
-                        <small>{id}</small>
-                        <p>{sender}</p>
-                        <span className={`calorie-line ${tone}`}>•　{calories}</span>
+                  <div className="overview-activity-scroll">
+                    {dashboardLoading && dashboardActivity.length === 0 ? (
+                      <div className="overview-empty-state"><span className="overview-loader" />Đang tải hoạt động hôm nay…</div>
+                    ) : dashboardActivity.length ? (
+                      <div className="overview-activity-list">
+                        {dashboardActivity.map((activity) => (
+                          <button className={'overview-activity-row ' + getActivityTone(activity.category)} key={activity.id} type="button" onClick={() => navigateAdmin('Lịch sử thao tác')}>
+                            <span className={'overview-activity-icon ' + getActivityTone(activity.category)}><i className={'bi ' + getActivityIcon(activity.category)} /></span>
+                            <time>{formatActivityTime(activity.createdAt)}</time>
+                            <span className="overview-activity-copy">
+                              <b>{activity.title}</b>
+                              <small>{activity.detail}</small>
+                            </span>
+                            <i className="bi bi-chevron-right overview-row-chevron" />
+                          </button>
+                        ))}
                       </div>
-                      <div className="review-actions">
-                        <button className="approve" onClick={() => setActiveItem('Bổ sung món')}>
-                          Xem xét
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ) : (
+                      <div className="overview-empty-state"><i className="bi bi-calendar2-check" />Chưa có hoạt động nào được ghi nhận hôm nay.</div>
+                    )}
+                  </div>
                 </article>
 
-                <aside className="admin-panel alert-panel">
-                  <div className="admin-panel-heading">
-                    <h2><i className="bi bi-circle-fill" /> Cảnh báo sức khỏe khẩn cấp <b>4 Ca can thiệp</b></h2>
+                <aside className="overview-panel overview-attention-panel">
+                  <div className="overview-panel-heading attention-heading">
+                    <h2><span className="overview-heading-icon coral"><i className="bi bi-exclamation-triangle-fill" /></span>Tình hình cần chú ý</h2>
                   </div>
-                  {alerts.map(([title, issue, copy, label, tone]) => (
-                    <div className={`admin-alert ${tone}`} key={title}>
-                      <h3>{title}<b>{label}</b></h3>
-                      <strong>{issue}</strong>
-                      <p>{copy}</p>
-                      <button>
-                        {tone === 'critical'
-                          ? 'Gợi ý gói can thiệp dinh dưỡng　→'
-                          : tone === 'warning'
-                          ? 'Nhắc nhở qua thông báo push　♟'
-                          : 'Xem chi tiết buổi tập　↗'}
+                  <div className="overview-attention-scroll">
+                    <div className="overview-attention-list">
+                      <button type="button" className="overview-attention-row food" onClick={() => navigateAdmin('Bổ sung món')}>
+                        <span className="overview-attention-icon"><i className="bi bi-cup-hot-fill" /></span>
+                        <span className="overview-attention-copy"><b>Yêu cầu bổ sung món chờ duyệt</b><small>Có món ăn mới được người dùng đề xuất</small></span>
+                        <strong>{dashboardStats.pendingMeals == null ? '—' : dashboardStats.pendingMeals}</strong>
+                        <i className="bi bi-chevron-right" />
+                      </button>
+                      <button type="button" className="overview-attention-row users" onClick={() => navigateAdmin('Người dùng')}>
+                        <span className="overview-attention-icon"><i className="bi bi-person-fill-lock" /></span>
+                        <span className="overview-attention-copy"><b>Tài khoản đang bị khóa</b><small>Xem lại trạng thái và xử lý tài khoản</small></span>
+                        <strong>{dashboardStats.lockedUsers == null ? '—' : dashboardStats.lockedUsers}</strong>
+                        <i className="bi bi-chevron-right" />
+                      </button>
+                      <button type="button" className="overview-attention-row blog" onClick={() => navigateAdmin('Blog')}>
+                        <span className="overview-attention-icon"><i className="bi bi-file-earmark-text-fill" /></span>
+                        <span className="overview-attention-copy"><b>Bài viết chưa xuất bản</b><small>Bài viết Blog đang ở trạng thái nháp</small></span>
+                        <strong>{dashboardStats.draftArticles == null ? '—' : dashboardStats.draftArticles}</strong>
+                        <i className="bi bi-chevron-right" />
                       </button>
                     </div>
-                  ))}
+                  </div>
+                  <div className="overview-welcome-card">
+                    <span><i className="bi bi-leaf-fill" /></span>
+                    <div><b>Cùng xây dựng cộng đồng sống khỏe hơn!</b><small>Cảm ơn bạn đã đồng hành cùng NutriLens <i className="bi bi-heart-fill" /></small></div>
+                    <i className="bi bi-leaf overview-welcome-leaf" />
+                  </div>
                 </aside>
-              </section>
-
-              <section className="admin-panel telemetry-panel">
-                <div className="admin-panel-heading">
-                  <div>
-                    <h2><i className="bi bi-camera" /> Tải xử lý AI Lens theo khung giờ trong ngày</h2>
-                    <p>Lưu lượng quét ảnh nhận diện bữa ăn đạt cực đại vào 11h30 – 13h00 (Bữa trưa) và 18h30 – 20h00 (Bữa tối).</p>
-                  </div>
-                  <div className="telemetry-heading-right">
-                    <div className="telemetry-legend">
-                      <span>■ Scan thành công</span>
-                      <span>■ Cần nhận diện lại</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="admin-chart">
-                  <div className="chart-axis">
-                    <span>Số lượt quét (req)</span>
-                    <span>800</span>
-                    <span>600</span>
-                    <span>400</span>
-                    <span>200</span>
-                    <span>0</span>
-                  </div>
-                  <div className="chart-plot">
-                    <div className="peak-band lunch"><b>Cao điểm – Bữa trưa</b><small>11:30 – 13:00</small></div>
-                    <div className="peak-band dinner"><b>Cao điểm – Bữa tối</b><small>18:30 – 20:00</small></div>
-                    <div className="chart-bars">
-                      <svg className="telemetry-line" viewBox="0 0 100 160" preserveAspectRatio="none" aria-hidden="true">
-                        <polyline points="4,116 16,96 28,108 40,24 52,76 64,104 76,40 88,88 96,136" />
-                        {[[4, 116], [16, 96], [28, 108], [40, 24], [52, 76], [64, 104], [76, 40], [88, 88], [96, 136]].map(([cx, cy]) => (
-                          <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.5" />
-                        ))}
-                      </svg>
-                      {[[120, 20, 220], [300, 35, 320], [150, 25, 260], [580, 60, 680], [370, 45, 420], [220, 30, 280], [470, 55, 620], [250, 20, 360], [120, 5, 120]].map(([success, retry, trend], index) => (
-                        <div className="chart-column" key={index} style={{ '--trend-height': `${trend / 5}px`, '--bar-height': `${success / 4}px` }}>
-                          <div className="chart-values"><span>{success}</span><i>{retry}</i></div>
-                          <b style={{ height: `${success / 4}px` }} />
-                          <i style={{ height: `${Math.max(retry / 4, 3)}px` }} />
-                          <em>{trend}</em>
-                        </div>
-                      ))}
-                      <div className="chart-time-labels">
-                        <span>06:00</span><span>07:30</span><span>11:00</span><b>12:30<br />[Trưa]</b><span>15:00</span><span>18:30</span><b>19:30<br />[Tối]</b><span>22:00</span><span>23:30</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="chart-right-axis">
-                    <span>Tải xử lý (req)</span>
-                    <span>800</span>
-                    <span>600</span>
-                    <span>400</span>
-                    <span>200</span>
-                    <span>0</span>
-                  </div>
-                </div>
-                <div className="telemetry-foot">
-                  <span>◉ Auto-scaler đã cấp phát bổ sung <b>+2 GPU Pods</b> lúc 11:25 cho bữa trưa.</span>
-                  <b>▤　Tỷ lệ cache hit: 84.6%</b>
-                </div>
               </section>
             </>
           )}

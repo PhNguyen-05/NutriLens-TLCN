@@ -38,6 +38,27 @@ function buildUserQuery({ search, status, authProvider }) {
   return query;
 }
 
+function parseDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : null;
+}
+
+function parseUserAnalyticsRange(from, to) {
+  if (!from && !to) return null;
+
+  const startDate = parseDateOnly(from);
+  const endDate = parseDateOnly(to);
+  if (!startDate || !endDate || startDate > endDate) return false;
+
+  const start = new Date(`${startDate}T00:00:00.000+07:00`);
+  const endExclusive = new Date(new Date(`${endDate}T00:00:00.000+07:00`).getTime() + 24 * 60 * 60 * 1000);
+  const dayCount = (endExclusive.getTime() - start.getTime()) / (24 * 60 * 60 * 1000);
+  if (dayCount > 366) return false;
+
+  return { start, endExclusive };
+}
+
 function normalizePagination(page, limit) {
   const normalizedPage = Math.max(Number.parseInt(page, 10) || 1, 1);
   const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100);
@@ -51,7 +72,12 @@ function normalizePagination(page, limit) {
 
 async function listUsers(req, res) {
   try {
-    const { search = '', status = 'all', authProvider = 'all', page, limit } = req.query;
+    const { search = '', status = 'all', authProvider = 'all', page, limit, from = '', to = '' } = req.query;
+
+    const analyticsRange = parseUserAnalyticsRange(from, to);
+    if (analyticsRange === false) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê không hợp lệ (tối đa 366 ngày)' });
+    }
 
     await User.updateMany(
       { role: 'user', status: 'locked', adminLockUntil: { $ne: null, $lte: new Date() } },
@@ -76,8 +102,14 @@ async function listUsers(req, res) {
 
     const pagination = normalizePagination(page, limit);
     const query = { role: 'user', ...buildUserQuery({ search, status, authProvider }) };
+    if (analyticsRange) {
+      query.createdAt = { $gte: analyticsRange.start, $lt: analyticsRange.endExclusive };
+    }
+    const previousRangeStart = analyticsRange
+      ? new Date(analyticsRange.start.getTime() - (analyticsRange.endExclusive.getTime() - analyticsRange.start.getTime()))
+      : null;
 
-    const [users, total, totalUsers, active, locked] = await Promise.all([
+    const [users, total, totalUsers, active, locked, local, google, totalBeforeRange, dailyRegistrations, previousPeriodRegistrations, demographicGroups] = await Promise.all([
       User.find(query)
         .select(USER_LIST_FIELDS)
         .sort({ createdAt: -1 })
@@ -88,7 +120,88 @@ async function listUsers(req, res) {
       User.countDocuments({ role: 'user' }),
       User.countDocuments({ role: 'user', status: 'active' }),
       User.countDocuments({ role: 'user', status: 'locked' }),
+      User.countDocuments({ role: 'user', authProvider: 'local' }),
+      User.countDocuments({ role: 'user', authProvider: 'google' }),
+      analyticsRange
+        ? User.countDocuments({ role: 'user', createdAt: { $lt: analyticsRange.start } })
+        : Promise.resolve(0),
+      analyticsRange
+        ? User.aggregate([
+          { $match: { role: 'user', createdAt: { $gte: analyticsRange.start, $lt: analyticsRange.endExclusive } } },
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ])
+        : Promise.resolve([]),
+      analyticsRange
+        ? User.countDocuments({
+          role: 'user',
+          createdAt: { $gte: previousRangeStart, $lt: analyticsRange.start },
+        })
+        : Promise.resolve(0),
+      User.aggregate([
+        { $match: { role: 'user' } },
+        {
+          $project: {
+            genderGroup: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$gender', 'female'] }, then: 'female' },
+                  { case: { $eq: ['$gender', 'male'] }, then: 'male' },
+                  { case: { $eq: ['$gender', 'other'] }, then: 'other' },
+                ],
+                default: 'unknown',
+              },
+            },
+            age: {
+              $cond: [
+                { $and: [{ $ne: [{ $ifNull: ['$dateOfBirth', null] }, null] }, { $lte: ['$dateOfBirth', new Date()] }] },
+                { $dateDiff: { startDate: '$dateOfBirth', endDate: new Date(), unit: 'year', timezone: 'Asia/Ho_Chi_Minh' } },
+                null,
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            genderGroup: 1,
+            ageGroup: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$age', null] }, then: 'unknown' },
+                  { case: { $lt: ['$age', 18] }, then: 'under18' },
+                  { case: { $lt: ['$age', 25] }, then: '18-24' },
+                  { case: { $lt: ['$age', 35] }, then: '25-34' },
+                  { case: { $lt: ['$age', 45] }, then: '35-44' },
+                  { case: { $lt: ['$age', 55] }, then: '45-54' },
+                ],
+                default: '55+',
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { gender: '$genderGroup', age: '$ageGroup' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
+
+    const demographics = {
+      total: totalUsers,
+      gender: { female: 0, male: 0, other: 0, unknown: 0 },
+      ages: { under18: 0, '18-24': 0, '25-34': 0, '35-44': 0, '45-54': 0, '55+': 0, unknown: 0 },
+    };
+    demographicGroups.forEach(({ _id, count }) => {
+      demographics.gender[_id.gender] += count;
+      demographics.ages[_id.age] += count;
+    });
 
     return res.status(200).json({
       data: users,
@@ -98,7 +211,13 @@ async function listUsers(req, res) {
         total,
         totalPages: Math.ceil(total / pagination.limit),
       },
-      summary: { total: totalUsers, active, locked },
+      summary: { total: totalUsers, active, locked, local, google },
+      demographics,
+      analytics: {
+        totalBeforeRange,
+        dailyRegistrations: dailyRegistrations.map(({ _id, count }) => ({ date: _id, count })),
+        previousPeriodRegistrations,
+      },
     });
   } catch (err) {
     console.error('[listUsers] Lỗi:', err.message);
