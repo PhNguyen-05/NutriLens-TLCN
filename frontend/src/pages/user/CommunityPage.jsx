@@ -89,6 +89,13 @@ export default function CommunityPage() {
   const [commentInputs, setCommentInputs] = useState({})
   const [commentSubmitting, setCommentSubmitting] = useState({})
 
+  // State UC27: Chỉnh sửa và Xóa bình luận
+  const [editingCommentId, setEditingCommentId] = useState(null)
+  const [editingCommentText, setEditingCommentText] = useState('')
+  const [editingCommentSubmitting, setEditingCommentSubmitting] = useState(false)
+  const [deleteConfirmComment, setDeleteConfirmComment] = useState(null)
+  const [deleteCommentSubmitting, setDeleteCommentSubmitting] = useState(false)
+
   // Lightbox xem ảnh lớn
   const [lightboxImage, setLightboxImage] = useState(null)
 
@@ -170,13 +177,16 @@ export default function CommunityPage() {
   }
 
   // Luồng 4 & Ngoại lệ 4b: Đính kèm hình ảnh và kiểm tra tính hợp lệ
-  function handleFileSelected(event) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
+  function validateAndSetImage(file) {
     if (!file) return
 
+    const fileType = (file.type || '').toLowerCase()
+    const fileName = (file.name || '').toLowerCase()
+    const hasValidMime = ALLOWED_IMAGE_TYPES.includes(fileType) || fileType.startsWith('image/')
+    const hasValidExt = /\.(jpe?g|png|webp|gif|jfif|bmp)$/i.test(fileName)
+
     // Ngoại lệ 4b: Hình ảnh không đúng định dạng hoặc vượt quá 5MB
-    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+    if (!hasValidMime && !hasValidExt) {
       setFeedbackError('Hình ảnh không hợp lệ. Vui lòng chọn ảnh có định dạng JPG, PNG, WEBP hoặc GIF.')
       return
     }
@@ -190,6 +200,18 @@ export default function CommunityPage() {
     setSelectedImageFile(file)
     const preview = URL.createObjectURL(file)
     setImagePreviewUrl(preview)
+  }
+
+  function handleFileSelected(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    validateAndSetImage(file)
+  }
+
+  function handleFileDrop(event) {
+    event.preventDefault()
+    const file = event.dataTransfer?.files?.[0]
+    validateAndSetImage(file)
   }
 
   // Luồng thay thế 4b: Gỡ ảnh đính kèm (chỉ đăng bài văn bản)
@@ -272,7 +294,7 @@ export default function CommunityPage() {
     }
   }
 
-  // --- TƯƠNG TÁC BÌNH LUẬN ---
+  // --- UC27: TƯƠNG TÁC BÌNH LUẬN ---
   function toggleComments(postId) {
     setExpandedComments((prev) => ({
       ...prev,
@@ -284,16 +306,25 @@ export default function CommunityPage() {
     setCommentInputs((prev) => ({ ...prev, [postId]: text }))
   }
 
+  // Luồng chính 3 - 8 & Ngoại lệ 3a, 3b, 6c: Gửi bình luận
   async function handleSubmitComment(postId) {
     const text = (commentInputs[postId] || '').trim()
-    if (!text) return
+
+    // Ngoại lệ 3a / 4a: Người dùng để trống nội dung bình luận và bấm "Gửi"
+    if (!text) {
+      setFeedbackError('Nội dung bình luận không được để trống')
+      return
+    }
 
     setCommentSubmitting((prev) => ({ ...prev, [postId]: true }))
+    setFeedbackError('')
 
     try {
       const { data } = await axiosInstance.post(`/community/posts/${postId}/comments`, {
         content: text,
       })
+
+      // Bước 6 & 7: Cập nhật danh sách bình luận bên dưới bài đăng
       setPosts((prev) =>
         prev.map((p) =>
           p._id === postId
@@ -306,11 +337,126 @@ export default function CommunityPage() {
         )
       )
       setCommentInputs((prev) => ({ ...prev, [postId]: '' }))
+      setFeedbackSuccess('Bình luận thành công')
     } catch (err) {
       console.error('[CommunityPage] Lỗi gửi bình luận:', err)
-      alert(err.response?.data?.message || 'Không thể gửi bình luận, vui lòng thử lại')
+      const errorMsg =
+        err.response?.data?.message || 'Không thể gửi bình luận, vui lòng thử lại'
+      setFeedbackError(errorMsg)
     } finally {
       setCommentSubmitting((prev) => ({ ...prev, [postId]: false }))
+    }
+  }
+
+  // Luồng thay thế 3a & 4a: Bắt đầu chỉnh sửa bình luận
+  function handleStartEditComment(comment) {
+    setEditingCommentId(comment._id)
+    setEditingCommentText(comment.content)
+    setFeedbackError('')
+  }
+
+  // Hủy chỉnh sửa bình luận
+  function handleCancelEditComment() {
+    setEditingCommentId(null)
+    setEditingCommentText('')
+  }
+
+  // Luồng thay thế 5a - 8a: Cập nhật bình luận đã chỉnh sửa
+  async function handleSaveEditComment(postId, commentId) {
+    const trimmed = editingCommentText.trim()
+
+    // Ngoại lệ 3a / 4a: Để trống nội dung khi sửa
+    if (!trimmed) {
+      setFeedbackError('Nội dung bình luận không được để trống')
+      return
+    }
+
+    setEditingCommentSubmitting(true)
+    setFeedbackError('')
+
+    try {
+      const { data } = await axiosInstance.put(
+        `/community/posts/${postId}/comments/${commentId}`,
+        { content: trimmed }
+      )
+
+      // Cập nhật bình luận trong bài đăng
+      setPosts((prev) =>
+        prev.map((p) =>
+          p._id === postId
+            ? {
+                ...p,
+                comments: data.comments,
+                commentCount: data.commentCount,
+              }
+            : p
+        )
+      )
+
+      setEditingCommentId(null)
+      setEditingCommentText('')
+      // Bước 7a: "Cập nhật bình luận thành công"
+      setFeedbackSuccess(data.message || 'Cập nhật bình luận thành công')
+    } catch (err) {
+      console.error('[CommunityPage] Lỗi cập nhật bình luận:', err)
+      const errorMsg =
+        err.response?.data?.message || 'Không thể cập nhật bình luận, vui lòng thử lại'
+      setFeedbackError(errorMsg)
+    } finally {
+      setEditingCommentSubmitting(false)
+    }
+  }
+
+  // Luồng thay thế 3b & 4b: Mở hộp thoại xác nhận xóa bình luận
+  function handlePromptDeleteComment(postId, comment) {
+    setDeleteConfirmComment({
+      postId,
+      commentId: comment._id,
+      content: comment.content,
+    })
+  }
+
+  // Hủy xóa bình luận
+  function handleCancelDeleteComment() {
+    setDeleteConfirmComment(null)
+  }
+
+  // Luồng thay thế 5b - 8b: Xác nhận xóa bình luận khỏi bài đăng
+  async function handleConfirmDeleteComment() {
+    if (!deleteConfirmComment) return
+
+    const { postId, commentId } = deleteConfirmComment
+    setDeleteCommentSubmitting(true)
+    setFeedbackError('')
+
+    try {
+      const { data } = await axiosInstance.delete(
+        `/community/posts/${postId}/comments/${commentId}`
+      )
+
+      // Cập nhật danh sách bình luận sau khi xóa
+      setPosts((prev) =>
+        prev.map((p) =>
+          p._id === postId
+            ? {
+                ...p,
+                comments: data.comments,
+                commentCount: data.commentCount,
+              }
+            : p
+        )
+      )
+
+      setDeleteConfirmComment(null)
+      // Bước 7b: "Xóa bình luận thành công"
+      setFeedbackSuccess(data.message || 'Xóa bình luận thành công')
+    } catch (err) {
+      console.error('[CommunityPage] Lỗi xóa bình luận:', err)
+      const errorMsg =
+        err.response?.data?.message || 'Không thể xóa bình luận, vui lòng thử lại'
+      setFeedbackError(errorMsg)
+    } finally {
+      setDeleteCommentSubmitting(false)
     }
   }
 
@@ -780,6 +926,17 @@ export default function CommunityPage() {
                                 const cAuthor = c.authorId || {}
                                 const cAvatar = resolveMediaUrl(cAuthor.avatarUrl)
                                 const cInitial = (cAuthor.fullName || 'U').charAt(0).toUpperCase()
+                                const currentUserId = user?.id || user?._id
+                                const isCommentAuthor =
+                                  currentUserId &&
+                                  String(cAuthor._id || cAuthor) === String(currentUserId)
+                                const isPostAuthor =
+                                  currentUserId &&
+                                  String(post.authorId?._id || post.authorId) === String(currentUserId)
+                                const canDeleteComment =
+                                  isCommentAuthor || isPostAuthor || user?.role === 'admin'
+                                const isEditing = editingCommentId === c._id
+
                                 return (
                                   <div className="comment-item" key={c._id || index}>
                                     {cAvatar ? (
@@ -791,15 +948,88 @@ export default function CommunityPage() {
                                     ) : (
                                       <div className="avatar-xs-fallback">{cInitial}</div>
                                     )}
-                                    <div className="comment-bubble">
-                                      <div className="comment-author-name">
-                                        {cAuthor.fullName || 'Thành viên'}
+
+                                    {isEditing ? (
+                                      <div className="comment-edit-wrap">
+                                        <input
+                                          type="text"
+                                          className="comment-edit-input"
+                                          value={editingCommentText}
+                                          onChange={(e) => setEditingCommentText(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleSaveEditComment(post._id, c._id)
+                                            if (e.key === 'Escape') handleCancelEditComment()
+                                          }}
+                                          autoFocus
+                                        />
+                                        <div className="comment-edit-actions">
+                                          <button
+                                            type="button"
+                                            className="btn-comment-cancel"
+                                            onClick={handleCancelEditComment}
+                                            disabled={editingCommentSubmitting}
+                                          >
+                                            Hủy
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-comment-save"
+                                            onClick={() => handleSaveEditComment(post._id, c._id)}
+                                            disabled={editingCommentSubmitting || !editingCommentText.trim()}
+                                          >
+                                            {editingCommentSubmitting ? (
+                                              <i className="bi bi-arrow-repeat spin" />
+                                            ) : (
+                                              'Lưu'
+                                            )}
+                                          </button>
+                                        </div>
                                       </div>
-                                      <div className="comment-content">{c.content}</div>
-                                      <div className="comment-time">
-                                        {formatRelativeTime(c.createdAt)}
+                                    ) : (
+                                      <div className="comment-body-wrap">
+                                        <div className="comment-bubble">
+                                          <div className="comment-author-name">
+                                            {cAuthor.fullName || 'Thành viên'}
+                                          </div>
+                                          <div className="comment-content">{c.content}</div>
+                                        </div>
+                                        <div className="comment-footer-actions">
+                                          <span className="comment-time">
+                                            {formatRelativeTime(c.createdAt)}
+                                          </span>
+                                          {c.isEdited && (
+                                            <span
+                                              className="comment-edited-tag"
+                                              title={
+                                                c.editedAt
+                                                  ? `Chỉnh sửa lúc ${formatRelativeTime(c.editedAt)}`
+                                                  : 'Đã chỉnh sửa'
+                                              }
+                                            >
+                                              · (Đã chỉnh sửa)
+                                            </span>
+                                          )}
+                                          {isCommentAuthor && (
+                                            <button
+                                              type="button"
+                                              className="comment-action-text-btn"
+                                              onClick={() => handleStartEditComment(c)}
+                                            >
+                                              Chỉnh sửa
+                                            </button>
+                                          )}
+                                          {canDeleteComment && (
+                                            <button
+                                              type="button"
+                                              className="comment-action-text-btn comment-action-delete"
+                                              onClick={() => handlePromptDeleteComment(post._id, c)}
+                                            >
+                                              Xóa
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
+                                    )}
                                   </div>
                                 )
                               })}
@@ -972,6 +1202,8 @@ export default function CommunityPage() {
                   <div
                     className="modal-upload-trigger"
                     onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleFileDrop}
                   >
                     <i className="bi bi-image" />
                     <div>
@@ -1025,6 +1257,64 @@ export default function CommunityPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA BÌNH LUẬN (UC27 - Luồng thay thế 4b & 5b) */}
+      {deleteConfirmComment && (
+        <div className="community-modal-backdrop" onClick={handleCancelDeleteComment}>
+          <div
+            className="community-modal delete-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-delete-comment-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="community-modal-header">
+              <h3 id="modal-delete-comment-title">Xác nhận xóa bình luận</h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={handleCancelDeleteComment}
+                title="Hủy"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+            <div className="community-modal-body">
+              <p className="delete-modal-desc">
+                Bạn có chắc chắn muốn xóa bình luận này không? Hành động này không thể hoàn tác.
+              </p>
+              <div className="delete-comment-quote">
+                <i className="bi bi-chat-quote-fill" />
+                <span>"{deleteConfirmComment.content}"</span>
+              </div>
+              <div className="community-modal-footer">
+                <button
+                  type="button"
+                  className="community-btn-secondary"
+                  onClick={handleCancelDeleteComment}
+                  disabled={deleteCommentSubmitting}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger-confirm"
+                  onClick={handleConfirmDeleteComment}
+                  disabled={deleteCommentSubmitting}
+                >
+                  {deleteCommentSubmitting ? (
+                    <>
+                      <i className="bi bi-arrow-repeat spin" /> Đang xóa...
+                    </>
+                  ) : (
+                    'Xác nhận'
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

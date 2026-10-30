@@ -1,8 +1,9 @@
+const path = require('path');
 const { CommunityPost, COMMUNITY_TAGS } = require('../models/CommunityPost');
 const { isCloudinaryConfigured, uploadFileToCloudinary } = require('../services/cloudinaryStorage');
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/jfif'];
 
 /**
  * UC26: Đăng bài viết cộng đồng
@@ -32,10 +33,14 @@ async function createPost(req, res) {
     if (req.file) {
       const file = req.file;
 
+      const isAllowedMime = ALLOWED_MIME_TYPES.includes(file.mimetype) || file.mimetype?.startsWith('image/');
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isAllowedExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.jfif', '.bmp'].includes(ext);
+
       // Kiểm tra định dạng ảnh
-      if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      if (!isAllowedMime && !isAllowedExt) {
         return res.status(400).json({
-          message: 'Hình ảnh không hợp lệ. Vui lòng chọn ảnh định dạng JPG, PNG hoặc WEBP.',
+          message: 'Hình ảnh không hợp lệ. Vui lòng chọn ảnh định dạng JPG, PNG, WEBP hoặc GIF.',
         });
       }
 
@@ -216,7 +221,7 @@ async function toggleLike(req, res) {
 }
 
 /**
- * Thêm bình luận vào bài viết
+ * UC27: Thêm bình luận vào bài viết (Luồng chính 1 - 8)
  * POST /api/community/posts/:id/comments
  */
 async function addComment(req, res) {
@@ -224,14 +229,16 @@ async function addComment(req, res) {
     const { id } = req.params;
     const { content } = req.body || {};
 
+    // Ngoại lệ 3a / 4a: Nội dung bình luận để trống
     const trimmedContent = String(content || '').trim();
     if (!trimmedContent) {
       return res.status(400).json({ message: 'Nội dung bình luận không được để trống' });
     }
 
     const post = await CommunityPost.findById(id);
+    // Ngoại lệ 3b / 4b: Bài đăng đã bị xóa hoặc không cho phép bình luận
     if (!post || post.status !== 'published') {
-      return res.status(404).json({ message: 'Bài viết không tồn tại hoặc đã bị ẩn' });
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại hoặc không cho phép bình luận' });
     }
 
     post.comments.push({
@@ -247,6 +254,7 @@ async function addComment(req, res) {
       .populate('comments.authorId', 'fullName email avatarUrl role')
       .lean();
 
+    // Bước 7 & 8: Trả về danh sách bình luận đã cập nhật
     return res.status(201).json({
       message: 'Bình luận thành công',
       comments: updatedPost.comments,
@@ -254,7 +262,107 @@ async function addComment(req, res) {
     });
   } catch (error) {
     console.error('[addComment] Lỗi:', error);
-    return res.status(500).json({ message: 'Không thể thêm bình luận' });
+    // Ngoại lệ 6c / 7c: Lỗi hệ thống
+    return res.status(500).json({ message: 'Không thể gửi bình luận, vui lòng thử lại' });
+  }
+}
+
+/**
+ * UC27: Chỉnh sửa bình luận (Luồng thay thế 3a - 8a)
+ * PUT /api/community/posts/:postId/comments/:commentId
+ */
+async function updateComment(req, res) {
+  try {
+    const { postId, commentId } = req.params;
+    const { content } = req.body || {};
+
+    // Ngoại lệ 3a / 4a: Nội dung để trống khi cập nhật
+    const trimmedContent = String(content || '').trim();
+    if (!trimmedContent) {
+      return res.status(400).json({ message: 'Nội dung bình luận không được để trống' });
+    }
+
+    const post = await CommunityPost.findById(postId);
+    // Ngoại lệ 3b / 4b: Bài đăng không tồn tại hoặc đã ẩn
+    if (!post || post.status !== 'published') {
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại hoặc không cho phép bình luận' });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Bình luận không tồn tại hoặc đã bị xóa' });
+    }
+
+    // Chỉ chính chủ tác giả bình luận mới được chỉnh sửa
+    if (String(comment.authorId) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'Bạn chỉ có quyền chỉnh sửa bình luận của chính mình' });
+    }
+
+    comment.content = trimmedContent;
+    comment.isEdited = true;
+    comment.editedAt = new Date();
+
+    await post.save();
+
+    const updatedPost = await CommunityPost.findById(postId)
+      .populate('comments.authorId', 'fullName email avatarUrl role')
+      .lean();
+
+    // Luồng thay thế 7a: "Cập nhật bình luận thành công"
+    return res.status(200).json({
+      message: 'Cập nhật bình luận thành công',
+      comments: updatedPost.comments,
+      commentCount: updatedPost.commentCount,
+    });
+  } catch (error) {
+    console.error('[updateComment] Lỗi:', error);
+    return res.status(500).json({ message: 'Không thể cập nhật bình luận, vui lòng thử lại' });
+  }
+}
+
+/**
+ * UC27: Xóa bình luận (Luồng thay thế 3b - 8b)
+ * DELETE /api/community/posts/:postId/comments/:commentId
+ */
+async function deleteComment(req, res) {
+  try {
+    const { postId, commentId } = req.params;
+    const post = await CommunityPost.findById(postId);
+
+    if (!post) {
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại hoặc không cho phép bình luận' });
+    }
+
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Bình luận không tồn tại hoặc đã bị xóa' });
+    }
+
+    const isCommentAuthor = String(comment.authorId) === String(req.user.id);
+    const isPostAuthor = String(post.authorId) === String(req.user.id);
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isCommentAuthor && !isPostAuthor && !isAdmin) {
+      return res.status(403).json({ message: 'Bạn không có quyền xóa bình luận này' });
+    }
+
+    comment.deleteOne();
+    post.commentCount = Math.max(0, post.comments.length);
+    await post.save();
+
+    const updatedPost = await CommunityPost.findById(postId)
+      .populate('comments.authorId', 'fullName email avatarUrl role')
+      .lean();
+
+    // Luồng thay thế 7b: "Xóa bình luận thành công"
+    return res.status(200).json({
+      message: 'Xóa bình luận thành công',
+      comments: updatedPost.comments,
+      commentCount: updatedPost.commentCount,
+    });
+  } catch (error) {
+    console.error('[deleteComment] Lỗi:', error);
+    return res.status(500).json({ message: 'Không thể xóa bình luận, vui lòng thử lại' });
   }
 }
 
@@ -294,5 +402,7 @@ module.exports = {
   getPosts,
   toggleLike,
   addComment,
+  updateComment,
+  deleteComment,
   deletePost,
 };

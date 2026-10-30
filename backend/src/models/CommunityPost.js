@@ -24,6 +24,14 @@ const commentSchema = new mongoose.Schema(
       trim: true,
       maxlength: 1000,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

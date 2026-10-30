@@ -8,6 +8,8 @@ const {
   getPosts,
   toggleLike,
   addComment,
+  updateComment,
+  deleteComment,
   deletePost,
 } = require('../controllers/communityController');
 
@@ -18,14 +20,14 @@ const postImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   fileFilter: (_req, file, callback) => {
-    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
-    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
-    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/jfif']);
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.jfif', '.bmp']);
+    const extension = path.extname(file.originalname || '').toLowerCase();
 
-    if (allowedTypes.has(file.mimetype) && allowedExtensions.has(extension)) {
+    if (allowedTypes.has(file.mimetype) || file.mimetype?.startsWith('image/') || allowedExtensions.has(extension)) {
       return callback(null, true);
     }
-    return callback(new Error('Hình ảnh không hợp lệ'));
+    return callback(new Error('Hình ảnh không hợp lệ. Vui lòng chọn ảnh định dạng JPG, PNG, WEBP hoặc GIF.'));
   },
 });
 
@@ -59,8 +61,10 @@ router.post(
 // 3. Tương tác Thích / Bỏ thích
 router.post('/posts/:id/like', requireAuth, toggleLike);
 
-// 4. Bình luận bài viết
+// 4. UC27: Bình luận bài viết
 router.post('/posts/:id/comments', requireAuth, addComment);
+router.put('/posts/:postId/comments/:commentId', requireAuth, updateComment);
+router.delete('/posts/:postId/comments/:commentId', requireAuth, deleteComment);
 
 // 5. Xóa bài viết
 router.delete('/posts/:id', requireAuth, deletePost);
