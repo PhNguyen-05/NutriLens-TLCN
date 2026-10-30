@@ -427,7 +427,7 @@ export default function DashboardPage() {
           <FoodNavMenu />
           <ExerciseNavMenu />
           <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-          <a href="/dashboard">Cộng đồng</a>
+          <Link to="/community">Cộng đồng</Link>
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">

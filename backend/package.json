@@ -11,6 +11,7 @@
     "dev": "nodemon ./src/server.js",
     "start": "nodemon ./src/server.js",
     "seed:admin": "node ./scripts/seedAdmin.js",
+    "seed:community": "node ./scripts/seedCommunityPosts.js",
     "reset:admin": "node ./scripts/resetAdmin.js",
     "seed:foods": "node ./scripts/seedFoods.js",
     "migrate:uploads-to-cloudinary": "node ./scripts/migrateUploadsToCloudinary.js",

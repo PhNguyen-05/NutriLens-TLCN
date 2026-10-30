@@ -88,7 +88,7 @@ function UserHeader({ user, onLogout, isActive = false }) {
         <FoodNavMenu />
         <ExerciseNavMenu />
         <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-        <Link to="/dashboard">Cộng đồng</Link>
+        <Link to="/community">Cộng đồng</Link>
         <Link className={isActive ? 'active' : ''} to="/articles">Bài viết &amp; Mẹo</Link>
       </nav>
       <div className="dashboard-actions">
