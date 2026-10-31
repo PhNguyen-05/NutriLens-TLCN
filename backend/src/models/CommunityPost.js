@@ -66,6 +66,12 @@ const communityPostSchema = new mongoose.Schema(
       default: 'published',
       index: true,
     },
+    nutrition: {
+      calories: { type: Number, default: null, min: 0 },
+      protein: { type: Number, default: null, min: 0 },
+      carbs: { type: Number, default: null, min: 0 },
+      fat: { type: Number, default: null, min: 0 },
+    },
     isEdited: {
       type: Boolean,
       default: false,

@@ -9115,15 +9115,22 @@ td.fdm-td-center { text-align: center !important; }
   background: #ffffff;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
-  padding: 6px;
+  padding: 8px 10px;
   margin-bottom: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .community-feed-tabs {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: 1;
+  min-width: 260px;
 }
 
 .feed-tab-btn {
@@ -10841,4 +10848,434 @@ td.fdm-td-center { text-align: center !important; }
   .community-header-search {
     display: none;
   }
+}
+
+/* ==========================================================================
+   TÍNH NĂNG NÂNG CẤP CỘNG ĐỒNG NUTRILENS
+   1. Cột cố định khi cuộn (Sticky Sidebars)
+   2. Macro Pill dinh dưỡng đặc trưng
+   3. Bảng vinh danh Top Contributors & Món ăn yêu thích nhất tuần
+   4. Phân loại sắp xếp bài viết (Feed Sorting)
+   ========================================================================== */
+
+/* 1. Cột cố định khi cuộn */
+.community-col-left,
+.community-col-right {
+  position: sticky;
+  top: 76px;
+  align-self: start;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  padding-right: 2px;
+}
+
+.community-col-left::-webkit-scrollbar,
+.community-col-right::-webkit-scrollbar {
+  width: 4px;
+}
+
+.community-col-left::-webkit-scrollbar-thumb,
+.community-col-right::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+/* 2. Thanh Macro Pill Dinh Dưỡng đặc trưng NutriLens */
+.post-macro-pill-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 12px 0 14px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+}
+
+.macro-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #ffffff;
+  border: 1px solid #d1fae5;
+  color: #065f46;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.macro-tag-badge {
+  background: #059669;
+  color: #ffffff;
+  border-color: #059669;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.macro-cal {
+  color: #ea580c;
+  border-color: #ffedd5;
+  background: #fff7ed;
+}
+
+.macro-cal i {
+  color: #f97316;
+}
+
+.macro-pro {
+  color: #b91c1c;
+  border-color: #fee2e2;
+  background: #fef2f2;
+}
+
+.macro-carb {
+  color: #ca8a04;
+  border-color: #fef9c3;
+  background: #fefce8;
+}
+
+.macro-fat {
+  color: #15803d;
+  border-color: #dcfce7;
+  background: #f0fdf4;
+}
+
+/* Form đính kèm Macro dinh dưỡng trong Modal */
+.nutrition-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  color: #0f766e;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+}
+
+.nutrition-toggle-btn:hover {
+  background: #f0fdf4;
+  border-color: #10b981;
+}
+
+.nutrition-fields-panel {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+
+.nutrition-fields-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.nutrition-fields-header span {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #065f46;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nutrition-fields-header small {
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.nutrition-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .nutrition-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.nutrition-input-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nutrition-input-col label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nutrition-input-col input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  outline: none;
+  background: #ffffff;
+  transition: border-color 0.15s ease;
+}
+
+.nutrition-input-col input:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.15);
+}
+
+/* 3. Thanh sắp xếp Sort Controls */
+.feed-tabs-and-sort-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.feed-sort-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.feed-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.feed-sort-btn:hover {
+  color: #1e293b;
+}
+
+.feed-sort-btn.active {
+  background: #ffffff;
+  color: #059669;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* 4. Right Sidebar - Bảng vinh danh Top Contributors */
+.community-contributors-card {
+  padding: 16px;
+}
+
+.contributors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contributor-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  transition: all 0.15s ease;
+}
+
+.contributor-item:hover {
+  background: #f0fdf4;
+  border-color: #a7f3d0;
+  transform: translateX(2px);
+}
+
+.contributor-rank {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.contributor-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.contributor-avatar-fallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #059669;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.contributor-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.contributor-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.contributor-stats {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  gap: 8px;
+}
+
+/* Right Sidebar - Món ăn được yêu thích nhất tuần */
+.trending-recipe-card {
+  padding: 16px;
+  border: 1px solid #fed7aa;
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.trending-recipe-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #c2410c;
+  background: #ffedd5;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.trending-recipe-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 6px;
+  transition: all 0.15s ease;
+}
+
+.trending-recipe-preview:hover {
+  background: rgba(254, 215, 170, 0.3);
+}
+
+.trending-recipe-img {
+  width: 100%;
+  height: 125px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.trending-recipe-no-img {
+  width: 100%;
+  height: 80px;
+  border-radius: 8px;
+  background: #fef3c7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d97706;
+  font-size: 28px;
+}
+
+.trending-recipe-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.trending-recipe-author {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.trending-recipe-author-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trending-recipe-author-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.trending-recipe-author-avatar-fallback {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #059669;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.trending-recipe-likes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #ef4444;
+  font-weight: 700;
+  flex-shrink: 0;
 }

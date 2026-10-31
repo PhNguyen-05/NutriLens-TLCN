@@ -8,6 +8,58 @@ const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/jfif'];
 
 /**
+ * Trích xuất và chuẩn hóa thông số dinh dưỡng (Calo, Protein, Carbs, Fat)
+ */
+function parseNutritionData(body) {
+  if (!body) return null;
+  let calories = null;
+  let protein = null;
+  let carbs = null;
+  let fat = null;
+
+  if (body.nutrition) {
+    if (typeof body.nutrition === 'string') {
+      try {
+        const parsed = JSON.parse(body.nutrition);
+        calories = parsed.calories;
+        protein = parsed.protein;
+        carbs = parsed.carbs;
+        fat = parsed.fat;
+      } catch (e) {
+        // bỏ qua lỗi parse json
+      }
+    } else if (typeof body.nutrition === 'object') {
+      calories = body.nutrition.calories;
+      protein = body.nutrition.protein;
+      carbs = body.nutrition.carbs;
+      fat = body.nutrition.fat;
+    }
+  }
+
+  // Hỗ trợ cả các trường trực tiếp trong form-data
+  if (calories === null && body.calories !== undefined) calories = body.calories;
+  if (protein === null && body.protein !== undefined) protein = body.protein;
+  if (carbs === null && body.carbs !== undefined) carbs = body.carbs;
+  if (fat === null && body.fat !== undefined) fat = body.fat;
+
+  const numOrNull = (v) => {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return isNaN(n) || n < 0 ? null : Math.round(n * 10) / 10;
+  };
+
+  calories = numOrNull(calories);
+  protein = numOrNull(protein);
+  carbs = numOrNull(carbs);
+  fat = numOrNull(fat);
+
+  if (calories !== null || protein !== null || carbs !== null || fat !== null) {
+    return { calories, protein, carbs, fat };
+  }
+  return null;
+}
+
+/**
  * UC26: Đăng bài viết cộng đồng
  * POST /api/community/posts
  */
@@ -88,11 +140,14 @@ async function createPost(req, res) {
     }
 
     // 4. Lưu bài viết cùng thông tin người đăng và thời gian đăng (Bước 8 & 9)
+    const nutrition = parseNutritionData(req.body);
+
     const newPost = new CommunityPost({
       authorId: req.user.id,
       content,
       tag,
       imageUrl: finalImageUrl,
+      nutrition,
       status: 'published',
       likes: [],
       likeCount: 0,
@@ -128,7 +183,16 @@ async function createPost(req, res) {
  */
 async function getPosts(req, res) {
   try {
-    const { tag, page = 1, limit = 20, search, onlyMine, filter: filterParam, authorId } = req.query;
+    const {
+      tag,
+      page = 1,
+      limit = 20,
+      search,
+      onlyMine,
+      filter: filterParam,
+      authorId,
+      sortBy = 'latest',
+    } = req.query;
     const filter = { status: 'published' };
     let viewedAuthor = null;
 
@@ -195,10 +259,16 @@ async function getPosts(req, res) {
     const limitNum = Math.min(50, Math.max(1, parseInt(limit, 10) || 20));
     const skip = (pageNum - 1) * limitNum;
 
+    // Xử lý sắp xếp: "latest" (Mới nhất) | "popular" (Thịnh hành / Nhiều tim nhất)
+    let sortOrder = { createdAt: -1 };
+    if (sortBy === 'popular') {
+      sortOrder = { likeCount: -1, createdAt: -1 };
+    }
+
     const [total, posts] = await Promise.all([
       CommunityPost.countDocuments(filter),
       CommunityPost.find(filter)
-        .sort({ createdAt: -1 })
+        .sort(sortOrder)
         .skip(skip)
         .limit(limitNum)
         .populate('authorId', 'fullName email avatarUrl role')
@@ -238,6 +308,89 @@ async function getPosts(req, res) {
       myStats = { postsCount, totalLikes };
     }
 
+    // 1. Top 3 thành viên tích cực nhất (Top Contributors)
+    let topContributors = [];
+    try {
+      const topContributorsAgg = await CommunityPost.aggregate([
+        { $match: { status: 'published' } },
+        {
+          $group: {
+            _id: '$authorId',
+            postsCount: { $sum: 1 },
+            totalLikes: { $sum: '$likeCount' },
+          },
+        },
+        { $sort: { postsCount: -1, totalLikes: -1 } },
+        { $limit: 3 },
+        {
+          $lookup: {
+            from: 'users',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'user',
+          },
+        },
+        { $unwind: '$user' },
+        {
+          $project: {
+            _id: 1,
+            postsCount: 1,
+            totalLikes: 1,
+            fullName: '$user.fullName',
+            avatarUrl: '$user.avatarUrl',
+            role: '$user.role',
+          },
+        },
+      ]);
+
+      topContributors = topContributorsAgg.map((item) => ({
+        _id: item._id,
+        id: item._id,
+        fullName: item.fullName,
+        avatarUrl: item.avatarUrl,
+        role: item.role,
+        postsCount: item.postsCount,
+        totalLikes: item.totalLikes,
+      }));
+    } catch (aggErr) {
+      console.warn('[getPosts] Lỗi tính topContributors:', aggErr.message);
+    }
+
+    // 2. Món ăn / Bài viết được yêu thích nhất tuần (Trending Recipe of the Week)
+    let trendingRecipe = null;
+    try {
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      trendingRecipe = await CommunityPost.findOne({
+        status: 'published',
+        tag: 'Công thức món ăn',
+        createdAt: { $gte: oneWeekAgo },
+      })
+        .sort({ likeCount: -1, createdAt: -1 })
+        .populate('authorId', 'fullName avatarUrl role')
+        .lean();
+
+      if (!trendingRecipe) {
+        trendingRecipe = await CommunityPost.findOne({
+          status: 'published',
+          tag: 'Công thức món ăn',
+        })
+          .sort({ likeCount: -1, createdAt: -1 })
+          .populate('authorId', 'fullName avatarUrl role')
+          .lean();
+      }
+
+      if (!trendingRecipe) {
+        trendingRecipe = await CommunityPost.findOne({
+          status: 'published',
+        })
+          .sort({ likeCount: -1, createdAt: -1 })
+          .populate('authorId', 'fullName avatarUrl role')
+          .lean();
+      }
+    } catch (recipeErr) {
+      console.warn('[getPosts] Lỗi lấy trendingRecipe:', recipeErr.message);
+    }
+
     return res.status(200).json({
       posts: enrichedPosts,
       total,
@@ -247,6 +400,9 @@ async function getPosts(req, res) {
       availableTags: ['Tất cả', ...COMMUNITY_TAGS],
       myStats,
       viewedAuthor,
+      topContributors,
+      trendingRecipe,
+      sortBy,
     });
   } catch (error) {
     console.error('[getPosts] Lỗi lấy danh sách bài viết:', error);
@@ -510,6 +666,11 @@ async function updatePost(req, res) {
       if (trimmedUrl.startsWith('data:image/') || /^https?:\/\//i.test(trimmedUrl)) {
         post.imageUrl = trimmedUrl;
       }
+    }
+
+    // 4. Xử lý thông số dinh dưỡng (nếu người dùng có chỉnh sửa)
+    if (req.body.nutrition !== undefined || req.body.calories !== undefined) {
+      post.nutrition = parseNutritionData(req.body);
     }
 
     post.isEdited = true;

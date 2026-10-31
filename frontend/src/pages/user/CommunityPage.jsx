@@ -144,6 +144,11 @@ export default function CommunityPage() {
   const [myStats, setMyStats] = useState({ postsCount: 0, totalLikes: 0 })
   const [viewedAuthor, setViewedAuthor] = useState(null)
 
+  // Sắp xếp bài viết: 'latest' (Mới nhất) | 'popular' (Thịnh hành / Nhiều tương tác nhất)
+  const [sortBy, setSortBy] = useState('latest')
+  const [topContributors, setTopContributors] = useState([])
+  const [trendingRecipe, setTrendingRecipe] = useState(null)
+
   // State Modal Đăng bài (UC26)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [postContent, setPostContent] = useState('')
@@ -151,6 +156,15 @@ export default function CommunityPage() {
   const [selectedImageFile, setSelectedImageFile] = useState(null)
   const [imagePreviewUrl, setImagePreviewUrl] = useState('')
   const [submitLoading, setSubmitLoading] = useState(false)
+
+  // Thông số dinh dưỡng cho Modal Đăng bài (Đặc trưng NutriLens)
+  const [showNutritionInputs, setShowNutritionInputs] = useState(false)
+  const [nutrition, setNutrition] = useState({
+    calories: '',
+    protein: '',
+    carbs: '',
+    fat: '',
+  })
 
   // Thông báo phản hồi UI (Thành công / Ngoại lệ)
   const [feedbackError, setFeedbackError] = useState('')
@@ -196,6 +210,13 @@ export default function CommunityPage() {
   const [editImagePreviewUrl, setEditImagePreviewUrl] = useState('')
   const [editRemoveImage, setEditRemoveImage] = useState(false)
   const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editShowNutritionInputs, setEditShowNutritionInputs] = useState(false)
+  const [editNutrition, setEditNutrition] = useState({
+    calories: '',
+    protein: '',
+    carbs: '',
+    fat: '',
+  })
   const editFileInputRef = useRef(null)
   const editTextareaRef = useRef(null)
   const editMentionMenuRef = useRef(null)
@@ -284,6 +305,10 @@ export default function CommunityPage() {
       params.onlyMine = 'true'
     }
 
+    if (sortBy) {
+      params.sortBy = sortBy
+    }
+
     axiosInstance
       .get('/community/posts', { params })
       .then(({ data }) => {
@@ -296,6 +321,12 @@ export default function CommunityPage() {
           setViewedAuthor(data.viewedAuthor)
         } else if (!currentAuthorId) {
           setViewedAuthor(null)
+        }
+        if (Array.isArray(data?.topContributors)) {
+          setTopContributors(data.topContributors)
+        }
+        if (data?.trendingRecipe !== undefined) {
+          setTrendingRecipe(data.trendingRecipe)
         }
       })
       .catch((err) => {
@@ -314,7 +345,7 @@ export default function CommunityPage() {
     return () => {
       isActive = false
     }
-  }, [selectedTag, activeSearch, feedMode, searchParams])
+  }, [selectedTag, activeSearch, feedMode, searchParams, sortBy])
 
   // Tự động ẩn thông báo sau 4 giây
   useEffect(() => {
@@ -670,6 +701,8 @@ export default function CommunityPage() {
     setShowMentionMenu(false)
     setMentionQuery('')
     setActiveMentionIndex(0)
+    setShowNutritionInputs(defaultTag === 'Công thức món ăn')
+    setNutrition({ calories: '', protein: '', carbs: '', fat: '' })
     setIsModalOpen(true)
   }
 
@@ -680,6 +713,8 @@ export default function CommunityPage() {
     setSelectedImageFile(null)
     setShowMentionMenu(false)
     setMentionQuery('')
+    setShowNutritionInputs(false)
+    setNutrition({ calories: '', protein: '', carbs: '', fat: '' })
     if (imagePreviewUrl) {
       URL.revokeObjectURL(imagePreviewUrl)
       setImagePreviewUrl('')
@@ -759,6 +794,24 @@ export default function CommunityPage() {
         formData.append('image', selectedImageFile)
       }
 
+      const hasNutrition = Boolean(
+        nutrition.calories !== '' ||
+        nutrition.protein !== '' ||
+        nutrition.carbs !== '' ||
+        nutrition.fat !== ''
+      )
+      if (hasNutrition) {
+        formData.append(
+          'nutrition',
+          JSON.stringify({
+            calories: nutrition.calories !== '' ? Number(nutrition.calories) : null,
+            protein: nutrition.protein !== '' ? Number(nutrition.protein) : null,
+            carbs: nutrition.carbs !== '' ? Number(nutrition.carbs) : null,
+            fat: nutrition.fat !== '' ? Number(nutrition.fat) : null,
+          })
+        )
+      }
+
       const { data } = await axiosInstance.post('/community/posts', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -778,6 +831,8 @@ export default function CommunityPage() {
       setSelectedImageFile(null)
       setShowMentionMenu(false)
       setMentionQuery('')
+      setShowNutritionInputs(false)
+      setNutrition({ calories: '', protein: '', carbs: '', fat: '' })
       if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl)
         setImagePreviewUrl('')
@@ -996,6 +1051,21 @@ export default function CommunityPage() {
     setEditMentionQuery('')
     setEditActiveMentionIndex(0)
     setFeedbackError('')
+
+    const postNutr = post.nutrition || {}
+    const hasNutr = Boolean(
+      postNutr.calories != null ||
+      postNutr.protein != null ||
+      postNutr.carbs != null ||
+      postNutr.fat != null
+    )
+    setEditNutrition({
+      calories: postNutr.calories != null ? String(postNutr.calories) : '',
+      protein: postNutr.protein != null ? String(postNutr.protein) : '',
+      carbs: postNutr.carbs != null ? String(postNutr.carbs) : '',
+      fat: postNutr.fat != null ? String(postNutr.fat) : '',
+    })
+    setEditShowNutritionInputs(hasNutr)
   }
 
   function handleCancelEditPost() {
@@ -1009,6 +1079,8 @@ export default function CommunityPage() {
     setEditRemoveImage(false)
     setEditShowMentionMenu(false)
     setEditMentionQuery('')
+    setEditShowNutritionInputs(false)
+    setEditNutrition({ calories: '', protein: '', carbs: '', fat: '' })
     setFeedbackError('')
   }
 
@@ -1176,6 +1248,34 @@ export default function CommunityPage() {
         formData.append('removeImage', 'true')
       } else if (editSelectedImageFile) {
         formData.append('image', editSelectedImageFile)
+      }
+
+      const hasEditNutrition = Boolean(
+        editNutrition.calories !== '' ||
+        editNutrition.protein !== '' ||
+        editNutrition.carbs !== '' ||
+        editNutrition.fat !== ''
+      )
+      if (hasEditNutrition) {
+        formData.append(
+          'nutrition',
+          JSON.stringify({
+            calories: editNutrition.calories !== '' ? Number(editNutrition.calories) : null,
+            protein: editNutrition.protein !== '' ? Number(editNutrition.protein) : null,
+            carbs: editNutrition.carbs !== '' ? Number(editNutrition.carbs) : null,
+            fat: editNutrition.fat !== '' ? Number(editNutrition.fat) : null,
+          })
+        )
+      } else {
+        formData.append(
+          'nutrition',
+          JSON.stringify({
+            calories: null,
+            protein: null,
+            carbs: null,
+            fat: null,
+          })
+        )
       }
 
       const { data } = await axiosInstance.put(`/community/posts/${editingPost._id}`, formData, {
@@ -1430,6 +1530,28 @@ export default function CommunityPage() {
                     <span className="feed-tab-badge">{posts.length}</span>
                   </button>
                 )}
+              </div>
+
+              {/* BỘ LỌC PHÂN LOẠI HIỂN THỊ (SORT CONTROLS) */}
+              <div className="feed-sort-wrap" title="Sắp xếp bài viết">
+                <button
+                  type="button"
+                  className={`feed-sort-btn ${sortBy === 'latest' ? 'active' : ''}`}
+                  onClick={() => setSortBy('latest')}
+                  title="Hiển thị bài viết mới đăng gần đây nhất"
+                >
+                  <i className="bi bi-clock-history" />
+                  <span>Mới nhất</span>
+                </button>
+                <button
+                  type="button"
+                  className={`feed-sort-btn ${sortBy === 'popular' ? 'active' : ''}`}
+                  onClick={() => setSortBy('popular')}
+                  title="Hiển thị bài viết thịnh hành / nhiều tương tác tim nhất"
+                >
+                  <i className="bi bi-fire" />
+                  <span>Thịnh hành</span>
+                </button>
               </div>
             </div>
 
@@ -1833,6 +1955,39 @@ export default function CommunityPage() {
                       {/* NỘI DUNG VĂN BẢN */}
                       <div className="post-body">
                         <p className="post-text">{renderFormattedContent(post.content, handleSelectTag)}</p>
+
+                        {/* HUY HIỆU DINH DƯỠNG / MACRO PILL ĐẶC TRƯNG NUTRILENS */}
+                        {post.nutrition &&
+                          (post.nutrition.calories != null ||
+                            post.nutrition.protein != null ||
+                            post.nutrition.carbs != null ||
+                            post.nutrition.fat != null) && (
+                            <div className="post-macro-pill-bar" title="Thông số dinh dưỡng của món ăn">
+                              <span className="macro-tag macro-tag-badge">
+                                <i className="bi bi-shield-check" /> Dinh dưỡng
+                              </span>
+                              {post.nutrition.calories != null && (
+                                <span className="macro-tag macro-cal">
+                                  <i className="bi bi-fire" /> <strong>{post.nutrition.calories}</strong> kcal
+                                </span>
+                              )}
+                              {post.nutrition.protein != null && (
+                                <span className="macro-tag macro-pro">
+                                  🥩 <strong>{post.nutrition.protein}g</strong> Protein
+                                </span>
+                              )}
+                              {post.nutrition.carbs != null && (
+                                <span className="macro-tag macro-carb">
+                                  🍚 <strong>{post.nutrition.carbs}g</strong> Carbs
+                                </span>
+                              )}
+                              {post.nutrition.fat != null && (
+                                <span className="macro-tag macro-fat">
+                                  🥑 <strong>{post.nutrition.fat}g</strong> Fat
+                                </span>
+                              )}
+                            </div>
+                          )}
                       </div>
 
                       {/* HÌNH ẢNH MINH HỌA (NẾU CÓ) */}
@@ -2117,6 +2272,120 @@ export default function CommunityPage() {
                 </button>
               </div>
             </div>
+
+            {/* GỢI Ý B: BẢNG VINH DANH THÀNH VIÊN TÍCH CỰC (TOP CONTRIBUTORS) */}
+            {topContributors.length > 0 && (
+              <div className="community-card community-contributors-card">
+                <h4 className="sidebar-card-title">
+                  <i className="bi bi-trophy-fill" style={{ color: '#eab308' }} /> Thành viên tích cực
+                </h4>
+                <div className="contributors-list">
+                  {topContributors.map((c, idx) => {
+                    const rankEmojis = ['🥇', '🥈', '🥉']
+                    const initial = (c.fullName || 'U').charAt(0).toUpperCase()
+                    return (
+                      <div
+                        key={c.id || c._id}
+                        className="contributor-item"
+                        onClick={() => handleViewAuthorPosts(c)}
+                        title={`Xem tất cả bài viết của ${c.fullName}`}
+                      >
+                        <span className="contributor-rank">{rankEmojis[idx] || `#${idx + 1}`}</span>
+                        {c.avatarUrl ? (
+                          <img
+                            src={resolveMediaUrl(c.avatarUrl)}
+                            alt={c.fullName}
+                            className="contributor-avatar"
+                          />
+                        ) : (
+                          <div className="contributor-avatar-fallback">{initial}</div>
+                        )}
+                        <div className="contributor-info">
+                          <div className="contributor-name">{c.fullName}</div>
+                          <div className="contributor-stats">
+                            <span>
+                              <i className="bi bi-journal-text" /> {c.postsCount} bài
+                            </span>
+                            <span>
+                              <i className="bi bi-heart-fill" style={{ color: '#ef4444' }} /> {c.totalLikes} tim
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* GỢI Ý C: MÓN ĂN ĐƯỢC YÊU THÍCH NHẤT TUẦN (TRENDING RECIPE OF THE WEEK) */}
+            {trendingRecipe && (
+              <div className="community-card trending-recipe-card">
+                <span className="trending-recipe-badge">
+                  <i className="bi bi-stars" /> Món ngon nổi bật tuần
+                </span>
+                <div
+                  className="trending-recipe-preview"
+                  onClick={() => {
+                    const el = document.getElementById(`post-${trendingRecipe._id}`)
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      el.style.boxShadow = '0 0 0 3px #10b981'
+                      setTimeout(() => {
+                        el.style.boxShadow = ''
+                      }, 2500)
+                    } else if (trendingRecipe.authorId) {
+                      handleViewAuthorPosts(trendingRecipe.authorId)
+                    }
+                  }}
+                  title="Nhấn để xem chi tiết món ăn"
+                >
+                  {trendingRecipe.imageUrl ? (
+                    <img
+                      src={resolveMediaUrl(trendingRecipe.imageUrl)}
+                      alt={trendingRecipe.content?.slice(0, 50)}
+                      className="trending-recipe-img"
+                    />
+                  ) : (
+                    <div className="trending-recipe-no-img">
+                      <i className="bi bi-egg-fried" />
+                    </div>
+                  )}
+
+                  <div className="trending-recipe-title">
+                    {trendingRecipe.content?.slice(0, 80)}
+                    {trendingRecipe.content?.length > 80 ? '...' : ''}
+                  </div>
+
+                  {trendingRecipe.nutrition?.calories != null && (
+                    <div className="macro-tag macro-cal" style={{ alignSelf: 'flex-start', margin: '2px 0' }}>
+                      <i className="bi bi-fire" /> <strong>{trendingRecipe.nutrition.calories}</strong> kcal
+                    </div>
+                  )}
+
+                  <div className="trending-recipe-author">
+                    <div className="trending-recipe-author-left">
+                      {trendingRecipe.authorId?.avatarUrl ? (
+                        <img
+                          src={resolveMediaUrl(trendingRecipe.authorId.avatarUrl)}
+                          alt={trendingRecipe.authorId.fullName}
+                          className="trending-recipe-author-avatar"
+                        />
+                      ) : (
+                        <div className="trending-recipe-author-avatar-fallback">
+                          {(trendingRecipe.authorId?.fullName || 'U').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span>{trendingRecipe.authorId?.fullName || 'Thành viên'}</span>
+                    </div>
+                    <span className="trending-recipe-likes">
+                      <i className="bi bi-heart-fill" />{' '}
+                      {trendingRecipe.likeCount || (trendingRecipe.likes ? trendingRecipe.likes.length : 0)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </aside>
         </div>
       </main>
@@ -2340,6 +2609,97 @@ export default function CommunityPage() {
                   onChange={handleFileSelected}
                 />
               </div>
+
+              {/* ĐÍNH KÈM THÔNG SỐ DINH DƯỠNG (TÙY CHỌN - ĐẶC TRƯNG NUTRILENS) */}
+              {!showNutritionInputs ? (
+                <button
+                  type="button"
+                  className="nutrition-toggle-btn"
+                  onClick={() => setShowNutritionInputs(true)}
+                >
+                  <i className="bi bi-shield-check" />
+                  <span>Đính kèm thông số dinh dưỡng (Calo, Protein, Carbs, Fat)</span>
+                </button>
+              ) : (
+                <div className="nutrition-fields-panel">
+                  <div className="nutrition-fields-header">
+                    <span>
+                      <i className="bi bi-fire" /> Thông số dinh dưỡng món ăn (Tùy chọn)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNutritionInputs(false)
+                        setNutrition({ calories: '', protein: '', carbs: '', fat: '' })
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <i className="bi bi-x-lg" /> Bỏ đính kèm
+                    </button>
+                  </div>
+                  <div className="nutrition-grid">
+                    <div className="nutrition-input-col">
+                      <label htmlFor="create-calories">
+                        <i className="bi bi-fire" style={{ color: '#ea580c' }} /> Calo (kcal)
+                      </label>
+                      <input
+                        id="create-calories"
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="VD: 420"
+                        value={nutrition.calories}
+                        onChange={(e) => setNutrition((prev) => ({ ...prev, calories: e.target.value }))}
+                      />
+                    </div>
+                    <div className="nutrition-input-col">
+                      <label htmlFor="create-protein">🥩 Protein (g)</label>
+                      <input
+                        id="create-protein"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="VD: 35"
+                        value={nutrition.protein}
+                        onChange={(e) => setNutrition((prev) => ({ ...prev, protein: e.target.value }))}
+                      />
+                    </div>
+                    <div className="nutrition-input-col">
+                      <label htmlFor="create-carbs">🍚 Carbs (g)</label>
+                      <input
+                        id="create-carbs"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="VD: 40"
+                        value={nutrition.carbs}
+                        onChange={(e) => setNutrition((prev) => ({ ...prev, carbs: e.target.value }))}
+                      />
+                    </div>
+                    <div className="nutrition-input-col">
+                      <label htmlFor="create-fat">🥑 Fat (g)</label>
+                      <input
+                        id="create-fat"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="VD: 12"
+                        value={nutrition.fat}
+                        onChange={(e) => setNutrition((prev) => ({ ...prev, fat: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* THÔNG BÁO LỖI INLINE NẾU CÓ */}
               {feedbackError && (
@@ -2741,6 +3101,103 @@ export default function CommunityPage() {
                   disabled={editSubmitting}
                 />
               </div>
+
+              {/* ĐÍNH KÈM THÔNG SỐ DINH DƯỠNG TRONG MODAL CHỈNH SỬA */}
+              {!editShowNutritionInputs ? (
+                <button
+                  type="button"
+                  className="nutrition-toggle-btn"
+                  onClick={() => setEditShowNutritionInputs(true)}
+                  disabled={editSubmitting}
+                >
+                  <i className="bi bi-shield-check" />
+                  <span>Đính kèm thông số dinh dưỡng (Calo, Protein, Carbs, Fat)</span>
+                </button>
+              ) : (
+                <div className="nutrition-fields-panel">
+                  <div className="nutrition-fields-header">
+                    <span>
+                      <i className="bi bi-fire" /> Thông số dinh dưỡng món ăn (Tùy chọn)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditShowNutritionInputs(false)
+                        setEditNutrition({ calories: '', protein: '', carbs: '', fat: '' })
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      disabled={editSubmitting}
+                    >
+                      <i className="bi bi-x-lg" /> Bỏ đính kèm
+                    </button>
+                  </div>
+                  <div className="nutrition-grid">
+                    <div className="nutrition-input-col">
+                      <label htmlFor="edit-calories">
+                        <i className="bi bi-fire" style={{ color: '#ea580c' }} /> Calo (kcal)
+                      </label>
+                      <input
+                        id="edit-calories"
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="VD: 420"
+                        value={editNutrition.calories}
+                        onChange={(e) => setEditNutrition((prev) => ({ ...prev, calories: e.target.value }))}
+                        disabled={editSubmitting}
+                      />
+                    </div>
+                    <div className="nutrition-input-col">
+                      <label htmlFor="edit-protein">🥩 Protein (g)</label>
+                      <input
+                        id="edit-protein"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="VD: 35"
+                        value={editNutrition.protein}
+                        onChange={(e) => setEditNutrition((prev) => ({ ...prev, protein: e.target.value }))}
+                        disabled={editSubmitting}
+                      />
+                    </div>
+                    <div className="nutrition-input-col">
+                      <label htmlFor="edit-carbs">🍚 Carbs (g)</label>
+                      <input
+                        id="edit-carbs"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="VD: 40"
+                        value={editNutrition.carbs}
+                        onChange={(e) => setEditNutrition((prev) => ({ ...prev, carbs: e.target.value }))}
+                        disabled={editSubmitting}
+                      />
+                    </div>
+                    <div className="nutrition-input-col">
+                      <label htmlFor="edit-fat">🥑 Fat (g)</label>
+                      <input
+                        id="edit-fat"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        placeholder="VD: 12"
+                        value={editNutrition.fat}
+                        onChange={(e) => setEditNutrition((prev) => ({ ...prev, fat: e.target.value }))}
+                        disabled={editSubmitting}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* THÔNG BÁO LỖI INLINE NẾU CÓ */}
               {feedbackError && (
