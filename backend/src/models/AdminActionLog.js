@@ -16,12 +16,14 @@ const adminActionLogSchema = new Schema(
         'approve_request', 'create_food', 'update_food', 'hide_food', 'show_food',
         'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise',
         'create_post', 'update_post', 'publish_post', 'draft_post', 'delete_post',
+        'approve_community_post', 'reject_community_post', 'keep_community_report',
+        'hide_community_post', 'restore_community_post', 'reapprove_community_post',
       ],
       required: true,
     },
     targetType: {
       type: String,
-      enum: ['User', 'Post', 'FoodItem', 'Request', 'Exercise'],
+      enum: ['User', 'Post', 'CommunityPost', 'FoodItem', 'Request', 'Exercise'],
       required: true,
     },
     targetId: {

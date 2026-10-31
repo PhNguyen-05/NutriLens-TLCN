@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import axiosInstance from '../../api/axiosInstance'
 import './CommunityModerationPage.css'
 
 export const INITIAL_POSTS = [
   {
-    id: 'community-1',
+    id: '671000000000000000000001',
     author: 'Nguyễn Thị Mai',
     handle: '@mainguyen',
     avatar: 'M',
@@ -20,7 +21,7 @@ export const INITIAL_POSTS = [
     reportReason: 'Nội dung chưa chính xác, có thể gây hiểu nhầm về dinh dưỡng.',
   },
   {
-    id: 'community-2',
+    id: '671000000000000000000002',
     author: 'Trần Văn Nam',
     handle: '@namtran',
     avatar: 'N',
@@ -37,7 +38,7 @@ export const INITIAL_POSTS = [
     reportReason: '',
   },
   {
-    id: 'community-3',
+    id: '671000000000000000000003',
     author: 'Lê Thị Hương',
     handle: '@huongle',
     avatar: 'H',
@@ -54,7 +55,7 @@ export const INITIAL_POSTS = [
     reportReason: 'Bài đăng có thông tin sức khỏe chưa được kiểm chứng.',
   },
   {
-    id: 'community-4',
+    id: '671000000000000000000004',
     author: 'Phạm Đức Anh',
     handle: '@anhpham',
     avatar: 'A',
@@ -71,7 +72,7 @@ export const INITIAL_POSTS = [
     reportReason: '',
   },
   {
-    id: 'community-5',
+    id: '671000000000000000000005',
     author: 'Hoàng Thu Trang',
     handle: '@tranghoang',
     avatar: 'T',
@@ -88,7 +89,7 @@ export const INITIAL_POSTS = [
     reportReason: 'Ảnh và nội dung không liên quan đến chủ đề cộng đồng.',
   },
   {
-    id: 'community-6',
+    id: '671000000000000000000006',
     author: 'Đỗ Minh Quân',
     handle: '@quan.do',
     avatar: 'Q',
@@ -238,16 +239,40 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     toastTimer.current = window.setTimeout(() => setToast(''), 2600)
   }
 
-  function applyDecision(status) {
+  async function recordModerationAction(actionType, post, summary, detail) {
+    try {
+      await axiosInstance.post('/admin/users/action-logs/community', {
+        actionType,
+        targetId: post.id,
+        reason: `${summary}: "${post.title}"`,
+        note: `Người đăng: ${post.author} (${post.handle}). ${detail}`,
+      })
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  function notifyModerationResult(message, wasLogged) {
+    notify(wasLogged ? message : `${message} Chưa lưu được vào lịch sử thao tác.`)
+  }
+
+  async function applyDecision(status) {
     if (!selectedPost) return
     if (status === 'Đã duyệt' && selectedPost.status === 'Đã duyệt') {
       notify('Bài đăng này đã được duyệt rồi.')
       return
     }
+    const wasLogged = await recordModerationAction(
+      'approve_community_post',
+      selectedPost,
+      'Duyệt bài đăng Community',
+      `Trạng thái: ${selectedPost.status} → ${status}.`,
+    )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
       ? { ...post, status, reports: status === 'Đã duyệt' ? 0 : post.reports }
       : post))
-    notify(`Đã cập nhật trạng thái thành “${status}”.`)
+    notifyModerationResult(`Đã cập nhật trạng thái thành “${status}”.`, wasLogged)
   }
 
   function openRejectForm() {
@@ -268,14 +293,20 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     setRejectionNote('')
   }
 
-  function confirmRejection(event) {
+  async function confirmRejection(event) {
     event.preventDefault()
     if (!selectedPost || selectedPost.status !== 'Chờ duyệt' || !rejectionReason) return
+    const wasLogged = await recordModerationAction(
+      'reject_community_post',
+      selectedPost,
+      'Từ chối bài đăng Community',
+      `Lý do: ${rejectionReason}. ${rejectionNote.trim() ? `Ghi chú: ${rejectionNote.trim()}` : ''}`,
+    )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
       ? { ...post, status: 'Từ chối', rejectionReason, rejectionNote: rejectionNote.trim() }
       : post))
     closeRejectForm()
-    notify('Đã từ chối bài đăng.')
+    notifyModerationResult('Đã từ chối bài đăng.', wasLogged)
   }
 
   function openKeepForm() {
@@ -291,14 +322,20 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     setKeepNote('')
   }
 
-  function confirmKeepPost(event) {
+  async function confirmKeepPost(event) {
     event.preventDefault()
     if (!selectedPost || selectedPost.reports < 1 || !['Đã duyệt', 'Cần xem xét'].includes(selectedPost.status) || !keepReason) return
+    const wasLogged = await recordModerationAction(
+      'keep_community_report',
+      selectedPost,
+      'Giữ bài đăng sau khi xem xét báo cáo Community',
+      `Lý do: ${keepReason}. ${keepNote.trim() ? `Ghi chú: ${keepNote.trim()}` : ''}`,
+    )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
       ? { ...post, status: 'Đã duyệt', reports: 0, reportReason: '', keepReason, keepNote: keepNote.trim() }
       : post))
     closeKeepForm()
-    notify('Đã giữ nguyên bài đăng.')
+    notifyModerationResult('Đã giữ nguyên bài đăng.', wasLogged)
   }
 
   function openHideForm() {
@@ -317,33 +354,51 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     setHideNote('')
   }
 
-  function confirmHidePost(event) {
+  async function confirmHidePost(event) {
     event.preventDefault()
     if (!selectedPost || !hideReason) return
     const canHidePost = selectedPost.status === 'Đã duyệt'
       || (selectedPost.status === 'Cần xem xét' && selectedPost.reports > 0)
     if (!canHidePost) return
+    const wasLogged = await recordModerationAction(
+      'hide_community_post',
+      selectedPost,
+      'Ẩn bài đăng Community',
+      `Lý do: ${hideReason}. ${hideNote.trim() ? `Ghi chú: ${hideNote.trim()}` : ''}`,
+    )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
       ? { ...post, status: 'Đã ẩn', hideReason, hideNote: hideNote.trim() }
       : post))
     closeHideForm()
-    notify('Đã ẩn bài đăng khỏi Community.')
+    notifyModerationResult('Đã ẩn bài đăng khỏi Community.', wasLogged)
   }
 
-  function showPostAgain() {
+  async function showPostAgain() {
     if (!selectedPost || selectedPost.status !== 'Đã ẩn') return
+    const wasLogged = await recordModerationAction(
+      'restore_community_post',
+      selectedPost,
+      'Hiển thị lại bài đăng Community',
+      'Trạng thái: Đã ẩn → Đã duyệt.',
+    )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
       ? { ...post, status: 'Đã duyệt', reports: 0, reportReason: '' }
       : post))
-    notify('Đã hiển thị lại bài đăng trên Community.')
+    notifyModerationResult('Đã hiển thị lại bài đăng trên Community.', wasLogged)
   }
 
-  function reapproveRejectedPost() {
+  async function reapproveRejectedPost() {
     if (!selectedPost || selectedPost.status !== 'Từ chối') return
+    const wasLogged = await recordModerationAction(
+      'reapprove_community_post',
+      selectedPost,
+      'Duyệt lại bài đăng Community',
+      `Trạng thái: Từ chối → Đã duyệt. Lý do từ chối trước: ${selectedPost.rejectionReason || 'Không có ghi chú.'}`,
+    )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
       ? { ...post, status: 'Đã duyệt' }
       : post))
-    notify('Đã duyệt lại bài đăng.')
+    notifyModerationResult('Đã duyệt lại bài đăng.', wasLogged)
   }
 
   function refreshDemo() {

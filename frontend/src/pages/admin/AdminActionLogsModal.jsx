@@ -7,6 +7,7 @@ const TABS = [
   { id: 'Request', label: 'Yêu cầu bổ sung món', icon: 'bi-patch-plus-fill' },
   { id: 'Exercise', label: 'Bài tập thể chất', icon: 'bi-person-walking' },
   { id: 'Post', label: 'Blog y khoa', icon: 'bi-journal-text' },
+  { id: 'CommunityPost', label: 'Kiểm duyệt cộng đồng', icon: 'bi-chat-square-heart' },
   { id: 'User', label: 'Tài khoản người dùng', icon: 'bi-people-fill' },
 ]
 
@@ -37,6 +38,14 @@ const MODULE_ACTIONS = {
     { value: 'draft_post', label: 'Chuyển về nháp' },
     { value: 'delete_post', label: 'Xóa bài viết' },
   ],
+  CommunityPost: [
+    { value: 'approve_community_post', label: 'Duyệt bài đăng' },
+    { value: 'reject_community_post', label: 'Từ chối bài đăng' },
+    { value: 'keep_community_report', label: 'Giữ bài đăng sau báo cáo' },
+    { value: 'hide_community_post', label: 'Ẩn bài đăng' },
+    { value: 'restore_community_post', label: 'Hiển thị lại bài đăng' },
+    { value: 'reapprove_community_post', label: 'Duyệt lại bài đăng' },
+  ],
   User: [
     { value: 'lock_user', label: 'Khóa tài khoản' },
     { value: 'unlock_user', label: 'Mở khóa tài khoản' },
@@ -47,6 +56,12 @@ const actionLabels = {
   lock_user: 'Khóa tài khoản',
   unlock_user: 'Mở khóa tài khoản',
   approve_post: 'Duyệt bài viết',
+  approve_community_post: 'Duyệt bài đăng',
+  reject_community_post: 'Từ chối bài đăng',
+  keep_community_report: 'Giữ bài đăng sau báo cáo',
+  hide_community_post: 'Ẩn bài đăng',
+  restore_community_post: 'Hiển thị lại bài đăng',
+  reapprove_community_post: 'Duyệt lại bài đăng',
   create_food: 'Thêm món ăn',
   update_food: 'Cập nhật món ăn',
   hide_food: 'Ẩn món ăn',
@@ -92,6 +107,13 @@ function getActionTypeAndIcon(actionType) {
           ? 'bi-trash-fill'
           : 'bi-lock-fill',
       }
+    case 'approve_community_post':
+    case 'reapprove_community_post':
+      return { type: 'unlock', icon: 'bi-check-circle-fill' }
+    case 'restore_community_post':
+      return { type: 'unlock', icon: 'bi-eye-fill' }
+    case 'keep_community_report':
+      return { type: 'update', icon: 'bi-shield-check' }
     case 'unlock_user':
     case 'create_food':
     case 'create_exercise':
@@ -116,7 +138,10 @@ function getActionTypeAndIcon(actionType) {
     case 'hide_food':
     case 'hide_exercise':
     case 'hide_post':
+    case 'hide_community_post':
       return { type: 'lock', icon: 'bi-eye-slash-fill' }
+    case 'reject_community_post':
+      return { type: 'lock', icon: 'bi-x-circle-fill' }
     case 'draft_post':
       return { type: 'update', icon: 'bi-file-earmark-text' }
     case 'update_food':
@@ -130,7 +155,7 @@ function getActionTypeAndIcon(actionType) {
 
 export default function AdminActionLogsModal({ isOpen, onClose, embedded = false }) {
   const [targetTab, setTargetTab] = useState('all')
-  const [tabCounts, setTabCounts] = useState({ all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, User: 0 })
+  const [tabCounts, setTabCounts] = useState({ all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, CommunityPost: 0, User: 0 })
   const [logFrom, setLogFrom] = useState(() => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10))
   const [logTo, setLogTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [logAction, setLogAction] = useState('all')
@@ -201,6 +226,8 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
     ? 'Tìm theo tên bài tập, cường độ, MET, lý do...'
     : targetTab === 'Post'
     ? 'Tìm theo tiêu đề bài viết, chuyên mục, lý do...'
+    : targetTab === 'CommunityPost'
+    ? 'Tìm theo nội dung kiểm duyệt, lý do...'
     : targetTab === 'User'
     ? 'Tìm theo họ tên, email, lý do...'
     : 'Tìm kiếm theo tên người dùng, món ăn, bài tập, bài viết, lý do...'
@@ -241,6 +268,11 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
             <option key={item.value} value={item.value}>{item.label}</option>
           ))}
         </optgroup>
+        <optgroup label="Kiểm duyệt cộng đồng">
+          {MODULE_ACTIONS.CommunityPost.map((item) => (
+            <option key={item.value} value={item.value}>{item.label}</option>
+          ))}
+        </optgroup>
         <optgroup label="Tài khoản người dùng">
           {MODULE_ACTIONS.User.map((item) => (
             <option key={item.value} value={item.value}>{item.label}</option>
@@ -274,6 +306,8 @@ export default function AdminActionLogsModal({ isOpen, onClose, embedded = false
                 ? 'Yêu cầu bổ sung món'
                 : log.targetType === 'Post'
                 ? 'Blog y khoa'
+                : log.targetType === 'CommunityPost'
+                ? 'Kiểm duyệt cộng đồng'
                 : log.targetType}
             </span>
           </td>

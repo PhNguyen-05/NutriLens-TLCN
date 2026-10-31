@@ -727,12 +727,22 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .action-log-heading > button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #57718b; }
 /* ══════════ ACTION LOG QUICK SUBSYSTEM TABS ══════════ */
 .action-log-tabs {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   margin: 0 12px 10px;
+  padding-bottom: 4px;
+  scrollbar-color: #bdccd9 #f3f7fa;
+  scrollbar-width: thin;
 }
+.action-log-tab-btn { flex: 0 0 auto; }
+.action-log-tabs::-webkit-scrollbar { height: 6px; }
+.action-log-tabs::-webkit-scrollbar-track { border-radius: 6px; background: #f3f7fa; }
+.action-log-tabs::-webkit-scrollbar-thumb { border-radius: 6px; background: #bdccd9; }
 .admin-action-log-panel .action-log-tabs {
   margin: 0 0 12px;
 }

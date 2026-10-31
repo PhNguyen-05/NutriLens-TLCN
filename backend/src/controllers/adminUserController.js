@@ -423,8 +423,10 @@ async function listActionLogs(req, res) {
       'create_food', 'update_food', 'hide_food', 'show_food',
       'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise',
       'create_post', 'update_post', 'publish_post', 'draft_post', 'delete_post',
+      'approve_community_post', 'reject_community_post', 'keep_community_report',
+      'hide_community_post', 'restore_community_post', 'reapprove_community_post',
     ];
-    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise', 'Post'];
+    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise', 'Post', 'CommunityPost'];
 
     if (targetType !== 'all') {
       if (validTargetTypes.includes(targetType)) {
@@ -500,7 +502,7 @@ async function listActionLogs(req, res) {
       ]),
     ]);
 
-    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, User: 0 };
+    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, CommunityPost: 0, User: 0 };
     countsAggregate.forEach((item) => {
       if (item._id && targetCounts[item._id] !== undefined) {
         targetCounts[item._id] = item.count;
@@ -548,9 +550,50 @@ async function listActionLogs(req, res) {
   }
 }
 
+async function createCommunityModerationActionLog(req, res) {
+  try {
+    const allowedActions = new Set([
+      'approve_community_post',
+      'reject_community_post',
+      'keep_community_report',
+      'hide_community_post',
+      'restore_community_post',
+      'reapprove_community_post',
+    ]);
+    const { actionType, targetId } = req.body || {};
+    const reason = String(req.body?.reason || '').trim();
+    const note = String(req.body?.note || '').trim();
+
+    if (!allowedActions.has(actionType)) {
+      return res.status(400).json({ message: 'Hành động kiểm duyệt cộng đồng không hợp lệ' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(targetId)) {
+      return res.status(400).json({ message: 'Mã bài đăng Community không hợp lệ' });
+    }
+    if (!reason || reason.length > 1000 || note.length > 2000) {
+      return res.status(400).json({ message: 'Nội dung nhật ký không hợp lệ' });
+    }
+
+    const actionLog = await AdminActionLog.create({
+      adminId: req.user.id,
+      actionType,
+      targetType: 'CommunityPost',
+      targetId,
+      reason,
+      note: note || null,
+    });
+
+    return res.status(201).json({ data: actionLog });
+  } catch (err) {
+    console.error('[createCommunityModerationActionLog] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể lưu lịch sử kiểm duyệt cộng đồng' });
+  }
+}
+
 module.exports = {
   listUsers,
   getUserDetail,
   updateUserStatus,
   listActionLogs,
+  createCommunityModerationActionLog,
 };
