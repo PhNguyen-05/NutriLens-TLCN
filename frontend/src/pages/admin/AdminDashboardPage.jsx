@@ -7,7 +7,7 @@ import FoodManagementPage from './FoodManagementPage'
 import FoodRequestManagementPage from './FoodRequestManagementPage'
 
 import BlogManagementPage from './BlogManagementPage'
-import CommunityModerationPage from './CommunityModerationPage'
+import CommunityModerationPage, { getCommunityDashboardStats } from './CommunityModerationPage'
 
 import ExerciseManagementPage from './ExerciseManagementPage'
 import AdminAnalyticsPage from './AdminAnalyticsPage'
@@ -24,6 +24,8 @@ const emptyDashboardStats = {
   pendingMeals: null,
   lockedUsers: null,
   draftArticles: null,
+  communityPosts: null,
+  reportedCommunityPosts: null,
 }
 
 function getTodayInVietnam() {
@@ -70,6 +72,7 @@ export default function AdminDashboardPage() {
   const [dashboardLoading, setDashboardLoading] = useState(true)
   const [dashboardStats, setDashboardStats] = useState(emptyDashboardStats)
   const [dashboardActivity, setDashboardActivity] = useState([])
+  const [communityInitialFilter, setCommunityInitialFilter] = useState('all')
   const isAnalyticsPage = ['Báo cáo', 'FoodAnalytics', 'ExerciseAnalytics', 'BlogAnalytics'].includes(activeItem)
   const isDashboard = activeItem === 'Dashboard' && !showActionLogs
 
@@ -125,6 +128,7 @@ export default function AdminDashboardPage() {
       const todayExercise = exercises?.daily?.find((row) => row.date === today)
       const todayFood = foods?.daily?.find((row) => row.date === today)
       const todayBlog = blogs?.daily?.find((row) => row.date === today)
+      const communityStats = getCommunityDashboardStats(today)
 
       setDashboardStats({
         newUsers: users ? users.pagination?.total ?? users.data?.length ?? 0 : null,
@@ -134,6 +138,8 @@ export default function AdminDashboardPage() {
         pendingMeals: requests ? requests.summary?.pending || 0 : null,
         lockedUsers: users ? users.summary?.locked || 0 : null,
         draftArticles: blogs ? blogs.summary?.drafts || 0 : null,
+        communityPosts: communityStats.postsToday,
+        reportedCommunityPosts: communityStats.reportedPosts,
       })
       if (requests?.summary) setPendingRequestsCount(requests.summary.pending || 0)
 
@@ -173,6 +179,11 @@ export default function AdminDashboardPage() {
     setShowActionLogs(item === 'Lịch sử thao tác')
   }
 
+  function navigateCommunity(filter = 'all') {
+    setCommunityInitialFilter(filter)
+    navigateAdmin('Kiểm duyệt cộng đồng')
+  }
+
   return (
     <div className={`admin-shell ${isAnalyticsPage ? 'admin-shell-analytics' : ''} ${isDashboard ? 'admin-dashboard-mode' : ''}`}>
       <aside className="admin-sidebar">
@@ -199,7 +210,7 @@ export default function AdminDashboardPage() {
         <div className="admin-section-label">CỘNG ĐỒNG</div>
         <button
           className={`community-sidebar-item ${activeItem === 'Kiểm duyệt cộng đồng' ? 'active' : ''}`}
-          onClick={() => { setActiveItem('Kiểm duyệt cộng đồng'); setShowActionLogs(false) }}
+          onClick={() => navigateCommunity()}
         >
           <i className="bi bi-chat-square-heart" /> Kiểm duyệt cộng đồng
         </button>
@@ -314,7 +325,7 @@ export default function AdminDashboardPage() {
             <BlogManagementPage />
 
           ) : activeItem === 'Kiểm duyệt cộng đồng' ? (
-            <CommunityModerationPage />
+            <CommunityModerationPage initialFilter={communityInitialFilter} />
 
           ) : activeItem === 'Bài tập' ? (
             <ExerciseManagementPage />
@@ -333,6 +344,7 @@ export default function AdminDashboardPage() {
                   { label: 'Món ăn mới hôm nay', value: dashboardStats.meals, tone: 'orange', icon: 'bi-cup-hot-fill' },
                   { label: 'Lượt ghi nhận bài tập', value: dashboardStats.exercises, tone: 'blue', icon: 'bi-person-walking' },
                   { label: 'Bài viết Blog mới hôm nay', value: dashboardStats.articles, tone: 'purple', icon: 'bi-file-earmark-text-fill' },
+                  { label: 'Bài đăng Community mới hôm nay', value: dashboardStats.communityPosts, tone: 'mint', icon: 'bi-chat-dots-fill' },
                 ].map((stat) => (
                   <article className={'overview-stat-card ' + stat.tone} key={stat.label}>
                     <span className="overview-stat-icon"><i className={'bi ' + stat.icon} /></span>
@@ -395,6 +407,12 @@ export default function AdminDashboardPage() {
                         <span className="overview-attention-icon"><i className="bi bi-file-earmark-text-fill" /></span>
                         <span className="overview-attention-copy"><b>Bài viết chưa xuất bản</b><small>Bài viết Blog đang ở trạng thái nháp</small></span>
                         <strong>{dashboardStats.draftArticles == null ? '—' : dashboardStats.draftArticles}</strong>
+                        <i className="bi bi-chevron-right" />
+                      </button>
+                      <button type="button" className="overview-attention-row community" onClick={() => navigateCommunity('reported')}>
+                        <span className="overview-attention-icon"><i className="bi bi-flag-fill" /></span>
+                        <span className="overview-attention-copy"><b>Bài đăng Community bị báo cáo</b><small>Bài đăng cần Admin xem xét</small></span>
+                        <strong>{dashboardStats.reportedCommunityPosts == null ? '—' : dashboardStats.reportedCommunityPosts}</strong>
                         <i className="bi bi-chevron-right" />
                       </button>
                     </div>

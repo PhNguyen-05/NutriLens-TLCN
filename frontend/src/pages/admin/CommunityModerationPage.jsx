@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './CommunityModerationPage.css'
 
-const INITIAL_POSTS = [
+export const INITIAL_POSTS = [
   {
     id: 'community-1',
     author: 'Nguyễn Thị Mai',
@@ -107,6 +107,21 @@ const INITIAL_POSTS = [
   },
 ]
 
+function getTodayInVietnam() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())
+}
+
+export function getCommunityDashboardStats(today = getTodayInVietnam()) {
+  const dateInVietnam = (value) => new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(new Date(value))
+
+  return {
+    postsToday: INITIAL_POSTS.filter((post) => dateInVietnam(post.createdAt) === today).length,
+    reportedPosts: INITIAL_POSTS.filter((post) => post.reports > 0).length,
+  }
+}
+
 const FILTERS = [
   { id: 'all', label: 'Tất cả' },
   { id: 'approved', label: 'Đã duyệt' },
@@ -163,10 +178,10 @@ function getEngagementCount(post, field) {
   return Number(post?.[field] || 0)
 }
 
-export default function CommunityModerationPage() {
+export default function CommunityModerationPage({ initialFilter = 'all' }) {
   const [posts, setPosts] = useState(INITIAL_POSTS)
   const [selectedId, setSelectedId] = useState(null)
-  const [activeFilter, setActiveFilter] = useState('all')
+  const [activeFilter, setActiveFilter] = useState(initialFilter)
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [toast, setToast] = useState('')

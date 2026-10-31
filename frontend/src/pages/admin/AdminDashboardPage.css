@@ -78,7 +78,7 @@
 
 .overview-stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -99,6 +99,7 @@
 .overview-stat-card.orange { --stat-color: #e58a2f; --stat-icon-bg: #fff1e2; }
 .overview-stat-card.blue { --stat-color: #287ec0; --stat-icon-bg: #e8f3ff; }
 .overview-stat-card.purple { --stat-color: #8256bd; --stat-icon-bg: #f0eaff; }
+.overview-stat-card.mint { --stat-color: #149b78; --stat-icon-bg: #e2f8f0; }
 
 .overview-stat-icon {
   width: 44px;
@@ -284,12 +285,14 @@
 .overview-attention-row.food .overview-attention-icon { background: #fff1e2; color: #e58a2f; }
 .overview-attention-row.users .overview-attention-icon { background: #ffeaed; color: #d84a54; }
 .overview-attention-row.blog .overview-attention-icon { background: #f0eaff; color: #8256bd; }
+.overview-attention-row.community .overview-attention-icon { background: #fff1e2; color: #e58a2f; }
 .overview-attention-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .overview-attention-copy b { overflow: hidden; color: #36546b; font-size: 13px; font-weight: 650; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .overview-attention-copy small { overflow: hidden; color: #7c92a5; font-size: 12px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
 .overview-attention-row > strong { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 8px; background: #fff0df; color: #d87920; font-size: 12px; font-weight: 650; }
 .overview-attention-row.users > strong { background: #ffeaed; color: #d84a54; }
 .overview-attention-row.blog > strong { background: #f0eaff; color: #8256bd; }
+.overview-attention-row.community > strong { background: #fff1e2; color: #d87920; }
 .overview-attention-row > i { color: #7893a7; font-size: 10px; }
 
 .overview-welcome-card {
