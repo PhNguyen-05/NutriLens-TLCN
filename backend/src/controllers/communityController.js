@@ -1,4 +1,5 @@
 const path = require('path');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const { CommunityPost, COMMUNITY_TAGS } = require('../models/CommunityPost');
 const { isCloudinaryConfigured, uploadFileToCloudinary } = require('../services/cloudinaryStorage');
@@ -127,8 +128,47 @@ async function createPost(req, res) {
  */
 async function getPosts(req, res) {
   try {
-    const { tag, page = 1, limit = 20, search } = req.query;
+    const { tag, page = 1, limit = 20, search, onlyMine, filter: filterParam, authorId } = req.query;
     const filter = { status: 'published' };
+    let viewedAuthor = null;
+
+    // Lọc theo tác giả cụ thể (xem trang bài viết của người khác hoặc cá nhân)
+    if (authorId && mongoose.Types.ObjectId.isValid(authorId)) {
+      filter.authorId = authorId;
+
+      const targetUser = await User.findById(authorId)
+        .select('fullName email avatarUrl role createdAt')
+        .lean();
+
+      if (targetUser) {
+        const authorPosts = await CommunityPost.find({
+          authorId,
+          status: 'published',
+        })
+          .select('likeCount likes')
+          .lean();
+
+        const authorPostsCount = authorPosts.length;
+        const authorTotalLikes = authorPosts.reduce(
+          (acc, p) => acc + (p.likeCount || (p.likes ? p.likes.length : 0)),
+          0
+        );
+
+        viewedAuthor = {
+          id: targetUser._id,
+          fullName: targetUser.fullName,
+          email: targetUser.email,
+          avatarUrl: targetUser.avatarUrl,
+          role: targetUser.role,
+          createdAt: targetUser.createdAt,
+          postsCount: authorPostsCount,
+          totalLikes: authorTotalLikes,
+        };
+      }
+    } else if ((onlyMine === 'true' || filterParam === 'mine') && req.user?.id) {
+      // Lọc bài viết cá nhân của người dùng đăng nhập
+      filter.authorId = req.user.id;
+    }
 
     if (tag && tag !== 'Tất cả' && COMMUNITY_TAGS.includes(tag)) {
       filter.tag = tag;
@@ -180,6 +220,24 @@ async function getPosts(req, res) {
       };
     });
 
+    // Thống kê bài viết cá nhân của người dùng hiện tại (nếu đã đăng nhập)
+    let myStats = { postsCount: 0, totalLikes: 0 };
+    if (currentUserId) {
+      const userPosts = await CommunityPost.find({
+        authorId: currentUserId,
+        status: 'published',
+      })
+        .select('likeCount likes')
+        .lean();
+
+      const postsCount = userPosts.length;
+      const totalLikes = userPosts.reduce(
+        (acc, p) => acc + (p.likeCount || (p.likes ? p.likes.length : 0)),
+        0
+      );
+      myStats = { postsCount, totalLikes };
+    }
+
     return res.status(200).json({
       posts: enrichedPosts,
       total,
@@ -187,6 +245,8 @@ async function getPosts(req, res) {
       totalPages: Math.ceil(total / limitNum),
       hasMore: skip + posts.length < total,
       availableTags: ['Tất cả', ...COMMUNITY_TAGS],
+      myStats,
+      viewedAuthor,
     });
   } catch (error) {
     console.error('[getPosts] Lỗi lấy danh sách bài viết:', error);

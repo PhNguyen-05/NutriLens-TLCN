@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
@@ -135,6 +135,15 @@ export default function CommunityPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeSearch, setActiveSearch] = useState('')
 
+  // State chế độ bảng tin: 'all' (bảng tin chung), 'mine' (bài viết của tôi), hoặc 'author' (bài viết của thành viên khác)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const authorIdParam = searchParams.get('authorId')
+  const filterParam = searchParams.get('filter')
+  const initialMode = authorIdParam ? 'author' : filterParam === 'mine' ? 'mine' : 'all'
+  const [feedMode, setFeedMode] = useState(initialMode)
+  const [myStats, setMyStats] = useState({ postsCount: 0, totalLikes: 0 })
+  const [viewedAuthor, setViewedAuthor] = useState(null)
+
   // State Modal Đăng bài (UC26)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [postContent, setPostContent] = useState('')
@@ -202,7 +211,60 @@ export default function CommunityPage() {
     ? user.fullName.trim().split(/\s+/).slice(-1)[0]
     : 'bạn'
 
-  // Tải danh sách bài viết khi filter tag hoặc search thay đổi
+  // Đồng bộ chế độ hiển thị từ URL query parameter (?filter=mine hoặc ?authorId=...)
+  useEffect(() => {
+    const authorId = searchParams.get('authorId')
+    const filter = searchParams.get('filter')
+
+    if (authorId) {
+      if (user?.id && String(authorId) === String(user.id)) {
+        setFeedMode('mine')
+        setViewedAuthor(null)
+      } else {
+        setFeedMode('author')
+      }
+    } else if (filter === 'mine') {
+      setFeedMode('mine')
+      setViewedAuthor(null)
+    } else {
+      setFeedMode('all')
+      setViewedAuthor(null)
+    }
+  }, [searchParams, user?.id])
+
+  // Chuyển đổi giữa Bảng tin chung và Bài viết của tôi
+  function handleSwitchFeedMode(mode) {
+    setFeedMode(mode)
+    setViewedAuthor(null)
+    if (mode === 'mine') {
+      setSearchParams({ filter: 'mine' }, { replace: true })
+    } else {
+      setSearchParams({}, { replace: true })
+    }
+  }
+
+  // Xem bài viết của một tác giả cụ thể (Option 1)
+  function handleViewAuthorPosts(targetAuthor) {
+    if (!targetAuthor) return
+    const authorId = targetAuthor._id || targetAuthor.id
+
+    // Nếu bấm vào chính mình thì chuyển sang "Bài viết của tôi"
+    if (user?.id && String(authorId) === String(user.id)) {
+      handleSwitchFeedMode('mine')
+      return
+    }
+
+    setFeedMode('author')
+    setViewedAuthor({
+      id: authorId,
+      fullName: targetAuthor.fullName || 'Thành viên',
+      avatarUrl: targetAuthor.avatarUrl,
+      role: targetAuthor.role,
+    })
+    setSearchParams({ authorId }, { replace: true })
+  }
+
+  // Tải danh sách bài viết khi filter tag, search, feedMode hoặc authorId thay đổi
   useEffect(() => {
     let isActive = true
     setLoading(true)
@@ -215,11 +277,26 @@ export default function CommunityPage() {
       params.search = activeSearch
     }
 
+    const currentAuthorId = searchParams.get('authorId')
+    if (currentAuthorId) {
+      params.authorId = currentAuthorId
+    } else if (feedMode === 'mine') {
+      params.onlyMine = 'true'
+    }
+
     axiosInstance
       .get('/community/posts', { params })
       .then(({ data }) => {
         if (!isActive) return
         setPosts(Array.isArray(data?.posts) ? data.posts : [])
+        if (data?.myStats) {
+          setMyStats(data.myStats)
+        }
+        if (data?.viewedAuthor) {
+          setViewedAuthor(data.viewedAuthor)
+        } else if (!currentAuthorId) {
+          setViewedAuthor(null)
+        }
       })
       .catch((err) => {
         console.error('[CommunityPage] Không thể tải bài viết:', err)
@@ -237,7 +314,7 @@ export default function CommunityPage() {
     return () => {
       isActive = false
     }
-  }, [selectedTag, activeSearch])
+  }, [selectedTag, activeSearch, feedMode, searchParams])
 
   // Tự động ẩn thông báo sau 4 giây
   useEffect(() => {
@@ -576,6 +653,9 @@ export default function CommunityPage() {
     setActiveSearch('')
     setSelectedTag('Tất cả')
     setFeedbackError('')
+    if (feedMode === 'author') {
+      handleSwitchFeedMode('all')
+    }
   }
 
   // --- XỬ LÝ ĐĂNG BÀI VIẾT (UC26) ---
@@ -689,6 +769,7 @@ export default function CommunityPage() {
       // Cập nhật ngay bài viết mới vào đầu danh sách Feed
       if (data.post) {
         setPosts((prev) => [data.post, ...prev])
+        setMyStats((prev) => ({ ...prev, postsCount: (prev?.postsCount || 0) + 1 }))
       }
 
       // Đóng modal và dọn dẹp
@@ -1129,6 +1210,7 @@ export default function CommunityPage() {
     try {
       await axiosInstance.delete(`/community/posts/${deleteConfirmPost._id}`)
       setPosts((prev) => prev.filter((p) => p._id !== deleteConfirmPost._id))
+      setMyStats((prev) => ({ ...prev, postsCount: Math.max(0, (prev?.postsCount || 1) - 1) }))
       setFeedbackSuccess('Đã xóa bài viết thành công')
       setDeleteConfirmPost(null)
     } catch (err) {
@@ -1187,14 +1269,6 @@ export default function CommunityPage() {
               </button>
             )}
           </form>
-          <button
-            type="button"
-            className="community-post-btn-quick"
-            onClick={() => handleOpenCreateModal()}
-            title="Đăng bài viết mới"
-          >
-            <i className="bi bi-plus-lg" /> Đăng bài
-          </button>
           <UserNavMenu />
         </div>
       </header>
@@ -1235,7 +1309,39 @@ export default function CommunityPage() {
               </div>
               <h3 className="user-card-name">{user?.fullName || 'Người dùng NutriLens'}</h3>
               <p className="user-card-email">{user?.email}</p>
+
+              {/* THỐNG KÊ BÀI ĐĂNG CÁ NHÂN & NÚT XEM LẠI */}
+              <div className="user-card-stats-row">
+                <button
+                  type="button"
+                  className={`user-card-stat-item ${feedMode === 'mine' ? 'is-active' : ''}`}
+                  onClick={() => handleSwitchFeedMode('mine')}
+                  title="Nhấn để xem các bài viết do bạn đã đăng"
+                >
+                  <strong>{myStats.postsCount}</strong>
+                  <span>Bài viết</span>
+                </button>
+                <div
+                  className="user-card-stat-item"
+                  title="Tổng số lượt thích bạn nhận được trên tất cả bài viết"
+                >
+                  <strong>{myStats.totalLikes}</strong>
+                  <span>Lượt thích</span>
+                </div>
+              </div>
+
               <div className="user-card-divider" />
+
+              <button
+                type="button"
+                className={`community-btn-my-posts full-width ${feedMode === 'mine' ? 'active' : ''}`}
+                onClick={() => handleSwitchFeedMode(feedMode === 'mine' ? 'all' : 'mine')}
+                title={feedMode === 'mine' ? 'Quay lại xem toàn bộ bảng tin' : 'Xem danh sách bài viết của cá nhân bạn'}
+              >
+                <i className={`bi ${feedMode === 'mine' ? 'bi-globe2' : 'bi-journal-richtext'}`} />
+                <span>{feedMode === 'mine' ? 'Về Bảng tin chung' : 'Xem bài viết của tôi'}</span>
+              </button>
+
               <button
                 type="button"
                 className="community-btn-primary full-width"
@@ -1291,6 +1397,116 @@ export default function CommunityPage() {
 
           {/* CỘT GIỮA: FEED BÀI VIẾT FACEBOOK-STYLE */}
           <section className="community-col-feed">
+            {/* TABS CHUYỂN ĐỔI: BẢNG TIN CHUNG VS BÀI VIẾT CỦA TÔI / TÁC GIẢ */}
+            <div className="community-feed-tabs-card">
+              <div className="community-feed-tabs">
+                <button
+                  type="button"
+                  className={`feed-tab-btn ${feedMode === 'all' ? 'active' : ''}`}
+                  onClick={() => handleSwitchFeedMode('all')}
+                >
+                  <i className="bi bi-globe2" />
+                  <span>Bảng tin chung</span>
+                </button>
+                <button
+                  type="button"
+                  className={`feed-tab-btn ${feedMode === 'mine' ? 'active' : ''}`}
+                  onClick={() => handleSwitchFeedMode('mine')}
+                >
+                  <i className="bi bi-person-badge-fill" />
+                  <span>Bài viết của tôi</span>
+                  {myStats.postsCount > 0 && (
+                    <span className="feed-tab-badge">{myStats.postsCount}</span>
+                  )}
+                </button>
+                {feedMode === 'author' && viewedAuthor && (
+                  <button
+                    type="button"
+                    className="feed-tab-btn active"
+                    title={`Đang xem bài viết của ${viewedAuthor.fullName}`}
+                  >
+                    <i className="bi bi-person-lines-fill" />
+                    <span>Bài viết của {viewedAuthor.fullName}</span>
+                    <span className="feed-tab-badge">{posts.length}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* BANNER THÔNG TIN KHI ĐANG XEM BÀI VIẾT CỦA TÔI */}
+            {feedMode === 'mine' && (
+              <div className="my-posts-spotlight-card">
+                <div className="my-posts-spotlight-left">
+                  <div className="my-posts-spotlight-avatar">
+                    {user?.avatarUrl ? (
+                      <img src={resolveMediaUrl(user.avatarUrl)} alt={user.fullName} />
+                    ) : (
+                      firstName.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div>
+                    <h4>Bài viết cá nhân của bạn</h4>
+                    <p>
+                      Bạn đã đăng <strong>{myStats.postsCount} bài viết</strong> và nhận được{' '}
+                      <strong>{myStats.totalLikes} lượt thích</strong> từ cộng đồng NutriLens.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="my-posts-return-btn"
+                  onClick={() => handleSwitchFeedMode('all')}
+                  title="Quay lại xem tất cả bài viết trên bảng tin chung"
+                >
+                  <i className="bi bi-arrow-left" /> Bảng tin chung
+                </button>
+              </div>
+            )}
+
+            {/* BANNER THÔNG TIN KHI ĐANG XEM BÀI VIẾT CỦA THÀNH VIÊN KHÁC (CÁCH 1) */}
+            {feedMode === 'author' && viewedAuthor && (
+              <div className="author-profile-spotlight-card">
+                <div className="author-spotlight-left">
+                  <div className="author-spotlight-avatar">
+                    {viewedAuthor.avatarUrl ? (
+                      <img
+                        src={resolveMediaUrl(viewedAuthor.avatarUrl)}
+                        alt={viewedAuthor.fullName}
+                      />
+                    ) : (
+                      (viewedAuthor.fullName || 'U').charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <div className="author-spotlight-info">
+                    <div className="author-spotlight-name-row">
+                      <h3>{viewedAuthor.fullName}</h3>
+                      {viewedAuthor.role === 'admin' && (
+                        <span className="author-badge-admin" title="Quản trị viên">
+                          <i className="bi bi-patch-check-fill" /> Admin
+                        </span>
+                      )}
+                    </div>
+                    <p className="author-spotlight-stats">
+                      <span>
+                        <i className="bi bi-journal-text" /> <strong>{viewedAuthor.postsCount ?? posts.length}</strong> bài viết
+                      </span>
+                      <span>
+                        <i className="bi bi-heart-fill" style={{ color: '#ef4444' }} /> <strong>{viewedAuthor.totalLikes ?? 0}</strong> lượt thích
+                      </span>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="my-posts-return-btn"
+                  onClick={() => handleSwitchFeedMode('all')}
+                  title="Quay lại xem tất cả bài viết trên bảng tin chung"
+                >
+                  <i className="bi bi-arrow-left" /> Bảng tin chung
+                </button>
+              </div>
+            )}
+
             {/* KHUNG TẠO BÀI VIẾT NHANH (CREATE POST BOX - FB STYLE) */}
             <div className="community-card create-post-trigger-box">
               <div className="create-post-top">
@@ -1348,12 +1564,24 @@ export default function CommunityPage() {
             </div>
 
             {/* UC29: BANNER ĐIỀU KIỆN TÌM KIẾM / LỌC (LUỒNG CHÍNH 5 & THAY THẾ 1b) */}
-            {(selectedTag !== 'Tất cả' || activeSearch) && (
+            {(selectedTag !== 'Tất cả' || activeSearch || (feedMode === 'author' && viewedAuthor)) && (
               <div className="active-filter-banner">
                 <div className="filter-chips-wrap">
                   <span className="filter-lead">
                     <i className="bi bi-funnel-fill" /> Đang lọc:
                   </span>
+                  {feedMode === 'author' && viewedAuthor && (
+                    <span className="filter-pill">
+                      Tác giả: <strong>{viewedAuthor.fullName}</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleSwitchFeedMode('all')}
+                        title="Bỏ lọc theo tác giả này"
+                      >
+                        <i className="bi bi-x-lg" />
+                      </button>
+                    </span>
+                  )}
                   {selectedTag !== 'Tất cả' && (
                     <span className="filter-pill">
                       Chủ đề: <strong>{selectedTag}</strong>
@@ -1431,6 +1659,53 @@ export default function CommunityPage() {
                       </button>
                     </div>
                   </>
+                ) : feedMode === 'author' && viewedAuthor ? (
+                  <>
+                    <i
+                      className="bi bi-person-x"
+                      style={{ fontSize: '46px', color: '#94a3b8', marginBottom: '12px', display: 'inline-block' }}
+                    />
+                    <h3>{viewedAuthor.fullName || 'Thành viên'} chưa có bài viết nào</h3>
+                    <p>
+                      Thành viên này hiện chưa đăng tải bài viết hoặc công thức nào lên cộng đồng NutriLens.
+                    </p>
+                    <div className="empty-actions-wrap">
+                      <button
+                        type="button"
+                        className="community-btn-primary"
+                        onClick={() => handleSwitchFeedMode('all')}
+                      >
+                        <i className="bi bi-globe2" /> Quay lại Bảng tin chung
+                      </button>
+                    </div>
+                  </>
+                ) : feedMode === 'mine' ? (
+                  <>
+                    <i
+                      className="bi bi-journal-plus"
+                      style={{ fontSize: '46px', color: '#059669', marginBottom: '12px', display: 'inline-block' }}
+                    />
+                    <h3>Bạn chưa đăng bài viết nào</h3>
+                    <p>
+                      Hãy chia sẻ công thức ăn uống lành mạnh, thực đơn calo hoặc hành trình tập luyện đầu tiên của bạn với cộng đồng!
+                    </p>
+                    <div className="empty-actions-wrap">
+                      <button
+                        type="button"
+                        className="community-btn-primary"
+                        onClick={() => handleOpenCreateModal('Chia sẻ chung')}
+                      >
+                        <i className="bi bi-pencil-square" /> Tạo bài viết đầu tiên ngay
+                      </button>
+                      <button
+                        type="button"
+                        className="community-btn-secondary"
+                        onClick={() => handleSwitchFeedMode('all')}
+                      >
+                        <i className="bi bi-globe2" /> Khám phá bảng tin chung
+                      </button>
+                    </div>
+                  </>
                 ) : (
                   <>
                     <i className="bi bi-chat-heart" />
@@ -1479,15 +1754,29 @@ export default function CommunityPage() {
                             <img
                               src={authorAvatar}
                               alt={author.fullName}
-                              className="avatar-sm"
+                              className="avatar-sm post-author-avatar-clickable"
+                              onClick={() => handleViewAuthorPosts(author)}
+                              title={`Xem các bài viết của ${author.fullName || 'thành viên'}`}
                             />
                           ) : (
-                            <div className="avatar-sm-fallback">{authorInitial}</div>
+                            <div
+                              className="avatar-sm-fallback post-author-avatar-clickable"
+                              onClick={() => handleViewAuthorPosts(author)}
+                              title={`Xem các bài viết của ${author.fullName || 'thành viên'}`}
+                            >
+                              {authorInitial}
+                            </div>
                           )}
 
                           <div className="post-author-info">
                             <div className="post-author-name-row">
-                              <strong>{author.fullName || 'Thành viên'}</strong>
+                              <strong
+                                className="post-author-name-clickable"
+                                onClick={() => handleViewAuthorPosts(author)}
+                                title={`Xem các bài viết của ${author.fullName || 'thành viên'}`}
+                              >
+                                {author.fullName || 'Thành viên'}
+                              </strong>
                               {author.role === 'admin' && (
                                 <span className="author-badge-admin" title="Quản trị viên">
                                   <i className="bi bi-patch-check-fill" /> Admin
@@ -1669,10 +1958,18 @@ export default function CommunityPage() {
                                       <img
                                         src={cAvatar}
                                         alt={cAuthor.fullName}
-                                        className="avatar-xs"
+                                        className="avatar-xs post-author-avatar-clickable"
+                                        onClick={() => handleViewAuthorPosts(cAuthor)}
+                                        title={`Xem các bài viết của ${cAuthor.fullName || 'thành viên'}`}
                                       />
                                     ) : (
-                                      <div className="avatar-xs-fallback">{cInitial}</div>
+                                      <div
+                                        className="avatar-xs-fallback post-author-avatar-clickable"
+                                        onClick={() => handleViewAuthorPosts(cAuthor)}
+                                        title={`Xem các bài viết của ${cAuthor.fullName || 'thành viên'}`}
+                                      >
+                                        {cInitial}
+                                      </div>
                                     )}
 
                                     {isEditing ? (
@@ -1714,7 +2011,11 @@ export default function CommunityPage() {
                                     ) : (
                                       <div className="comment-body-wrap">
                                         <div className="comment-bubble">
-                                          <div className="comment-author-name">
+                                          <div
+                                            className="comment-author-name comment-author-name-clickable"
+                                            onClick={() => handleViewAuthorPosts(cAuthor)}
+                                            title={`Xem các bài viết của ${cAuthor.fullName || 'thành viên'}`}
+                                          >
                                             {cAuthor.fullName || 'Thành viên'}
                                           </div>
                                           <div className="comment-content">
@@ -1814,23 +2115,6 @@ export default function CommunityPage() {
                 >
                   #GiamCanKhoaHoc
                 </button>
-              </div>
-            </div>
-
-            <div className="community-card community-tips-card">
-              <h4 className="sidebar-card-title">
-                <i className="bi bi-lightbulb-fill" /> Mẹo đăng bài thu hút
-              </h4>
-              <div className="tips-content">
-                <p>
-                  📸 <strong>Kèm hình ảnh:</strong> Bài viết có ảnh món ăn hoặc biểu đồ cân nặng thường nhận được nhiều tương tác hơn gấp 3 lần!
-                </p>
-                <p>
-                  🏷️ <strong>Gắn đúng Tag:</strong> Chọn đúng chủ đề giúp các thành viên cùng mục tiêu dễ dàng tìm thấy kinh nghiệm của bạn.
-                </p>
-                <p>
-                  🥗 <strong>Chi tiết Calo:</strong> Nếu chia sẻ công thức, hãy ghi rõ ước tính Calo và Macro để hỗ trợ cộng đồng nhé!
-                </p>
               </div>
             </div>
           </aside>
