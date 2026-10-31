@@ -7,13 +7,15 @@ import FoodManagementPage from './FoodManagementPage'
 import FoodRequestManagementPage from './FoodRequestManagementPage'
 
 import BlogManagementPage from './BlogManagementPage'
-import CommunityModerationPage, { getCommunityDashboardStats } from './CommunityModerationPage'
+import CommunityModerationPage from './CommunityModerationPage'
+import { getCommunityDashboardStats } from './communityPostStore'
 
 import ExerciseManagementPage from './ExerciseManagementPage'
 import AdminAnalyticsPage from './AdminAnalyticsPage'
 import AdminFoodAnalyticsPage from './AdminFoodAnalyticsPage'
 import AdminExerciseAnalyticsPage from './AdminExerciseAnalyticsPage'
 import AdminBlogAnalyticsPage from './AdminBlogAnalyticsPage'
+import AdminCommunityAnalyticsPage from './AdminCommunityAnalyticsPage'
 import './AdminDashboardPage.css'
 
 const emptyDashboardStats = {
@@ -73,7 +75,7 @@ export default function AdminDashboardPage() {
   const [dashboardStats, setDashboardStats] = useState(emptyDashboardStats)
   const [dashboardActivity, setDashboardActivity] = useState([])
   const [communityInitialFilter, setCommunityInitialFilter] = useState('all')
-  const isAnalyticsPage = ['Báo cáo', 'FoodAnalytics', 'ExerciseAnalytics', 'BlogAnalytics'].includes(activeItem)
+  const isAnalyticsPage = ['Báo cáo', 'FoodAnalytics', 'ExerciseAnalytics', 'BlogAnalytics', 'CommunityAnalytics'].includes(activeItem)
   const isDashboard = activeItem === 'Dashboard' && !showActionLogs
 
   // Tự động tải số lượng yêu cầu chờ duyệt hiển thị lên badge sidebar
@@ -179,6 +181,17 @@ export default function AdminDashboardPage() {
     setShowActionLogs(item === 'Lịch sử thao tác')
   }
 
+  function navigateAnalytics(item) {
+    const analyticsItems = {
+      'Món ăn': 'FoodAnalytics',
+      'Bài tập': 'ExerciseAnalytics',
+      'Blog': 'BlogAnalytics',
+      'Community': 'CommunityAnalytics',
+    }
+    setShowActionLogs(false)
+    setActiveItem(analyticsItems[item] || item)
+  }
+
   function navigateCommunity(filter = 'all') {
     setCommunityInitialFilter(filter)
     navigateAdmin('Kiểm duyệt cộng đồng')
@@ -235,6 +248,8 @@ export default function AdminDashboardPage() {
                   ? 'Thống kê bài tập'
                   : activeItem === 'BlogAnalytics'
                   ? 'Thống kê bài viết Blog'
+                  : activeItem === 'CommunityAnalytics'
+                  ? 'Thống kê Community'
                   : activeItem === 'Báo cáo'
                   ? 'Thống kê người dùng'
                   : activeItem === 'Lịch sử thao tác'
@@ -263,6 +278,8 @@ export default function AdminDashboardPage() {
                   ? 'Theo dõi lượt ghi nhận, thời lượng vận động và calories tiêu hao theo thời gian.'
                   : activeItem === 'BlogAnalytics'
                   ? 'Theo dõi tình trạng xuất bản, lượt xem và tương tác của các bài viết Blog.'
+                  : activeItem === 'CommunityAnalytics'
+                  ? 'Theo dõi bài đăng, tương tác và tình trạng kiểm duyệt của cộng đồng NutriLens.'
                   : activeItem === 'Báo cáo'
                   ? 'Theo dõi và phân tích chi tiết các số liệu về người dùng trong hệ thống NutriLens.'
                   : activeItem === 'Lịch sử thao tác'
@@ -294,26 +311,16 @@ export default function AdminDashboardPage() {
         <div className={`admin-body ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-body' : ''} ${isAnalyticsPage ? 'ua-admin-body' : ''}`}>
           {activeItem === 'Người dùng' ? (
             <UserManagementPage />
+          ) : activeItem === 'CommunityAnalytics' ? (
+            <AdminCommunityAnalyticsPage onNavigate={navigateAnalytics} />
           ) : activeItem === 'ExerciseAnalytics' ? (
-            <AdminExerciseAnalyticsPage onNavigate={(item) => {
-              setShowActionLogs(false)
-              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
-            }} />
+            <AdminExerciseAnalyticsPage onNavigate={navigateAnalytics} />
           ) : activeItem === 'BlogAnalytics' ? (
-            <AdminBlogAnalyticsPage onNavigate={(item) => {
-              setShowActionLogs(false)
-              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
-            }} />
+            <AdminBlogAnalyticsPage onNavigate={navigateAnalytics} />
           ) : activeItem === 'FoodAnalytics' ? (
-            <AdminFoodAnalyticsPage onNavigate={(item) => {
-              setShowActionLogs(false)
-              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
-            }} />
+            <AdminFoodAnalyticsPage onNavigate={navigateAnalytics} />
           ) : activeItem === 'Báo cáo' ? (
-            <AdminAnalyticsPage onManageUsers={() => setActiveItem('Người dùng')} onNavigate={(item) => {
-              setShowActionLogs(false)
-              setActiveItem(item === 'Món ăn' ? 'FoodAnalytics' : item === 'Bài tập' ? 'ExerciseAnalytics' : item === 'Blog' ? 'BlogAnalytics' : item)
-            }} />
+            <AdminAnalyticsPage onManageUsers={() => setActiveItem('Người dùng')} onNavigate={navigateAnalytics} />
           ) : activeItem === 'Lịch sử thao tác' ? (
             <AdminActionLogsModal embedded isOpen={showActionLogs} onClose={() => { setShowActionLogs(false); setActiveItem('Dashboard') }} />
           ) : activeItem === 'Món ăn' ? (

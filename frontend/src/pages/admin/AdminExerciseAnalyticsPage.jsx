@@ -218,6 +218,7 @@ export default function AdminExerciseAnalyticsPage({ onNavigate }) {
         <button type="button" onClick={() => onNavigate?.('Báo cáo')}><i className="bi bi-people-fill" />Người dùng</button>
         <button type="button" onClick={() => onNavigate?.('Món ăn')}><i className="bi bi-egg-fried" />Món ăn</button>
         <button type="button" className="active" aria-current="page"><i className="bi bi-person-walking" />Bài tập</button>
+        <button type="button" onClick={() => onNavigate?.('Community')}><i className="bi bi-chat-square-heart" />Community</button>
         <button type="button" onClick={() => onNavigate?.('Blog')}><i className="bi bi-journal-text" />Blog</button>
       </div>
     </nav>

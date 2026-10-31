@@ -17,10 +17,10 @@ export function calendarMonthWeeks(monthValue) {
   const [year, month] = startDate.slice(0, 7).split('-')
   const lastDay = Number(endDate.slice(8, 10))
   const weeks = []
-  for (let weekNumber = 1; weekNumber <= 4; weekNumber += 1) {
+  for (let weekNumber = 1; weekNumber <= 5; weekNumber += 1) {
     const startDay = (weekNumber - 1) * 7 + 1
     if (startDay > lastDay) break
-    const endDay = weekNumber === 4 ? lastDay : Math.min(startDay + 6, lastDay)
+    const endDay = Math.min(startDay + 6, lastDay)
     weeks.push({
       weekNumber,
       startDate: `${year}-${month}-${String(startDay).padStart(2, '0')}`,
@@ -38,7 +38,7 @@ export function calendarWeekRange(dateValue) {
 
 export function getAnalyticsChartPeriod(rows, { sumKeys = [], averageKeys = [] } = {}) {
   const weeks = []
-  const weekCount = Math.min(4, Math.ceil(rows.length / 7))
+  const weekCount = Math.ceil(rows.length / 7)
   for (let weekIndex = 0; weekIndex < weekCount; weekIndex += 1) {
     const start = weekIndex * 7
     const end = weekIndex === weekCount - 1 ? rows.length : Math.min(start + 7, rows.length)

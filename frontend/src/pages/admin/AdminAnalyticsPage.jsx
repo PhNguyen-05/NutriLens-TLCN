@@ -25,10 +25,10 @@ const emptyDemographics = {
 }
 
 const metricCards = [
-  { title: 'Tổng người dùng', key: 'total', growth: '12%', icon: 'bi-people-fill', tone: 'mint' },
+  { title: 'Tổng người dùng', key: 'total', growth: '12', icon: 'bi-people-fill', tone: 'mint' },
   { title: 'Người dùng mới', key: 'new', icon: 'bi-person-plus-fill', tone: 'green' },
-  { title: 'Người dùng hoạt động', key: 'active', growth: '9%', icon: 'bi-person-check-fill', tone: 'blue' },
-  { title: 'Người dùng bị khóa', key: 'locked', growth: '11%', icon: 'bi-lock-fill', tone: 'orange' },
+  { title: 'Người dùng hoạt động', key: 'active', growth: '9', icon: 'bi-person-check-fill', tone: 'blue' },
+  { title: 'Người dùng bị khóa', key: 'locked', growth: '11', icon: 'bi-lock-fill', tone: 'orange' },
 ]
 
 function number(value) {
@@ -256,6 +256,7 @@ export default function AdminAnalyticsPage({ onNavigate }) {
           <button type="button" className="active" aria-current="page"><i className="bi bi-people-fill" />Người dùng</button>
           <button type="button" onClick={() => onNavigate?.('Món ăn')}><i className="bi bi-egg-fried" />Món ăn</button>
           <button type="button" onClick={() => onNavigate?.('Bài tập')}><i className="bi bi-person-walking" />Bài tập</button>
+          <button type="button" onClick={() => onNavigate?.('Community')}><i className="bi bi-chat-square-heart" />Community</button>
           <button type="button" onClick={() => onNavigate?.('Blog')}><i className="bi bi-journal-text" />Blog</button>
         </div>
       </nav>

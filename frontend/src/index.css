@@ -9539,6 +9539,7 @@ td.fdm-td-center { text-align: center !important; }
 
 .aa-month-picker { z-index: 8; }
 .aa-month-picker input[type="month"] { min-width: 130px; }
+.aa-month-picker > button { flex: 0 0 auto; min-width: 72px; white-space: nowrap; }
 .aa-date-tools > .aa-date-range { max-width: 100%; }
 
 @media (max-width: 760px) {
