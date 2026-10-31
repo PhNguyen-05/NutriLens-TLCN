@@ -6,6 +6,9 @@
 }
 
 .admin-dashboard-mode .admin-sidebar { display: flex; }
+.admin-sidebar > button.community-sidebar-item { position: relative; padding-left: 10px; color: #a9cec2; font-size: 12px; }
+.admin-sidebar > button.community-sidebar-item.active,
+.admin-sidebar > button.community-sidebar-item:hover { color: #fff; }
 .admin-dashboard-mode .admin-content {
   width: auto;
   max-width: none;

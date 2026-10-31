@@ -7,6 +7,7 @@ import FoodManagementPage from './FoodManagementPage'
 import FoodRequestManagementPage from './FoodRequestManagementPage'
 
 import BlogManagementPage from './BlogManagementPage'
+import CommunityModerationPage from './CommunityModerationPage'
 
 import ExerciseManagementPage from './ExerciseManagementPage'
 import AdminAnalyticsPage from './AdminAnalyticsPage'
@@ -195,6 +196,13 @@ export default function AdminDashboardPage() {
         >
           <i className="bi bi-person-walking" /> Quản lý bài tập
         </button>
+        <div className="admin-section-label">CỘNG ĐỒNG</div>
+        <button
+          className={`community-sidebar-item ${activeItem === 'Kiểm duyệt cộng đồng' ? 'active' : ''}`}
+          onClick={() => { setActiveItem('Kiểm duyệt cộng đồng'); setShowActionLogs(false) }}
+        >
+          <i className="bi bi-chat-square-heart" /> Kiểm duyệt cộng đồng
+        </button>
         <div className="admin-section-label">TIN TỨC</div>
         <button onClick={() => { setActiveItem('Blog'); setShowActionLogs(false) }} className={activeItem === 'Blog' ? 'active' : ''}><i className="bi bi-journal-text" /> Blog y khoa</button>
         <div className="admin-sidebar-footer"><button onClick={handleLogout}><i className="bi bi-box-arrow-left" /> Đăng xuất</button></div>
@@ -226,6 +234,8 @@ export default function AdminDashboardPage() {
                   ? 'Duyệt yêu cầu bổ sung món ăn'
                   : activeItem === 'Blog'
                   ? 'Quản lý Blog Y khoa'
+                  : activeItem === 'Kiểm duyệt cộng đồng'
+                  ? 'Kiểm duyệt bài đăng Community'
 
                   : activeItem === 'Bài tập'
                   ? 'Quản lý danh mục bài tập'
@@ -252,6 +262,8 @@ export default function AdminDashboardPage() {
                   ? 'Xem xét, chuẩn hóa thành phần dinh dưỡng và phê duyệt hoặc từ chối các yêu cầu món ăn do người dùng đề xuất.'
                   : activeItem === 'Blog'
                   ? 'Quản lý nội dung và trạng thái xuất bản các bài viết sức khỏe, dinh dưỡng.'
+                  : activeItem === 'Kiểm duyệt cộng đồng'
+                  ? 'Xem xét bài đăng được báo cáo, duyệt nội dung và cập nhật trạng thái hiển thị trên Community.'
 
                   : activeItem === 'Bài tập'
                   ? 'Thêm, chỉnh sửa, ẩn hoặc hiển thị thông tin bài tập và chỉ số MET làm cơ sở tính calories cho người dùng.'
@@ -300,6 +312,9 @@ export default function AdminDashboardPage() {
 
           ) : activeItem === 'Blog' ? (
             <BlogManagementPage />
+
+          ) : activeItem === 'Kiểm duyệt cộng đồng' ? (
+            <CommunityModerationPage />
 
           ) : activeItem === 'Bài tập' ? (
             <ExerciseManagementPage />
