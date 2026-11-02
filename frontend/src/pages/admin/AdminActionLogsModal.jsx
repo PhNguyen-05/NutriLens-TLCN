@@ -39,12 +39,9 @@ const MODULE_ACTIONS = {
     { value: 'delete_post', label: 'Xóa bài viết' },
   ],
   CommunityPost: [
-    { value: 'approve_community_post', label: 'Duyệt bài đăng' },
-    { value: 'reject_community_post', label: 'Từ chối bài đăng' },
     { value: 'keep_community_report', label: 'Giữ bài đăng sau báo cáo' },
     { value: 'hide_community_post', label: 'Ẩn bài đăng' },
     { value: 'restore_community_post', label: 'Hiển thị lại bài đăng' },
-    { value: 'reapprove_community_post', label: 'Duyệt lại bài đăng' },
   ],
   User: [
     { value: 'lock_user', label: 'Khóa tài khoản' },

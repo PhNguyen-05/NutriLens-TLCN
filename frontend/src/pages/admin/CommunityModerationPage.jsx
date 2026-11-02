@@ -1,24 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import axiosInstance from '../../api/axiosInstance'
-import { getCommunityPostsSnapshot, saveCommunityPosts } from './communityPostStore'
+import { COMMUNITY_POSTS_STORAGE_KEY, getCommunityPostsSnapshot, saveCommunityPosts } from './communityPostStore'
 import './CommunityModerationPage.css'
 
 const FILTERS = [
   { id: 'all', label: 'Tất cả' },
-  { id: 'approved', label: 'Đã duyệt' },
-  { id: 'pending', label: 'Chờ duyệt' },
+  { id: 'displaying', label: 'Đang hiển thị' },
   { id: 'reported', label: 'Báo cáo' },
   { id: 'hidden', label: 'Đã ẩn' },
-  { id: 'rejected', label: 'Đã từ chối' },
-]
-
-const REJECTION_REASONS = [
-  'Nội dung không phù hợp với chủ đề Community.',
-  'Thông tin sai lệch hoặc gây hiểu nhầm.',
-  'Nội dung quảng cáo, spam.',
-  'Ngôn từ xúc phạm, công kích người khác.',
-  'Nội dung vi phạm bản quyền hoặc quyền riêng tư.',
-  'Khác.',
 ]
 
 const KEEP_REASONS = [
@@ -46,49 +35,62 @@ function formatPostDate(value) {
   return `${day} ${time}`
 }
 
-function statusClass(status) {
-  if (status === 'Đã duyệt') return 'approved'
-  if (status === 'Chờ duyệt') return 'pending'
-  if (status === 'Cần xem xét') return 'review'
-  if (status === 'Đã ẩn') return 'hidden'
-  return 'rejected'
+function statusLabel(post) {
+  return post.reviewPending ? 'Cần xem xét' : post.status
+}
+
+function statusClass(post) {
+  if (post.reviewPending) return 'review'
+  if (post.status === 'Đang hiển thị') return 'displaying'
+  if (post.status === 'Đã ẩn') return 'hidden'
+  return 'displaying'
 }
 
 function getEngagementCount(post, field) {
-  if (post?.status === 'Chờ duyệt') return 0
   return Number(post?.[field] || 0)
+}
+
+function getReportDetails(post) {
+  if (Array.isArray(post?.reportDetails) && post.reportDetails.length) return post.reportDetails
+  if (!post?.reports) return []
+  return [{
+    reporter: 'Người dùng Community',
+    reason: post.reportReason || 'Bài đăng được người dùng báo cáo để xem xét.',
+    reportedAt: post.createdAt,
+  }]
 }
 
 export default function CommunityModerationPage({ initialFilter = 'all' }) {
   const [posts, setPosts] = useState(getCommunityPostsSnapshot)
   const [selectedId, setSelectedId] = useState(null)
-  const [activeFilter, setActiveFilter] = useState(initialFilter)
+  const [activeFilter, setActiveFilter] = useState(['approved', 'pending'].includes(initialFilter) ? 'displaying' : initialFilter)
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [toast, setToast] = useState('')
   const [isDetailOpen, setIsDetailOpen] = useState(false)
-  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false)
-  const [rejectionReason, setRejectionReason] = useState('')
-  const [rejectionNote, setRejectionNote] = useState('')
   const [isKeepModalOpen, setIsKeepModalOpen] = useState(false)
   const [keepReason, setKeepReason] = useState('')
   const [keepNote, setKeepNote] = useState('')
   const [isHideModalOpen, setIsHideModalOpen] = useState(false)
   const [hideReason, setHideReason] = useState('')
   const [hideNote, setHideNote] = useState('')
-  const [isRejectionReasonOpen, setIsRejectionReasonOpen] = useState(false)
   const toastTimer = useRef(null)
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), [])
   useEffect(() => saveCommunityPosts(posts), [posts])
+  useEffect(() => {
+    function refreshPosts(event) {
+      if (!event.key || event.key === COMMUNITY_POSTS_STORAGE_KEY) setPosts(getCommunityPostsSnapshot())
+    }
+    window.addEventListener('storage', refreshPosts)
+    return () => window.removeEventListener('storage', refreshPosts)
+  }, [])
 
   const filterCounts = useMemo(() => ({
     all: posts.length,
-    approved: posts.filter((post) => post.status === 'Đã duyệt').length,
-    pending: posts.filter((post) => post.status === 'Chờ duyệt').length,
-    reported: posts.filter((post) => post.reports > 0).length,
-    hidden: posts.filter((post) => post.status === 'Đã ẩn').length,
-    rejected: posts.filter((post) => post.status === 'Từ chối').length,
+    displaying: posts.filter((post) => post.status === 'Đang hiển thị' && !post.reviewPending).length,
+    reported: posts.filter((post) => post.reviewPending).length,
+    hidden: posts.filter((post) => post.status === 'Đã ẩn' && !post.reviewPending).length,
   }), [posts])
 
   const visiblePosts = useMemo(() => {
@@ -96,12 +98,11 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     return posts
       .filter((post) => {
         const matchesFilter = activeFilter === 'all'
-          || (activeFilter === 'approved' && post.status === 'Đã duyệt')
-          || (activeFilter === 'pending' && post.status === 'Chờ duyệt')
-          || (activeFilter === 'reported' && post.reports > 0)
-          || (activeFilter === 'hidden' && post.status === 'Đã ẩn')
-          || (activeFilter === 'rejected' && post.status === 'Từ chối')
-        const matchesQuery = !normalizedQuery || [post.title, post.content, post.author, post.handle, post.category]
+          || (activeFilter === 'displaying' && post.status === 'Đang hiển thị' && !post.reviewPending)
+          || (activeFilter === 'reported' && post.reviewPending)
+          || (activeFilter === 'hidden' && post.status === 'Đã ẩn' && !post.reviewPending)
+        const reportText = getReportDetails(post).map((report) => `${report.reporter} ${report.reason}`).join(' ')
+        const matchesQuery = !normalizedQuery || [post.title, post.content, post.author, post.handle, post.category, post.reportReason, reportText]
           .some((value) => String(value).toLocaleLowerCase('vi').includes(normalizedQuery))
         return matchesFilter && matchesQuery
       })
@@ -138,60 +139,8 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     notify(wasLogged ? message : `${message} Chưa lưu được vào lịch sử thao tác.`)
   }
 
-  async function applyDecision(status) {
-    if (!selectedPost) return
-    if (status === 'Đã duyệt' && selectedPost.status === 'Đã duyệt') {
-      notify('Bài đăng này đã được duyệt rồi.')
-      return
-    }
-    const wasLogged = await recordModerationAction(
-      'approve_community_post',
-      selectedPost,
-      'Duyệt bài đăng Community',
-      `Trạng thái: ${selectedPost.status} → ${status}.`,
-    )
-    setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? { ...post, status, reports: status === 'Đã duyệt' ? 0 : post.reports }
-      : post))
-    notifyModerationResult(`Đã cập nhật trạng thái thành “${status}”.`, wasLogged)
-  }
-
-  function openRejectForm() {
-    if (!selectedPost) return
-    if (selectedPost.status === 'Từ chối') {
-      notify('Bài đăng này đã được từ chối rồi.')
-      return
-    }
-    if (selectedPost.status !== 'Chờ duyệt') return
-    setRejectionReason('')
-    setRejectionNote('')
-    setIsRejectModalOpen(true)
-  }
-
-  function closeRejectForm() {
-    setIsRejectModalOpen(false)
-    setRejectionReason('')
-    setRejectionNote('')
-  }
-
-  async function confirmRejection(event) {
-    event.preventDefault()
-    if (!selectedPost || selectedPost.status !== 'Chờ duyệt' || !rejectionReason) return
-    const wasLogged = await recordModerationAction(
-      'reject_community_post',
-      selectedPost,
-      'Từ chối bài đăng Community',
-      `Lý do: ${rejectionReason}. ${rejectionNote.trim() ? `Ghi chú: ${rejectionNote.trim()}` : ''}`,
-    )
-    setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? { ...post, status: 'Từ chối', rejectionReason, rejectionNote: rejectionNote.trim() }
-      : post))
-    closeRejectForm()
-    notifyModerationResult('Đã từ chối bài đăng.', wasLogged)
-  }
-
   function openKeepForm() {
-    if (!selectedPost || selectedPost.reports < 1 || !['Đã duyệt', 'Cần xem xét'].includes(selectedPost.status)) return
+    if (!selectedPost || !selectedPost.reviewPending) return
     setKeepReason('')
     setKeepNote('')
     setIsKeepModalOpen(true)
@@ -205,7 +154,7 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
 
   async function confirmKeepPost(event) {
     event.preventDefault()
-    if (!selectedPost || selectedPost.reports < 1 || !['Đã duyệt', 'Cần xem xét'].includes(selectedPost.status) || !keepReason) return
+    if (!selectedPost || !selectedPost.reviewPending || !keepReason) return
     const wasLogged = await recordModerationAction(
       'keep_community_report',
       selectedPost,
@@ -213,17 +162,25 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
       `Lý do: ${keepReason}. ${keepNote.trim() ? `Ghi chú: ${keepNote.trim()}` : ''}`,
     )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? { ...post, status: 'Đã duyệt', reports: 0, reportReason: '', keepReason, keepNote: keepNote.trim() }
+      ? {
+          ...post,
+          status: 'Đang hiển thị',
+          reports: 0,
+          reviewPending: false,
+          reportReason: '',
+          keepReason,
+          keepNote: keepNote.trim(),
+        }
       : post))
+    setSelectedId(selectedPost.id)
+    setActiveFilter('displaying')
     closeKeepForm()
-    notifyModerationResult('Đã giữ nguyên bài đăng.', wasLogged)
+    notifyModerationResult('Đã xử lý báo cáo và giữ bài đăng ở trạng thái hiển thị.', wasLogged)
   }
 
   function openHideForm() {
     if (!selectedPost) return
-    const canHidePost = selectedPost.status === 'Đã duyệt'
-      || (selectedPost.status === 'Cần xem xét' && selectedPost.reports > 0)
-    if (!canHidePost) return
+    if (selectedPost.status !== 'Đang hiển thị' && !selectedPost.reviewPending) return
     setHideReason('')
     setHideNote('')
     setIsHideModalOpen(true)
@@ -238,9 +195,7 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
   async function confirmHidePost(event) {
     event.preventDefault()
     if (!selectedPost || !hideReason) return
-    const canHidePost = selectedPost.status === 'Đã duyệt'
-      || (selectedPost.status === 'Cần xem xét' && selectedPost.reports > 0)
-    if (!canHidePost) return
+    if (selectedPost.status !== 'Đang hiển thị' && !selectedPost.reviewPending) return
     const wasLogged = await recordModerationAction(
       'hide_community_post',
       selectedPost,
@@ -248,8 +203,18 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
       `Lý do: ${hideReason}. ${hideNote.trim() ? `Ghi chú: ${hideNote.trim()}` : ''}`,
     )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? { ...post, status: 'Đã ẩn', hideReason, hideNote: hideNote.trim() }
+      ? {
+          ...post,
+          status: 'Đã ẩn',
+          hideReason,
+          hideNote: hideNote.trim(),
+          reports: 0,
+          reviewPending: false,
+          reportReason: '',
+        }
       : post))
+    setSelectedId(selectedPost.id)
+    setActiveFilter('hidden')
     closeHideForm()
     notifyModerationResult('Đã ẩn bài đăng khỏi Community.', wasLogged)
   }
@@ -260,30 +225,23 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
       'restore_community_post',
       selectedPost,
       'Hiển thị lại bài đăng Community',
-      'Trạng thái: Đã ẩn → Đã duyệt.',
+      'Trạng thái: Đã ẩn → Đang hiển thị.',
     )
     setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? { ...post, status: 'Đã duyệt', reports: 0, reportReason: '' }
+      ? {
+          ...post,
+          status: 'Đang hiển thị',
+          reports: 0,
+          reviewPending: false,
+          reportReason: '',
+        }
       : post))
+    setActiveFilter('displaying')
     notifyModerationResult('Đã hiển thị lại bài đăng trên Community.', wasLogged)
   }
 
-  async function reapproveRejectedPost() {
-    if (!selectedPost || selectedPost.status !== 'Từ chối') return
-    const wasLogged = await recordModerationAction(
-      'reapprove_community_post',
-      selectedPost,
-      'Duyệt lại bài đăng Community',
-      `Trạng thái: Từ chối → Đã duyệt. Lý do từ chối trước: ${selectedPost.rejectionReason || 'Không có ghi chú.'}`,
-    )
-    setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? { ...post, status: 'Đã duyệt' }
-      : post))
-    notifyModerationResult('Đã duyệt lại bài đăng.', wasLogged)
-  }
-
   function refreshDemo() {
-    setPosts((currentPosts) => [...currentPosts])
+    setPosts(getCommunityPostsSnapshot())
     notify('Đã làm mới danh sách bài đăng.')
   }
 
@@ -316,7 +274,7 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
           <div className="cm-list-tools">
             <label className="cm-search">
               <i className="bi bi-search" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm kiếm bài đăng, người dùng…" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm kiếm bài đăng, người đăng, lý do báo cáo…" />
               {query && <button type="button" aria-label="Xóa tìm kiếm" onClick={() => setQuery('')}><i className="bi bi-x-lg" /></button>}
             </label>
             <label className="cm-sort">
@@ -346,10 +304,10 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
                   <span className="cm-post-excerpt">{post.content}</span>
                   <span className="cm-post-meta"><em>#{post.category}</em><span><i className="bi bi-heart" /> {getEngagementCount(post, 'likes')}</span><span><i className="bi bi-chat" /> {getEngagementCount(post, 'comments')}</span>{post.reports > 0 && <span className="cm-report-count"><i className="bi bi-flag" /> {post.reports} báo cáo</span>}</span>
                 </span>
-                {post.status !== 'Cần xem xét' && <span className={`cm-status ${statusClass(post.status)}`}>{post.status}</span>}
+                <span className={`cm-status ${statusClass(post)}`}>{statusLabel(post)}</span>
               </button>
             )) : (
-              <div className="cm-empty-list"><span><i className="bi bi-inbox" /></span><b>{query ? 'Không có bài đăng phù hợp' : 'Không có bài đăng cần kiểm duyệt'}</b><small>{query ? 'Thử đổi bộ lọc hoặc từ khóa tìm kiếm.' : 'Danh sách sẽ được cập nhật khi có bài đăng mới.'}</small></div>
+              <div className="cm-empty-list"><span><i className="bi bi-inbox" /></span><b>{query ? 'Không có bài đăng phù hợp' : 'Không tìm thấy bài đăng'}</b><small>{query ? 'Thử đổi bộ lọc hoặc từ khóa tìm kiếm.' : 'Danh sách sẽ được cập nhật khi có bài đăng mới.'}</small></div>
             )}
           </div>
 
@@ -363,10 +321,13 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
             <>
               <div className="cm-detail-heading"><h2>Chi tiết bài đăng</h2><button type="button" onClick={() => setIsDetailOpen(false)} aria-label="Đóng chi tiết bài đăng"><i className="bi bi-x-lg" /></button></div>
               <article className="cm-detail-post">
-                <div className={`cm-detail-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.image}</div>
-                <div className="cm-detail-author"><span className="cm-avatar large">{selectedPost.avatar}</span><span><b>{selectedPost.author}</b><small>{selectedPost.handle}</small></span>{selectedPost.status !== 'Cần xem xét' && <span className={`cm-status ${statusClass(selectedPost.status)}`}>{selectedPost.status}</span>}</div>
+                <div className="cm-detail-post-heading">
+                  <div className={`cm-detail-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.image}</div>
+                  <h3>{selectedPost.title}</h3>
+                  <span className={`cm-status ${statusClass(selectedPost)}`}>{statusLabel(selectedPost)}</span>
+                </div>
+                <div className="cm-detail-author"><span className="cm-avatar large">{selectedPost.avatar}</span><span><b>{selectedPost.author}</b><small>{selectedPost.handle}</small></span></div>
                 <p className="cm-detail-time"><i className="bi bi-clock" /> {formatPostDate(selectedPost.createdAt)}</p>
-                <h3>{selectedPost.title}</h3>
                 <p className="cm-detail-content">{selectedPost.content}</p>
                 <div className="cm-detail-engagement"><span><i className="bi bi-heart" /> {getEngagementCount(selectedPost, 'likes')} lượt thích</span><span><i className="bi bi-chat" /> {getEngagementCount(selectedPost, 'comments')} bình luận</span></div>
               </article>
@@ -375,38 +336,37 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
                 <h3>Thông tin bài đăng</h3>
                 <dl>
                   <div><dt><i className="bi bi-tag" /> Loại bài đăng</dt><dd>Bài viết Community</dd></div>
-                  <div><dt><i className="bi bi-shield-check" /> Trạng thái hiện tại</dt><dd>{selectedPost.status === 'Cần xem xét' ? selectedPost.status : <span className={`cm-status ${statusClass(selectedPost.status)}`}>{selectedPost.status}</span>}</dd></div>
+                  <div><dt><i className="bi bi-shield-check" /> Trạng thái hiện tại</dt><dd><span className={`cm-status ${statusClass(selectedPost)}`}>{statusLabel(selectedPost)}</span></dd></div>
                   <div><dt><i className="bi bi-flag" /> Số lượt báo cáo</dt><dd className={selectedPost.reports ? 'cm-report-value' : ''}>{selectedPost.reports}</dd></div>
                   <div><dt><i className="bi bi-chat-dots" /> Số bình luận</dt><dd>{getEngagementCount(selectedPost, 'comments')}</dd></div>
                 </dl>
               </div>
 
               {selectedPost.reports > 0 && (
-                <div className="cm-report-reason"><span><i className="bi bi-flag-fill" /> Lý do bị báo cáo</span><p>{selectedPost.reportReason || 'Bài đăng được người dùng báo cáo để xem xét.'}</p></div>
+                <section className="cm-report-details" aria-label="Thông tin báo cáo">
+                  <h3><i className="bi bi-exclamation-circle-fill" />Thông tin báo cáo ({selectedPost.reports} báo cáo)</h3>
+                  {selectedPost.reviewPending && <p className="cm-report-review-note"><i className="bi bi-eye-slash-fill" />Bài đăng đã được ẩn tự động và đang chờ Admin xem xét.</p>}
+                  <ul>{getReportDetails(selectedPost).map((report, index) => (
+                    <li key={`${report.reporter}-${report.reportedAt}-${index}`}>
+                      <span className="cm-reporter-avatar"><i className="bi bi-person-fill" /></span>
+                      <span className="cm-reporter-copy"><b>{report.reporter}</b><span>{report.reason}</span><time>{formatPostDate(report.reportedAt)}</time></span>
+                    </li>
+                  ))}</ul>
+                </section>
               )}
 
               <div className="cm-actions">
                 <h3>Hành động</h3>
                 <div className="cm-action-grid">
-                  {selectedPost.status === 'Chờ duyệt' ? (
+                  {selectedPost.reviewPending ? (
                     <>
-                      <button type="button" className="approve" onClick={() => applyDecision('Đã duyệt')}><i className="bi bi-check-circle" />Duyệt</button>
-                      <button type="button" className="reject" onClick={openRejectForm}><i className="bi bi-x-circle" />Từ chối</button>
+                      <button type="button" className="keep" onClick={openKeepForm}><i className="bi bi-eye" /><span><b>Giữ bài đăng</b><small>Hiển thị lại công khai</small></span></button>
+                      <button type="button" className="hide" onClick={openHideForm}><i className="bi bi-eye-slash" /><span><b>Xác nhận ẩn</b><small>Giữ bài đăng ở trạng thái ẩn</small></span></button>
                     </>
                   ) : selectedPost.status === 'Đã ẩn' ? (
-                    <button type="button" className="approve" onClick={showPostAgain}><i className="bi bi-eye" />Hiển thị lại</button>
-                  ) : selectedPost.status === 'Từ chối' ? (
-                    <>
-                      <button type="button" className="approve" onClick={reapproveRejectedPost}><i className="bi bi-check-circle" />Duyệt lại</button>
-                      <button type="button" className="keep" onClick={() => setIsRejectionReasonOpen(true)}><i className="bi bi-file-text" />Xem lý do từ chối</button>
-                    </>
-                  ) : selectedPost.reports > 0 && ['Đã duyệt', 'Cần xem xét'].includes(selectedPost.status) ? (
-                    <>
-                      <button type="button" className="keep" onClick={openKeepForm}><i className="bi bi-eye" />Giữ bài đăng</button>
-                      <button type="button" className="hide" onClick={openHideForm}><i className="bi bi-eye-slash" />Ẩn bài đăng</button>
-                    </>
-                  ) : selectedPost.status === 'Đã duyệt' ? (
-                    <button type="button" className="hide" onClick={openHideForm}><i className="bi bi-eye-slash" />Ẩn bài đăng</button>
+                    <button type="button" className="approve" onClick={showPostAgain}><i className="bi bi-eye" /><span><b>Hiển thị lại</b><small>Đưa bài đăng trở lại Community</small></span></button>
+                  ) : selectedPost.status === 'Đang hiển thị' ? (
+                    <button type="button" className="hide" onClick={openHideForm}><i className="bi bi-eye-slash" /><span><b>Ẩn bài đăng</b><small>Không còn hiển thị công khai</small></span></button>
                   ) : (
                     <p className="cm-no-actions">Không có hành động cần xử lý.</p>
                   )}
@@ -418,42 +378,6 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
           )}
         </aside>
       </div>
-
-      {isRejectModalOpen && selectedPost && (
-        <div className="cm-reject-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRejectForm() }}>
-          <form className="cm-reject-modal" role="dialog" aria-modal="true" aria-labelledby="cm-reject-title" onSubmit={confirmRejection}>
-            <div className="cm-reject-heading">
-              <span className="cm-reject-alert"><i className="bi bi-exclamation-lg" /></span>
-              <div><h2 id="cm-reject-title">Từ chối bài đăng</h2><p>Vui lòng chọn lý do từ chối để thông báo đến người đăng bài.</p></div>
-              <button type="button" aria-label="Đóng biểu mẫu" onClick={closeRejectForm}><i className="bi bi-x-lg" /></button>
-            </div>
-
-            <div className="cm-reject-post">
-              <div className={`cm-reject-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.image}</div>
-              <div><b>{selectedPost.author}</b><p>{selectedPost.content}</p></div>
-            </div>
-
-            <label className="cm-reject-field">
-              <span><b>*</b> Lý do từ chối</span>
-              <span className="cm-reject-select-wrap"><select autoFocus required value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)}>
-                <option value="">Chọn lý do từ chối</option>
-                {REJECTION_REASONS.map((reason) => <option value={reason} key={reason}>{reason}</option>)}
-              </select><i className="bi bi-chevron-down" /></span>
-            </label>
-
-            <label className="cm-reject-field cm-reject-note-field">
-              <span>Ghi chú bổ sung <small>(tùy chọn)</small></span>
-              <textarea maxLength={500} value={rejectionNote} onChange={(event) => setRejectionNote(event.target.value)} placeholder="Nhập thêm ghi chú nếu cần…" />
-              <small className="cm-reject-counter">{rejectionNote.length}/500</small>
-            </label>
-
-            <div className="cm-reject-actions">
-              <button type="button" className="cm-reject-cancel" onClick={closeRejectForm}>Hủy</button>
-              <button type="submit" className="cm-reject-confirm" disabled={!rejectionReason}><i className="bi bi-slash-circle" />Từ chối</button>
-            </div>
-          </form>
-        </div>
-      )}
 
       {isKeepModalOpen && selectedPost && (
         <div className="cm-keep-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) closeKeepForm() }}>
@@ -527,25 +451,6 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
         </div>
       )}
 
-      {isRejectionReasonOpen && selectedPost?.status === 'Từ chối' && (
-        <div className="cm-rejection-reason-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsRejectionReasonOpen(false) }}>
-          <section className="cm-rejection-reason-modal" role="dialog" aria-modal="true" aria-labelledby="cm-rejection-reason-title">
-            <header className="cm-rejection-reason-heading">
-              <span><i className="bi bi-file-text" /></span>
-              <div><h2 id="cm-rejection-reason-title">Lý do từ chối</h2><p>Thông tin đã ghi nhận cho bài đăng này.</p></div>
-              <button type="button" aria-label="Đóng lý do từ chối" onClick={() => setIsRejectionReasonOpen(false)}><i className="bi bi-x-lg" /></button>
-            </header>
-            <div className="cm-rejection-reason-content">
-              <b>{selectedPost.title}</b>
-              <p>{selectedPost.rejectionReason || 'Chưa có lý do từ chối được lưu.'}</p>
-              {selectedPost.rejectionNote && <><b>Ghi chú bổ sung</b><p>{selectedPost.rejectionNote}</p></>}
-            </div>
-            <div className="cm-rejection-reason-actions">
-              <button type="button" onClick={() => setIsRejectionReasonOpen(false)}>Đóng</button>
-            </div>
-          </section>
-        </div>
-      )}
     </section>
   )
 }

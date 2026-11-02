@@ -553,12 +553,9 @@ async function listActionLogs(req, res) {
 async function createCommunityModerationActionLog(req, res) {
   try {
     const allowedActions = new Set([
-      'approve_community_post',
-      'reject_community_post',
       'keep_community_report',
       'hide_community_post',
       'restore_community_post',
-      'reapprove_community_post',
     ]);
     const { actionType, targetId } = req.body || {};
     const reason = String(req.body?.reason || '').trim();

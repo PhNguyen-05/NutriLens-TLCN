@@ -12,11 +12,9 @@ import { COMMUNITY_POSTS_STORAGE_KEY, getCommunityPostsSnapshot } from './commun
 import './AdminCommunityAnalyticsPage.css'
 
 const STATUS_DEFINITIONS = [
-  { key: 'approved', label: 'Đã duyệt', status: 'Đã duyệt', color: '#11a878' },
+  { key: 'displaying', label: 'Đang hiển thị', status: 'Đang hiển thị', color: '#11a878' },
+  { key: 'review', label: 'Chờ Admin xem xét', color: '#f28b27' },
   { key: 'hidden', label: 'Đã ẩn', status: 'Đã ẩn', color: '#3c98f5' },
-  { key: 'pending', label: 'Chờ duyệt', status: 'Chờ duyệt', color: '#ff941f' },
-  { key: 'reported', label: 'Bị báo cáo', color: '#f28b27' },
-  { key: 'rejected', label: 'Đã từ chối', status: 'Từ chối', color: '#f24d54' },
 ]
 
 function number(value) {
@@ -39,11 +37,11 @@ function getPostDate(post) {
 }
 
 function isReportedPost(post) {
-  return Number(post.reports || 0) > 0 || post.status === 'Cần xem xét' || post.status === 'Bị báo cáo'
+  return Boolean(post.reviewPending)
 }
 
 function summarizePosts(posts, date = '') {
-  const visibleEngagement = posts.filter((post) => post.status !== 'Chờ duyệt')
+  const visibleEngagement = posts.filter((post) => !post.reviewPending)
   return {
     date,
     posts: posts.length,
@@ -163,9 +161,9 @@ export default function AdminCommunityAnalyticsPage({ onNavigate }) {
   }))
   const statusTotals = STATUS_DEFINITIONS.map((definition) => ({
     ...definition,
-    value: posts.filter((post) => definition.key === 'reported'
-      ? isReportedPost(post)
-      : !isReportedPost(post) && post.status === definition.status).length,
+    value: posts.filter((post) => definition.key === 'review'
+      ? post.reviewPending
+      : !post.reviewPending && post.status === definition.status).length,
   }))
   const totalPosts = posts.length
   const maxInteraction = Math.max(currentMetrics.likes, currentMetrics.comments, currentMetrics.reportCount, 1)

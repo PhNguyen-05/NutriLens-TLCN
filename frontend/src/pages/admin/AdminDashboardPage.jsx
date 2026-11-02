@@ -75,6 +75,7 @@ export default function AdminDashboardPage() {
   const [dashboardStats, setDashboardStats] = useState(emptyDashboardStats)
   const [dashboardActivity, setDashboardActivity] = useState([])
   const [communityInitialFilter, setCommunityInitialFilter] = useState('all')
+  const [communityPageKey, setCommunityPageKey] = useState(0)
   const isAnalyticsPage = ['Báo cáo', 'FoodAnalytics', 'ExerciseAnalytics', 'BlogAnalytics', 'CommunityAnalytics'].includes(activeItem)
   const isDashboard = activeItem === 'Dashboard' && !showActionLogs
 
@@ -194,6 +195,7 @@ export default function AdminDashboardPage() {
 
   function navigateCommunity(filter = 'all') {
     setCommunityInitialFilter(filter)
+    setCommunityPageKey((key) => key + 1)
     navigateAdmin('Kiểm duyệt cộng đồng')
   }
 
@@ -291,7 +293,7 @@ export default function AdminDashboardPage() {
                   : activeItem === 'Blog'
                   ? 'Quản lý nội dung và trạng thái xuất bản các bài viết sức khỏe, dinh dưỡng.'
                   : activeItem === 'Kiểm duyệt cộng đồng'
-                  ? 'Xem xét bài đăng được báo cáo, duyệt nội dung và cập nhật trạng thái hiển thị trên Community.'
+                  ? 'Xem xét và xử lý các bài đăng được người dùng báo cáo có dấu hiệu vi phạm.'
 
                   : activeItem === 'Bài tập'
                   ? 'Thêm, chỉnh sửa, ẩn hoặc hiển thị thông tin bài tập và chỉ số MET làm cơ sở tính calories cho người dùng.'
@@ -332,7 +334,7 @@ export default function AdminDashboardPage() {
             <BlogManagementPage />
 
           ) : activeItem === 'Kiểm duyệt cộng đồng' ? (
-            <CommunityModerationPage initialFilter={communityInitialFilter} />
+            <CommunityModerationPage key={communityPageKey} initialFilter={communityInitialFilter} />
 
           ) : activeItem === 'Bài tập' ? (
             <ExerciseManagementPage />
