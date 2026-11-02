@@ -16,6 +16,15 @@ const COMMUNITY_TAGS = [
   'Chia sẻ chung',
 ]
 
+const REPORT_REASONS = [
+  'Nội dung spam hoặc quảng cáo',
+  'Nội dung không phù hợp / phản cảm',
+  'Thông tin sai lệch / gây hiểu nhầm',
+  'Ngôn ngữ thù địch / quấy rối',
+  'Vi phạm quyền riêng tư',
+  'Lý do khác',
+]
+
 const TAG_COLOR_MAP = {
   'Công thức món ăn': { bg: '#e0f2fe', text: '#0284c7', icon: 'bi-egg-fried' },
   'Kinh nghiệm dinh dưỡng': { bg: '#ecfdf5', text: '#059669', icon: 'bi-journal-check' },
@@ -201,6 +210,15 @@ export default function CommunityPage() {
   // State xác nhận xóa bài viết (Modal in-app thay cho window.confirm / localhost)
   const [deleteConfirmPost, setDeleteConfirmPost] = useState(null)
   const [deletePostSubmitting, setDeletePostSubmitting] = useState(false)
+
+  // UC30: State modal báo cáo vi phạm bài đăng
+  const [reportModal, setReportModal] = useState(null) // { postId }
+  const [reportReason, setReportReason] = useState('')
+  const [reportNote, setReportNote] = useState('')
+  const [reportEvidenceFile, setReportEvidenceFile] = useState(null)
+  const [reportEvidencePreview, setReportEvidencePreview] = useState(null)
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const reportFileInputRef = useRef(null)
 
   // State chỉnh sửa bài viết
   const [editingPost, setEditingPost] = useState(null)
@@ -1315,9 +1333,116 @@ export default function CommunityPage() {
       setDeleteConfirmPost(null)
     } catch (err) {
       console.error('[CommunityPage] Lỗi xóa bài:', err)
-      setFeedbackError(err.response?.data?.message || 'Không thể xóa bài viết, vui lòng thử lại')
+      const msg = err.response?.data?.message
+      if (err.response?.status === 404) {
+        setFeedbackError(msg || 'Bài đăng không còn tồn tại')
+        setPosts((prev) => prev.filter((p) => p._id !== deleteConfirmPost._id))
+        setDeleteConfirmPost(null)
+      } else {
+        setFeedbackError(msg || 'Không thể xóa bài viết, vui lòng thử lại')
+      }
     } finally {
       setDeletePostSubmitting(false)
+    }
+  }
+
+  // --- UC30: BÁO CÁO VI PHẠM BÀI ĐĂNG ---
+  function handleOpenReportModal(postId) {
+    setReportModal({ postId })
+    setReportReason('')
+    setReportNote('')
+    setReportEvidenceFile(null)
+    setReportEvidencePreview(null)
+  }
+
+  function handleCloseReportModal() {
+    setReportModal(null)
+    setReportReason('')
+    setReportNote('')
+    setReportEvidenceFile(null)
+    if (reportEvidencePreview) {
+      URL.revokeObjectURL(reportEvidencePreview)
+    }
+    setReportEvidencePreview(null)
+  }
+
+  function handleSelectReportEvidence(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setFeedbackError('Vui lòng chọn tệp hình ảnh hợp lệ (JPG, PNG, WEBP...)')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFeedbackError('Dung lượng ảnh bằng chứng không được vượt quá 5MB')
+      return
+    }
+
+    if (reportEvidencePreview) {
+      URL.revokeObjectURL(reportEvidencePreview)
+    }
+
+    setReportEvidenceFile(file)
+    setReportEvidencePreview(URL.createObjectURL(file))
+    e.target.value = ''
+  }
+
+  function handleRemoveReportEvidence() {
+    setReportEvidenceFile(null)
+    if (reportEvidencePreview) {
+      URL.revokeObjectURL(reportEvidencePreview)
+    }
+    setReportEvidencePreview(null)
+  }
+
+  async function handleSubmitReport() {
+    if (!reportModal) return
+
+    if (!reportReason) {
+      setFeedbackError('Vui lòng chọn lý do báo cáo')
+      return
+    }
+
+    setReportSubmitting(true)
+    try {
+      const formData = new FormData()
+      formData.append('reason', reportReason)
+      if (reportNote) formData.append('note', reportNote)
+      if (reportEvidenceFile) {
+        formData.append('evidenceImage', reportEvidenceFile)
+      }
+
+      await axiosInstance.post(`/community/posts/${reportModal.postId}/report`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      // Cập nhật ngay trạng thái isReported trên giao diện
+      setPosts((prev) =>
+        prev.map((p) => (p._id === reportModal.postId ? { ...p, isReported: true } : p))
+      )
+      handleCloseReportModal()
+      setFeedbackSuccess('Báo cáo thành công')
+    } catch (err) {
+      console.error('[CommunityPage] Lỗi báo cáo bài viết:', err)
+      const status = err.response?.status
+      const msg = err.response?.data?.message
+      if (status === 409) {
+        setFeedbackError(msg || 'Bạn đã báo cáo bài đăng này')
+        setPosts((prev) =>
+          prev.map((p) => (p._id === reportModal.postId ? { ...p, isReported: true } : p))
+        )
+        handleCloseReportModal()
+      } else if (status === 400) {
+        setFeedbackError(msg || 'Vui lòng chọn lý do báo cáo')
+      } else if (status === 404) {
+        setFeedbackError(msg || 'Bài đăng không còn tồn tại')
+        handleCloseReportModal()
+      } else {
+        setFeedbackError(msg || 'Không thể gửi báo cáo, vui lòng thử lại')
+      }
+    } finally {
+      setReportSubmitting(false)
     }
   }
 
@@ -1910,6 +2035,48 @@ export default function CommunityPage() {
                               >
                                 <i className={`bi ${tagMeta.icon}`} /> {post.tag}
                               </span>
+
+                              {/* UC36: Trạng thái bài đăng cá nhân (Công khai / Đã bị ẩn) */}
+                              {(feedMode === 'mine' || isAuthor) && post.status === 'hidden' && (
+                                <span
+                                  className="post-status-badge post-status-hidden"
+                                  style={{
+                                    backgroundColor: '#fee2e2',
+                                    color: '#b91c1c',
+                                    border: '1px solid #fca5a5',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                  title="Bài viết đã bị quản trị viên ẩn do vi phạm quy định"
+                                >
+                                  <i className="bi bi-eye-slash-fill" /> Đã bị ẩn
+                                </span>
+                              )}
+                              {(feedMode === 'mine' || isAuthor) && post.status === 'published' && (
+                                <span
+                                  className="post-status-badge post-status-published"
+                                  style={{
+                                    backgroundColor: '#ecfdf5',
+                                    color: '#047857',
+                                    border: '1px solid #a7f3d0',
+                                    fontSize: '11.5px',
+                                    fontWeight: 700,
+                                    padding: '2px 8px',
+                                    borderRadius: '12px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                  }}
+                                  title="Bài viết hiển thị công khai trên cộng đồng"
+                                >
+                                  <i className="bi bi-check-circle-fill" /> Công khai
+                                </span>
+                              )}
                             </div>
                             <span className="post-time" title={post.createdAt}>
                               <i className="bi bi-clock" /> {formatRelativeTime(post.createdAt)}
@@ -2037,6 +2204,37 @@ export default function CommunityPage() {
                           <i className="bi bi-chat-text" />
                           <span>Bình luận</span>
                         </button>
+
+                        {/* UC30: Nút báo cáo vi phạm - chỉ hiển thị khi không phải chủ bài viết */}
+                        {user && !isAuthor && (
+                          post.isReported ? (
+                            <button
+                              type="button"
+                              className="post-footer-btn post-footer-btn--reported"
+                              disabled
+                              title="Bạn đã gửi báo cáo bài đăng này cho quản trị viên"
+                              style={{
+                                color: '#ea580c',
+                                cursor: 'default',
+                                background: '#fff7ed',
+                                fontWeight: 700,
+                              }}
+                            >
+                              <i className="bi bi-flag-fill" style={{ color: '#ea580c' }} />
+                              <span>Đã báo cáo</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="post-footer-btn post-footer-btn--report"
+                              onClick={() => handleOpenReportModal(post._id)}
+                              title="Báo cáo bài đăng vi phạm"
+                            >
+                              <i className="bi bi-flag" />
+                              <span>Báo cáo</span>
+                            </button>
+                          )
+                        )}
                       </div>
 
                       {/* KHUNG BÌNH LUẬN (COMMENTS SECTION) */}
@@ -3234,6 +3432,278 @@ export default function CommunityPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* UC30: MODAL BÁO CÁO VI PHẠM BÀI ĐĂNG */}
+      {reportModal && (
+        <div
+          className="community-modal-backdrop"
+          onClick={() => !reportSubmitting && handleCloseReportModal()}
+        >
+          <div
+            className="community-modal"
+            style={{
+              maxWidth: '480px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-report-post-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="community-modal-header" style={{ flexShrink: 0 }}>
+              <h3 id="modal-report-post-title">
+                <i className="bi bi-flag-fill" style={{ color: '#ea580c', marginRight: '8px' }} />
+                Báo cáo vi phạm bài đăng
+              </h3>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={handleCloseReportModal}
+                title="Đóng"
+                disabled={reportSubmitting}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+            <div
+              className="community-modal-body"
+              style={{
+                overflowY: 'auto',
+                flex: 1,
+                padding: '16px 20px',
+              }}
+            >
+              <p style={{ fontSize: '13px', color: '#475569', marginBottom: '10px', lineHeight: 1.4 }}>
+                Vui lòng chọn lý do bài đăng này vi phạm tiêu chuẩn cộng đồng để quản trị viên kiểm duyệt:
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                {REPORT_REASONS.map((reason) => (
+                  <label
+                    key={reason}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      border: reportReason === reason ? '1.5px solid #ea580c' : '1px solid #e2e8f0',
+                      background: reportReason === reason ? '#fff7ed' : '#fff',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: reportReason === reason ? '#9a3412' : '#334155',
+                      fontWeight: reportReason === reason ? 600 : 400,
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="reportReason"
+                      value={reason}
+                      checked={reportReason === reason}
+                      onChange={(e) => setReportReason(e.target.value)}
+                      disabled={reportSubmitting}
+                      style={{ accentColor: '#ea580c' }}
+                    />
+                    <span>{reason}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div style={{ marginBottom: '12px' }}>
+                <label
+                  htmlFor="report-note-input"
+                  style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#334155', marginBottom: '4px' }}
+                >
+                  Ghi chú chi tiết (không bắt buộc):
+                </label>
+                <textarea
+                  id="report-note-input"
+                  value={reportNote}
+                  onChange={(e) => setReportNote(e.target.value)}
+                  placeholder="Mô tả cụ thể vi phạm nếu có..."
+                  maxLength={500}
+                  rows={2}
+                  disabled={reportSubmitting}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '12.5px',
+                    color: '#1e293b',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              {/* CUNG CẤP BẰNG CHỨNG VI PHẠM BẰNG HÌNH ẢNH (THU NHỎ GỌN GÀNG) */}
+              <div style={{ marginBottom: '10px' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    color: '#334155',
+                    marginBottom: '4px',
+                  }}
+                >
+                  <i className="bi bi-image" style={{ marginRight: '6px', color: '#0284c7' }} />
+                  Bằng chứng vi phạm bằng hình ảnh:
+                </label>
+
+                {reportEvidencePreview ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '6px 10px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'relative',
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        border: '1px solid #e2e8f0',
+                        flexShrink: 0,
+                        background: '#fff',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => setLightboxImage(reportEvidencePreview)}
+                      title="Nhấn để xem ảnh phóng to"
+                    >
+                      <img
+                        src={reportEvidencePreview}
+                        alt="Ảnh bằng chứng vi phạm"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          color: '#1e293b',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {reportEvidenceFile?.name || 'Ảnh bằng chứng'}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        {reportEvidenceFile ? `${(reportEvidenceFile.size / 1024).toFixed(0)} KB` : 'Đã đính kèm'} · Nhấn ảnh để phóng to
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveReportEvidence}
+                      disabled={reportSubmitting}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#fee2e2',
+                        color: '#dc2626',
+                        border: '1px solid #fca5a5',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        flexShrink: 0,
+                      }}
+                      title="Gỡ ảnh này"
+                    >
+                      <i className="bi bi-trash" /> Gỡ ảnh
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      ref={reportFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleSelectReportEvidence}
+                      disabled={reportSubmitting}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => reportFileInputRef.current?.click()}
+                      disabled={reportSubmitting}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        border: '1px dashed #0284c7',
+                        background: '#f0f9ff',
+                        color: '#0369a1',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <i className="bi bi-cloud-arrow-up" style={{ fontSize: '15px' }} />
+                      <span>Đính kèm ảnh bằng chứng (JPG, PNG, tối đa 5MB)</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="community-modal-footer"
+                style={{
+                  flexShrink: 0,
+                  marginTop: '14px',
+                  paddingTop: '10px',
+                  borderTop: '1px solid #e2e8f0',
+                }}
+              >
+                <button
+                  type="button"
+                  className="community-btn-secondary"
+                  onClick={handleCloseReportModal}
+                  disabled={reportSubmitting}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  className="community-btn-primary"
+                  onClick={handleSubmitReport}
+                  disabled={reportSubmitting}
+                  style={{ background: '#ea580c', borderColor: '#ea580c' }}
+                >
+                  {reportSubmitting ? (
+                    <>
+                      <i className="bi bi-arrow-repeat spin" /> Đang gửi...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-send-fill" /> Gửi báo cáo
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

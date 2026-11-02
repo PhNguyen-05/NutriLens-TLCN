@@ -13,6 +13,7 @@ const {
   deleteComment,
   updatePost,
   deletePost,
+  reportPost,
 } = require('../controllers/communityController');
 
 const router = express.Router();
@@ -80,5 +81,14 @@ router.put(
   updatePost
 );
 router.delete('/posts/:id', requireAuth, deletePost);
+
+// 6. UC30: Báo cáo vi phạm bài đăng (hỗ trợ đính kèm bằng chứng ảnh)
+router.post(
+  '/posts/:id/report',
+  requireAuth,
+  postImageUpload.single('evidenceImage'),
+  handleUploadError,
+  reportPost
+);
 
 module.exports = router;

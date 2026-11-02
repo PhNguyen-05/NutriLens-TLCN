@@ -444,10 +444,6 @@ export default function DashboardPage() {
             <strong>
               <i className="bi bi-calendar3" /> {formatDateVi(selectedDate)}
             </strong>
-            <span className="dot-separator">•</span>
-            <Link to="/profile" className="goal-pill" style={{ textDecoration: 'none' }} title="Bấm để xem & cập nhật mục tiêu trong hồ sơ">
-              {goalText}
-            </Link>
           </div>
           <div className="day-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
@@ -515,28 +511,6 @@ export default function DashboardPage() {
             <span className="eyebrow">Tổng quan năng lượng &amp; Chuyển hóa</span>
             <h1>Xin chào {firstName}!</h1>
             <p>{getAiWelcomeAdvice()}</p>
-            <div className="welcome-stats">
-              <span>
-                <b>Đã nạp</b>
-                <strong>{eatenCalo.toLocaleString('vi-VN')} / {targetCalo.toLocaleString('vi-VN')} kcal</strong>
-              </span>
-              <span>
-                <b>Vận động tiêu hao</b>
-                <strong>{burnedCalo > 0 ? `-${burnedCalo.toLocaleString('vi-VN')} kcal (${exerciseMinutes}p)` : 'Chưa ghi nhận'}</strong>
-              </span>
-              <span>
-                <b>Calo ròng</b>
-                <strong>
-                  {netCalories >= 0 ? `+${netCalories.toLocaleString('vi-VN')}` : netCalories.toLocaleString('vi-VN')} kcal
-                </strong>
-              </span>
-              {streak > 0 && (
-                <span>
-                  <b>🔥 Chuỗi ngày</b>
-                  <strong>{streak} ngày liên tiếp</strong>
-                </span>
-              )}
-            </div>
           </article>
 
           <article className="scanner-panel">
@@ -788,7 +762,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
               ) : (
-                exercises.map((ex, index) => (
+                exercises.slice(0, 3).map((ex, index) => (
                   <div className={`workout-row ${index === 0 ? 'focus' : ''}`} key={ex._id}>
                     <b>
                       {ex.category === 'cardio' ? '🏃' : ex.category === 'strength' ? '🏋' : ex.category === 'flexibility' ? '🧘' : '⚽'}

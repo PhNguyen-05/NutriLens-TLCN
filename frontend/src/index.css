@@ -9839,6 +9839,15 @@ td.fdm-td-center { text-align: center !important; }
   color: #059669;
 }
 
+.post-footer-btn--report:hover {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.post-footer-btn--report:hover i {
+  color: #ea580c;
+}
+
 /* BÌNH LUẬN (COMMENTS) */
 .comments-section {
   margin-top: 10px;

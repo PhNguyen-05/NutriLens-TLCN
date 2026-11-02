@@ -70,6 +70,17 @@ export default function UserNavMenu() {
             <i className="bi bi-person-circle" /> Hồ sơ cá nhân &amp; Sức khỏe
           </button>
           <button
+            className="profile-link"
+            onClick={() => {
+              setProfileOpen(false)
+              navigate('/community?filter=mine')
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <i className="bi bi-journal-richtext" /> Bài đăng của tôi
+          </button>
+          <button
             onClick={() => {
               setProfileOpen(false)
               handleLogout()

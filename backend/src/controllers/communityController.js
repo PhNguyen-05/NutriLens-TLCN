@@ -230,8 +230,9 @@ async function getPosts(req, res) {
         };
       }
     } else if ((onlyMine === 'true' || filterParam === 'mine') && req.user?.id) {
-      // Lọc bài viết cá nhân của người dùng đăng nhập
+      // Lọc bài viết cá nhân của người dùng đăng nhập (UC36: bao gồm cả bài đang bị ẩn)
       filter.authorId = req.user.id;
+      filter.status = { $in: ['published', 'hidden'] };
     }
 
     if (tag && tag !== 'Tất cả' && COMMUNITY_TAGS.includes(tag)) {
@@ -276,15 +277,36 @@ async function getPosts(req, res) {
         .lean(),
     ]);
 
-    // Thêm trường isLikedByUser nếu người dùng đã đăng nhập
+    // Thêm trường isLikedByUser và isReportedByUser nếu người dùng đã đăng nhập
     const currentUserId = req.user?.id ? String(req.user.id) : null;
+    let userReportedPostIds = new Set();
+    if (currentUserId && posts.length > 0) {
+      try {
+        const { PostReport } = require('../models/PostReport');
+        const postIds = posts.map((p) => p._id);
+        const userReports = await PostReport.find({
+          reporterId: currentUserId,
+          postId: { $in: postIds },
+        })
+          .select('postId')
+          .lean();
+        userReportedPostIds = new Set(userReports.map((r) => String(r.postId)));
+      } catch (repErr) {
+        console.warn('[getPosts] Lỗi truy vấn trạng thái báo cáo:', repErr.message);
+      }
+    }
+
     const enrichedPosts = posts.map((post) => {
       const isLiked = currentUserId
         ? (post.likes || []).some((uid) => String(uid) === currentUserId)
         : false;
+      const isReported = currentUserId
+        ? userReportedPostIds.has(String(post._id))
+        : false;
       return {
         ...post,
         isLiked,
+        isReported,
         likeCount: post.likes ? post.likes.length : 0,
         commentCount: post.comments ? post.comments.length : 0,
       };
@@ -711,8 +733,8 @@ async function deletePost(req, res) {
     const { id } = req.params;
     const post = await CommunityPost.findById(id);
 
-    if (!post) {
-      return res.status(404).json({ message: 'Bài viết không tồn tại' });
+    if (!post || post.status === 'deleted') {
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại' });
     }
 
     const isAuthor = String(post.authorId) === String(req.user.id);
@@ -781,6 +803,85 @@ async function getMentionSuggestions(req, res) {
   }
 }
 
+/**
+ * UC30: Báo cáo vi phạm bài đăng
+ * POST /api/community/posts/:id/report
+ */
+async function reportPost(req, res) {
+  try {
+    const { PostReport, REPORT_REASONS } = require('../models/PostReport');
+    const { id } = req.params;
+    const { reason, note, evidenceImageUrl } = req.body || {};
+
+    // Validate lý do báo cáo
+    if (!reason || !REPORT_REASONS.includes(reason)) {
+      return res.status(400).json({ message: 'Vui lòng chọn lý do báo cáo' });
+    }
+
+    const post = await CommunityPost.findById(id);
+    // Ngoại lệ 6c: Bài đăng không còn tồn tại
+    if (!post || post.status === 'deleted') {
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại' });
+    }
+
+    // Ngoại lệ 5a: Kiểm tra đã báo cáo trước đó
+    const existing = await PostReport.findOne({ postId: id, reporterId: req.user.id });
+    if (existing) {
+      return res.status(409).json({ message: 'Bạn đã báo cáo bài đăng này' });
+    }
+
+    // Xử lý bằng chứng bằng hình ảnh (nếu có đính kèm)
+    let finalEvidenceImageUrl = null;
+
+    if (req.file) {
+      const file = req.file;
+      const isAllowedMime = ALLOWED_MIME_TYPES.includes(file.mimetype) || file.mimetype?.startsWith('image/');
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isAllowedExt = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.jfif', '.bmp'].includes(ext);
+
+      if (!isAllowedMime && !isAllowedExt) {
+        return res.status(400).json({ message: 'Hình ảnh bằng chứng không hợp lệ' });
+      }
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        return res.status(400).json({ message: 'Hình ảnh bằng chứng vượt quá dung lượng cho phép (5MB)' });
+      }
+
+      if (isCloudinaryConfigured()) {
+        try {
+          finalEvidenceImageUrl = await uploadFileToCloudinary(file, 'nutrilens/reports');
+        } catch (uploadErr) {
+          console.warn('[reportPost] Lỗi tải lên Cloudinary, dùng base64 dự phòng:', uploadErr.message);
+          finalEvidenceImageUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+        }
+      } else {
+        finalEvidenceImageUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+      }
+    } else if (evidenceImageUrl && typeof evidenceImageUrl === 'string') {
+      const trimmedUrl = evidenceImageUrl.trim();
+      if (trimmedUrl.startsWith('data:image/') || /^https?:\/\//i.test(trimmedUrl)) {
+        finalEvidenceImageUrl = trimmedUrl;
+      }
+    }
+
+    await PostReport.create({
+      postId: id,
+      reporterId: req.user.id,
+      reason,
+      note: String(note || '').trim().slice(0, 500),
+      evidenceImageUrl: finalEvidenceImageUrl,
+    });
+
+    return res.status(201).json({ message: 'Báo cáo thành công' });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Bạn đã báo cáo bài đăng này' });
+    }
+    console.error('[reportPost] Lỗi:', error);
+    return res.status(500).json({ message: 'Không thể gửi báo cáo, vui lòng thử lại' });
+  }
+}
+
 module.exports = {
   createPost,
   getPosts,
@@ -791,4 +892,5 @@ module.exports = {
   deleteComment,
   updatePost,
   deletePost,
+  reportPost,
 };
