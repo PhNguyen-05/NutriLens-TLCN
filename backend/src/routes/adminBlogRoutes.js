@@ -4,6 +4,7 @@ const multer = require('multer');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
 const {
+  getBlogAnalytics,
   listBlogPosts,
   getBlogPost,
   createBlogPost,
@@ -28,6 +29,8 @@ const blogImageUpload = multer({
 });
 
 router.use(requireAuth, authorize('admin'));
+
+router.get('/analytics', getBlogAnalytics);
 
 router.post('/upload-image', (req, res, next) => {
   blogImageUpload.single('image')(req, res, async (error) => {

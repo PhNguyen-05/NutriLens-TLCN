@@ -39,6 +39,117 @@ function normalizePagination(page, limit) {
   return { page: normalizedPage, limit: normalizedLimit, skip: (normalizedPage - 1) * normalizedLimit };
 }
 
+function parseExerciseAnalyticsDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : null;
+}
+
+async function getExerciseAnalytics(req, res) {
+  try {
+    const from = parseExerciseAnalyticsDate(req.query.from);
+    const to = parseExerciseAnalyticsDate(req.query.to);
+    if (!from || !to || from > to) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê bài tập không hợp lệ' });
+    }
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const rangeDays = (new Date(`${to}T00:00:00.000Z`) - new Date(`${from}T00:00:00.000Z`)) / dayMs + 1;
+    if (rangeDays > 366) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê tối đa là 366 ngày' });
+    }
+    const previousFrom = new Date(new Date(`${from}T00:00:00.000Z`).getTime() - rangeDays * dayMs).toISOString().slice(0, 10);
+    const previousTo = new Date(new Date(`${from}T00:00:00.000Z`).getTime() - dayMs).toISOString().slice(0, 10);
+    const selectedRange = { $gte: from, $lte: to };
+    const comparisonRange = { $gte: previousFrom, $lte: to };
+
+    const [catalogCount, daily, categoryStats, periodStats] = await Promise.all([
+      Exercise.countDocuments({ isCustom: { $ne: true } }),
+      ExerciseLog.aggregate([
+        { $match: { date: selectedRange } },
+        { $group: {
+          _id: '$date',
+          sessions: { $sum: 1 },
+          totalDuration: { $sum: { $ifNull: ['$durationMinutes', 0] } },
+          averageDuration: { $avg: { $ifNull: ['$durationMinutes', 0] } },
+          calories: { $sum: { $ifNull: ['$caloriesBurned', 0] } },
+          users: { $addToSet: '$userId' },
+        } },
+        { $project: {
+          _id: 0,
+          date: '$_id',
+          sessions: 1,
+          totalDuration: 1,
+          averageDuration: 1,
+          calories: 1,
+          activeUsers: { $size: '$users' },
+        } },
+        { $sort: { date: 1 } },
+      ]),
+      ExerciseLog.aggregate([
+        { $match: { date: selectedRange } },
+        { $group: {
+          _id: { $ifNull: ['$category', 'other'] },
+          sessions: { $sum: 1 },
+          totalDuration: { $sum: { $ifNull: ['$durationMinutes', 0] } },
+          calories: { $sum: { $ifNull: ['$caloriesBurned', 0] } },
+        } },
+        { $sort: { sessions: -1, _id: 1 } },
+      ]),
+      ExerciseLog.aggregate([
+        { $match: { date: comparisonRange } },
+        { $group: {
+          _id: { $cond: [{ $gte: ['$date', from] }, 'current', 'previous'] },
+          sessions: { $sum: 1 },
+          calories: { $sum: { $ifNull: ['$caloriesBurned', 0] } },
+          users: { $addToSet: '$userId' },
+        } },
+        { $project: {
+          _id: 1,
+          sessions: 1,
+          calories: 1,
+          activeUsers: { $size: '$users' },
+        } },
+      ]),
+    ]);
+
+    const periods = {
+      current: { sessions: 0, calories: 0, activeUsers: 0 },
+      previous: { sessions: 0, calories: 0, activeUsers: 0 },
+    };
+    periodStats.forEach((row) => { periods[row._id] = { sessions: row.sessions, calories: row.calories, activeUsers: row.activeUsers }; });
+
+    const categoryNames = {
+      cardio: 'Cardio',
+      strength: 'Sức mạnh',
+      sports: 'Thể thao',
+      flexibility: 'Yoga & Thư giãn',
+      other: 'Khác',
+    };
+
+    return res.status(200).json({
+      summary: {
+        catalogCount,
+        sessions: periods.current.sessions,
+        calories: periods.current.calories,
+        activeUsers: periods.current.activeUsers,
+        totalDuration: daily.reduce((sum, row) => sum + row.totalDuration, 0),
+        previous: periods.previous,
+      },
+      categories: categoryStats.map((row) => ({
+        name: categoryNames[row._id] || row._id || 'Khác',
+        sessions: row.sessions,
+        totalDuration: row.totalDuration,
+        calories: row.calories,
+      })),
+      daily,
+    });
+  } catch (err) {
+    console.error('[getExerciseAnalytics] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải thống kê bài tập, vui lòng thử lại' });
+  }
+}
+
 /**
  * GET /api/admin/exercises
  * Lấy danh sách bài tập cho Admin quản lý (kèm tìm kiếm, lọc, sắp xếp, phân trang và thống kê)
@@ -558,6 +669,7 @@ async function deleteExercise(req, res) {
 }
 
 module.exports = {
+  getExerciseAnalytics,
   listExercises,
   getExerciseDetail,
   createExercise,

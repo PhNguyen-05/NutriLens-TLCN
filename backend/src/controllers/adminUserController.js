@@ -1,4 +1,7 @@
 const mongoose = require('mongoose');
+const fs = require('fs/promises');
+const path = require('path');
+const { randomUUID } = require('crypto');
 
 const User = require('../models/User');
 const Food = require('../models/Food');
@@ -6,9 +9,29 @@ const FoodRequest = require('../models/FoodRequest');
 const Exercise = require('../models/Exercise');
 const BlogPost = require('../models/BlogPost');
 const AdminActionLog = require('../models/AdminActionLog');
-const { uploadFileToCloudinary } = require('../services/cloudinaryStorage');
 
 const USER_LIST_FIELDS = 'fullName email avatarUrl gender dateOfBirth role status lockReason adminLockUntil adminLockDurationDays authProvider createdAt updatedAt';
+const UNLOCK_EVIDENCE_DIRECTORY = path.join(__dirname, '../../uploads/unlock-evidence');
+const EVIDENCE_EXTENSIONS = { 'image/jpeg': '.jpg', 'image/png': '.png', 'application/pdf': '.pdf' };
+
+async function storeUnlockEvidence(file) {
+  if (!file?.buffer || !Buffer.isBuffer(file.buffer)) {
+    throw new Error('Tệp minh chứng không có dữ liệu hợp lệ');
+  }
+
+  const extension = EVIDENCE_EXTENSIONS[file.mimetype];
+  if (!extension) throw new Error('Định dạng tệp minh chứng không được hỗ trợ');
+
+  await fs.mkdir(UNLOCK_EVIDENCE_DIRECTORY, { recursive: true });
+  const filename = `${randomUUID()}${extension}`;
+  const filePath = path.join(UNLOCK_EVIDENCE_DIRECTORY, filename);
+  await fs.writeFile(filePath, file.buffer, { flag: 'wx' });
+
+  return {
+    url: `/uploads/unlock-evidence/${filename}`,
+    filePath,
+  };
+}
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -38,6 +61,27 @@ function buildUserQuery({ search, status, authProvider }) {
   return query;
 }
 
+function parseDateOnly(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : null;
+}
+
+function parseUserAnalyticsRange(from, to) {
+  if (!from && !to) return null;
+
+  const startDate = parseDateOnly(from);
+  const endDate = parseDateOnly(to);
+  if (!startDate || !endDate || startDate > endDate) return false;
+
+  const start = new Date(`${startDate}T00:00:00.000+07:00`);
+  const endExclusive = new Date(new Date(`${endDate}T00:00:00.000+07:00`).getTime() + 24 * 60 * 60 * 1000);
+  const dayCount = (endExclusive.getTime() - start.getTime()) / (24 * 60 * 60 * 1000);
+  if (dayCount > 366) return false;
+
+  return { start, endExclusive };
+}
+
 function normalizePagination(page, limit) {
   const normalizedPage = Math.max(Number.parseInt(page, 10) || 1, 1);
   const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 20, 1), 100);
@@ -51,7 +95,12 @@ function normalizePagination(page, limit) {
 
 async function listUsers(req, res) {
   try {
-    const { search = '', status = 'all', authProvider = 'all', page, limit } = req.query;
+    const { search = '', status = 'all', authProvider = 'all', page, limit, from = '', to = '' } = req.query;
+
+    const analyticsRange = parseUserAnalyticsRange(from, to);
+    if (analyticsRange === false) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê không hợp lệ (tối đa 366 ngày)' });
+    }
 
     await User.updateMany(
       { role: 'user', status: 'locked', adminLockUntil: { $ne: null, $lte: new Date() } },
@@ -76,8 +125,14 @@ async function listUsers(req, res) {
 
     const pagination = normalizePagination(page, limit);
     const query = { role: 'user', ...buildUserQuery({ search, status, authProvider }) };
+    if (analyticsRange) {
+      query.createdAt = { $gte: analyticsRange.start, $lt: analyticsRange.endExclusive };
+    }
+    const previousRangeStart = analyticsRange
+      ? new Date(analyticsRange.start.getTime() - (analyticsRange.endExclusive.getTime() - analyticsRange.start.getTime()))
+      : null;
 
-    const [users, total, totalUsers, active, locked] = await Promise.all([
+    const [users, total, totalUsers, active, locked, local, google, totalBeforeRange, dailyRegistrations, previousPeriodRegistrations, demographicGroups] = await Promise.all([
       User.find(query)
         .select(USER_LIST_FIELDS)
         .sort({ createdAt: -1 })
@@ -88,7 +143,88 @@ async function listUsers(req, res) {
       User.countDocuments({ role: 'user' }),
       User.countDocuments({ role: 'user', status: 'active' }),
       User.countDocuments({ role: 'user', status: 'locked' }),
+      User.countDocuments({ role: 'user', authProvider: 'local' }),
+      User.countDocuments({ role: 'user', authProvider: 'google' }),
+      analyticsRange
+        ? User.countDocuments({ role: 'user', createdAt: { $lt: analyticsRange.start } })
+        : Promise.resolve(0),
+      analyticsRange
+        ? User.aggregate([
+          { $match: { role: 'user', createdAt: { $gte: analyticsRange.start, $lt: analyticsRange.endExclusive } } },
+          {
+            $group: {
+              _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } },
+              count: { $sum: 1 },
+            },
+          },
+          { $sort: { _id: 1 } },
+        ])
+        : Promise.resolve([]),
+      analyticsRange
+        ? User.countDocuments({
+          role: 'user',
+          createdAt: { $gte: previousRangeStart, $lt: analyticsRange.start },
+        })
+        : Promise.resolve(0),
+      User.aggregate([
+        { $match: { role: 'user' } },
+        {
+          $project: {
+            genderGroup: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$gender', 'female'] }, then: 'female' },
+                  { case: { $eq: ['$gender', 'male'] }, then: 'male' },
+                  { case: { $eq: ['$gender', 'other'] }, then: 'other' },
+                ],
+                default: 'unknown',
+              },
+            },
+            age: {
+              $cond: [
+                { $and: [{ $ne: [{ $ifNull: ['$dateOfBirth', null] }, null] }, { $lte: ['$dateOfBirth', new Date()] }] },
+                { $dateDiff: { startDate: '$dateOfBirth', endDate: new Date(), unit: 'year', timezone: 'Asia/Ho_Chi_Minh' } },
+                null,
+              ],
+            },
+          },
+        },
+        {
+          $project: {
+            genderGroup: 1,
+            ageGroup: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$age', null] }, then: 'unknown' },
+                  { case: { $lt: ['$age', 18] }, then: 'under18' },
+                  { case: { $lt: ['$age', 25] }, then: '18-24' },
+                  { case: { $lt: ['$age', 35] }, then: '25-34' },
+                  { case: { $lt: ['$age', 45] }, then: '35-44' },
+                  { case: { $lt: ['$age', 55] }, then: '45-54' },
+                ],
+                default: '55+',
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { gender: '$genderGroup', age: '$ageGroup' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
     ]);
+
+    const demographics = {
+      total: totalUsers,
+      gender: { female: 0, male: 0, other: 0, unknown: 0 },
+      ages: { under18: 0, '18-24': 0, '25-34': 0, '35-44': 0, '45-54': 0, '55+': 0, unknown: 0 },
+    };
+    demographicGroups.forEach(({ _id, count }) => {
+      demographics.gender[_id.gender] += count;
+      demographics.ages[_id.age] += count;
+    });
 
     return res.status(200).json({
       data: users,
@@ -98,7 +234,13 @@ async function listUsers(req, res) {
         total,
         totalPages: Math.ceil(total / pagination.limit),
       },
-      summary: { total: totalUsers, active, locked },
+      summary: { total: totalUsers, active, locked, local, google },
+      demographics,
+      analytics: {
+        totalBeforeRange,
+        dailyRegistrations: dailyRegistrations.map(({ _id, count }) => ({ date: _id, count })),
+        previousPeriodRegistrations,
+      },
     });
   } catch (err) {
     console.error('[listUsers] Lỗi:', err.message);
@@ -142,7 +284,10 @@ async function getUserDetail(req, res) {
 
 async function updateUserStatus(req, res) {
   const uploadedEvidence = req.files || [];
-  const storedEvidenceUrls = [];
+  const storedEvidenceFiles = [];
+  let actionLogId = null;
+  let actionLogSaved = false;
+  let userSaved = false;
 
   try {
     const { id } = req.params;
@@ -195,15 +340,6 @@ async function updateUserStatus(req, res) {
 
     const action = status === 'locked' ? 'lock_user' : 'unlock_user';
 
-    if (status === 'active') {
-      for (const file of uploadedEvidence) {
-        storedEvidenceUrls.push(await uploadFileToCloudinary(
-          file,
-          process.env.CLOUDINARY_EVIDENCE_FOLDER || 'nutrilens/unlock-evidence'
-        ));
-      }
-    }
-
     targetUser.status = status;
     targetUser.lockReason = status === 'locked' ? String(lockReason).trim() : null;
     targetUser.adminLockDurationDays = status === 'locked' ? Number(lockDurationDays) : null;
@@ -219,9 +355,7 @@ async function updateUserStatus(req, res) {
       targetUser.lockUntil = null;
     }
 
-    await targetUser.save();
-
-    await AdminActionLog.create({
+    const actionLog = new AdminActionLog({
       adminId,
       actionType: action,
       targetType: 'User',
@@ -229,13 +363,28 @@ async function updateUserStatus(req, res) {
       reason: status === 'locked' ? targetUser.lockReason : String(unlockReason || '').trim(),
       durationDays: status === 'locked' ? Number(lockDurationDays) : null,
       note: status === 'locked' ? targetUser.adminLockNote : null,
-      evidence: status === 'active' ? uploadedEvidence.map((file, index) => ({
-        url: storedEvidenceUrls[index],
-        originalName: file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-      })) : [],
+      evidence: [],
     });
+
+    if (status === 'active') {
+      for (const file of uploadedEvidence) {
+        const storedEvidence = await storeUnlockEvidence(file);
+        storedEvidenceFiles.push(storedEvidence);
+        actionLog.evidence.push({
+          url: storedEvidence.url,
+          originalName: file.originalname,
+          mimeType: file.mimetype,
+          size: file.size,
+        });
+      }
+    }
+
+    await actionLog.save();
+    actionLogId = actionLog._id;
+    actionLogSaved = true;
+
+    await targetUser.save();
+    userSaved = true;
 
     const safeUser = await User.findById(targetUser._id).select(USER_LIST_FIELDS).lean();
 
@@ -245,7 +394,21 @@ async function updateUserStatus(req, res) {
     });
   } catch (err) {
     console.error('[updateUserStatus] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Thao tác thất bại, vui lòng thử lại' });
+    if (!userSaved) {
+      if (actionLogSaved) {
+        await AdminActionLog.deleteOne({ _id: actionLogId }).catch((cleanupError) => {
+          console.error('[updateUserStatus] Không thể dọn nhật ký thao tác:', cleanupError.message);
+        });
+      }
+      if (storedEvidenceFiles.length) {
+        await Promise.all(storedEvidenceFiles.map(({ filePath }) => fs.unlink(filePath).catch((cleanupError) => {
+          console.error('[updateUserStatus] Không thể dọn tệp minh chứng:', cleanupError.message);
+        })));
+      }
+    }
+    return res.status(err.status || 500).json({
+      message: err.status === 502 ? 'Không thể lưu tệp minh chứng, vui lòng thử lại' : 'Thao tác thất bại, vui lòng thử lại',
+    });
   }
 }
 
@@ -260,8 +423,10 @@ async function listActionLogs(req, res) {
       'create_food', 'update_food', 'hide_food', 'show_food',
       'create_exercise', 'update_exercise', 'hide_exercise', 'show_exercise', 'delete_exercise',
       'create_post', 'update_post', 'publish_post', 'draft_post', 'delete_post',
+      'approve_community_post', 'reject_community_post', 'keep_community_report',
+      'hide_community_post', 'restore_community_post', 'reapprove_community_post',
     ];
-    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise', 'Post'];
+    const validTargetTypes = ['User', 'FoodItem', 'Request', 'Exercise', 'Post', 'CommunityPost'];
 
     if (targetType !== 'all') {
       if (validTargetTypes.includes(targetType)) {
@@ -337,7 +502,7 @@ async function listActionLogs(req, res) {
       ]),
     ]);
 
-    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, User: 0 };
+    const targetCounts = { all: 0, FoodItem: 0, Request: 0, Exercise: 0, Post: 0, CommunityPost: 0, User: 0 };
     countsAggregate.forEach((item) => {
       if (item._id && targetCounts[item._id] !== undefined) {
         targetCounts[item._id] = item.count;
@@ -385,9 +550,47 @@ async function listActionLogs(req, res) {
   }
 }
 
+async function createCommunityModerationActionLog(req, res) {
+  try {
+    const allowedActions = new Set([
+      'keep_community_report',
+      'hide_community_post',
+      'restore_community_post',
+    ]);
+    const { actionType, targetId } = req.body || {};
+    const reason = String(req.body?.reason || '').trim();
+    const note = String(req.body?.note || '').trim();
+
+    if (!allowedActions.has(actionType)) {
+      return res.status(400).json({ message: 'Hành động kiểm duyệt cộng đồng không hợp lệ' });
+    }
+    if (!mongoose.Types.ObjectId.isValid(targetId)) {
+      return res.status(400).json({ message: 'Mã bài đăng Community không hợp lệ' });
+    }
+    if (!reason || reason.length > 1000 || note.length > 2000) {
+      return res.status(400).json({ message: 'Nội dung nhật ký không hợp lệ' });
+    }
+
+    const actionLog = await AdminActionLog.create({
+      adminId: req.user.id,
+      actionType,
+      targetType: 'CommunityPost',
+      targetId,
+      reason,
+      note: note || null,
+    });
+
+    return res.status(201).json({ data: actionLog });
+  } catch (err) {
+    console.error('[createCommunityModerationActionLog] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể lưu lịch sử kiểm duyệt cộng đồng' });
+  }
+}
+
 module.exports = {
   listUsers,
   getUserDetail,
   updateUserStatus,
   listActionLogs,
+  createCommunityModerationActionLog,
 };

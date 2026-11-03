@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const BlogPost = require('../models/BlogPost');
+const BlogEngagementEvent = require('../models/BlogEngagementEvent');
 const AdminActionLog = require('../models/AdminActionLog');
 
 const BLOG_STATUSES = ['Nháp', 'Đã xuất bản', 'Đã ẩn', 'Đã xóa'];
@@ -159,6 +160,123 @@ async function listBlogPosts(_req, res) {
   }
 }
 
+function parseBlogAnalyticsDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value ? value : null;
+}
+
+async function getBlogAnalytics(req, res) {
+  try {
+    const from = parseBlogAnalyticsDate(req.query.from);
+    const to = parseBlogAnalyticsDate(req.query.to);
+    if (!from || !to || from > to) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê bài viết không hợp lệ' });
+    }
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const start = new Date(`${from}T00:00:00.000+07:00`);
+    const endExclusive = new Date(new Date(`${to}T00:00:00.000+07:00`).getTime() + dayMs);
+    const rangeDays = (endExclusive.getTime() - start.getTime()) / dayMs;
+    if (rangeDays > 366) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê tối đa là 366 ngày' });
+    }
+    const dateMatch = { $gte: start, $lt: endExclusive };
+    const previousStart = new Date(start.getTime() - rangeDays * dayMs);
+    const comparisonDateMatch = { $gte: previousStart, $lt: endExclusive };
+    const activePosts = { status: { $ne: 'Đã xóa' } };
+
+    const [total, published, drafts, hidden, totals, categories, topPosts, createdByDay, statusActions, engagementByDay, engagementByPeriod] = await Promise.all([
+      BlogPost.countDocuments(activePosts),
+      BlogPost.countDocuments({ status: 'Đã xuất bản' }),
+      BlogPost.countDocuments({ status: 'Nháp' }),
+      BlogPost.countDocuments({ status: 'Đã ẩn' }),
+      BlogPost.aggregate([
+        { $match: activePosts },
+        { $group: { _id: null, views: { $sum: '$viewCount' }, likes: { $sum: '$likeCount' } } },
+      ]),
+      BlogPost.aggregate([
+        { $match: activePosts },
+        { $group: { _id: { $ifNull: ['$category', 'Chưa phân loại'] }, count: { $sum: 1 } } },
+        { $sort: { count: -1, _id: 1 } },
+      ]),
+      BlogPost.find({ status: 'Đã xuất bản' })
+        .select('title imageUrl category viewCount likeCount')
+        .sort({ viewCount: -1, publishedAt: -1 })
+        .limit(5)
+        .lean(),
+      BlogPost.aggregate([
+        { $match: { createdAt: dateMatch } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      AdminActionLog.aggregate([
+        { $match: { targetType: 'Post', actionType: { $in: ['publish_post', 'draft_post'] }, createdAt: dateMatch } },
+        { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } }, action: '$actionType' }, count: { $sum: 1 } } },
+        { $sort: { '_id.date': 1 } },
+      ]),
+      BlogEngagementEvent.aggregate([
+        { $match: { createdAt: dateMatch } },
+        { $group: { _id: { date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } }, type: '$eventType' }, count: { $sum: 1 } } },
+        { $sort: { '_id.date': 1 } },
+      ]),
+      BlogEngagementEvent.aggregate([
+        { $match: { createdAt: comparisonDateMatch } },
+        { $group: {
+          _id: { period: { $cond: [{ $gte: ['$createdAt', start] }, 'current', 'previous'] }, type: '$eventType' },
+          count: { $sum: 1 },
+        } },
+      ]),
+    ]);
+
+    const daily = new Map();
+    const ensureDay = (date) => {
+      if (!daily.has(date)) daily.set(date, { date, created: 0, published: 0, drafted: 0, views: 0, interactions: 0 });
+      return daily.get(date);
+    };
+    createdByDay.forEach(({ _id, count }) => { ensureDay(_id).created = count; });
+    statusActions.forEach(({ _id, count }) => {
+      ensureDay(_id.date)[_id.action === 'publish_post' ? 'published' : 'drafted'] = count;
+    });
+    engagementByDay.forEach(({ _id, count }) => {
+      ensureDay(_id.date)[_id.type === 'view' ? 'views' : 'interactions'] = count;
+    });
+    const eventPeriods = {
+      current: { views: 0, likes: 0 },
+      previous: { views: 0, likes: 0 },
+    };
+    engagementByPeriod.forEach(({ _id, count }) => {
+      eventPeriods[_id.period][_id.type === 'view' ? 'views' : 'likes'] = count;
+    });
+
+    return res.status(200).json({
+      summary: {
+        total,
+        published,
+        drafts,
+        hidden,
+        views: totals[0]?.views || 0,
+        likes: totals[0]?.likes || 0,
+        viewsInPeriod: eventPeriods.current.views,
+        previous: eventPeriods.previous,
+      },
+      categories: categories.map(({ _id, count }) => ({ name: _id || 'Chưa phân loại', count })),
+      topPosts: topPosts.map((post) => ({
+        id: String(post._id),
+        title: post.title,
+        imageUrl: post.imageUrl || '',
+        category: post.category || '',
+        views: Number(post.viewCount || 0),
+        likes: Number(post.likeCount || 0),
+      })),
+      daily: Array.from(daily.values()).sort((left, right) => left.date.localeCompare(right.date)),
+    });
+  } catch (err) {
+    console.error('[getBlogAnalytics] Lỗi:', err.message);
+    return res.status(500).json({ message: 'Không thể tải thống kê bài viết, vui lòng thử lại' });
+  }
+}
+
 async function listPublishedBlogPosts(req, res) {
   try {
     const viewerId = getLikeViewerId(req, req.query.viewerId);
@@ -209,6 +327,9 @@ async function incrementPublishedBlogView(req, res) {
       { new: true, timestamps: false }
     ).select('viewCount').lean();
     if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
+    await BlogEngagementEvent.create({ postId: id, eventType: 'view' }).catch((logError) => {
+      console.error('[incrementPublishedBlogView] Không thể lưu lượt xem:', logError.message);
+    });
     return res.status(200).json({ data: { viewCount: Number(post.viewCount || 0) } });
   } catch (err) {
     console.error('[incrementPublishedBlogView] Lỗi:', err.message);
@@ -234,11 +355,16 @@ async function togglePublishedBlogPostLike(req, res) {
         { timestamps: false }
       );
     } else {
-      await BlogPost.updateOne(
+      const result = await BlogPost.updateOne(
         { ...publishedPost, likedBy: { $ne: viewerId } },
         { $addToSet: { likedBy: viewerId }, $inc: { likeCount: 1 } },
         { timestamps: false }
       );
+      if (result.modifiedCount) {
+        await BlogEngagementEvent.create({ postId: id, eventType: 'like' }).catch((logError) => {
+          console.error('[togglePublishedBlogPostLike] Không thể lưu lượt thích:', logError.message);
+        });
+      }
     }
 
     const post = await BlogPost.findOne(publishedPost).select('likeCount +likedBy').lean();
@@ -526,6 +652,7 @@ async function deleteBlogPost(req, res) {
 
 module.exports = {
   listBlogPosts,
+  getBlogAnalytics,
   getBlogPostImage,
   listPublishedBlogPosts,
   getPublishedBlogPost,

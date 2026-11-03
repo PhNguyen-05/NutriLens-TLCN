@@ -6,6 +6,7 @@ const {
   getUserDetail,
   updateUserStatus,
   listActionLogs,
+  createCommunityModerationActionLog,
 } = require('../controllers/adminUserController');
 const requireAuth = require('../middleware/auth');
 const authorize = require('../middleware/authorize');
@@ -25,6 +26,7 @@ router.use(requireAuth, authorize('admin'));
 
 router.get('/', listUsers);
 router.get('/action-logs', listActionLogs);
+router.post('/action-logs/community', createCommunityModerationActionLog);
 router.get('/:id', getUserDetail);
 router.patch('/:id/status', (req, res, next) => {
   evidenceUpload.array('evidence', 5)(req, res, (error) => {

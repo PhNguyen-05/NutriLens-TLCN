@@ -169,7 +169,7 @@ export default function UserManagementPage() {
         formData.append('status', 'active')
         formData.append('unlockReason', unlockReason.trim())
         unlockEvidence.forEach((file) => formData.append('evidence', file))
-        await axiosInstance.patch(`/admin/users/${targetUser._id}/status`, formData, { headers: { 'Content-Type': undefined } })
+        await axiosInstance.patch(`/admin/users/${targetUser._id}/status`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       }
 
       setSelectedUser(null)
