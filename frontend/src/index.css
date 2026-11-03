@@ -11884,6 +11884,7 @@ td.fdm-td-center { text-align: center !important; }
   color: #ef4444;
   font-weight: 700;
   flex-shrink: 0;
+}
 
 /* Keep the food activity chart readable without a horizontal scrollbar. */
 .aa-food-chart { overflow: hidden; }
@@ -12032,4 +12033,943 @@ td.fdm-td-center { text-align: center !important; }
   .aa-date-tools > .aa-date-range { width: 100%; }
   .aa-week-filter > .aa-toolbar-week-picker { top: calc(100% + 6px); right: auto; left: 0; }
 
+}
+
+
+/* ==========================================================================
+   USER INTERFACE UNIFICATION & FULL SCREEN LAYOUT (MATCHING ADMIN)
+   1. Bố cục tràn viền Full Screen (cạnh sát viền như trang Admin)
+   2. Đồng bộ màu sắc chuẩn NutriLens (Nền slate-50, Thẻ trắng, Xanh Emerald)
+   3. Đồng bộ kích thước font chữ, phân cấp tiêu đề (H1, H2, H3) và nội dung
+   4. Tối ưu giao diện Header, Bell, Avatar Dropdown và Thanh tìm kiếm Community
+   ========================================================================== */
+
+/* 1. BỐ CỤC FULL SCREEN & TỔNG THỂ */
+.dashboard-shell,
+.foodscan-shell,
+.ex-shell,
+.fd-shell,
+.wt-shell,
+.community-shell,
+.ua-shell,
+.hp-shell {
+  min-height: 100svh;
+  background-color: #f8fafc !important;
+  color: #1e293b;
+  font-size: 14px;
+}
+
+/* Header trải rộng toàn màn hình giống Admin Topbar */
+.dashboard-header,
+.ua-header {
+  width: 100% !important;
+  max-width: none !important;
+  height: 66px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  padding: 0 28px !important;
+  gap: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 100 !important;
+  box-sizing: border-box !important;
+}
+
+.dashboard-logo {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: #0f172a !important;
+  font-size: 18px !important;
+  font-weight: 800 !important;
+  text-decoration: none !important;
+  letter-spacing: -0.02em !important;
+}
+
+.dashboard-logo span {
+  width: 32px !important;
+  height: 32px !important;
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+  border-radius: 8px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 16px !important;
+}
+
+.dashboard-nav {
+  display: flex !important;
+  gap: 4px !important;
+  align-items: center !important;
+  background: #f1f5f9 !important;
+  border-radius: 9999px !important;
+  padding: 4px !important;
+  height: auto !important;
+}
+
+.dashboard-nav a {
+  color: #475569 !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  padding: 8px 16px !important;
+  border-radius: 9999px !important;
+  text-decoration: none !important;
+  transition: all 0.15s ease !important;
+}
+
+.dashboard-nav a:hover {
+  color: #059669 !important;
+  background: #e2e8f0 !important;
+}
+
+.dashboard-nav a.active {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+  font-weight: 700 !important;
+}
+
+.dashboard-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-left: auto !important;
+}
+
+.dashboard-bell,
+.foodscan-bell {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 9999px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 15px !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.dashboard-bell:hover,
+.foodscan-bell:hover {
+  background: #e2e8f0 !important;
+  color: #059669 !important;
+}
+
+.dashboard-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 9999px !important;
+  border: 2px solid #a7f3d0 !important;
+  background: #059669 !important;
+  color: #ffffff !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.dashboard-avatar:hover {
+  border-color: #059669 !important;
+  transform: scale(1.04);
+}
+
+/* Các container thân trang user mở rộng full screen (max 1600px, padding 28px) */
+.dashboard-main,
+.community-main,
+.ex-main,
+.fd-main,
+.wt-main,
+.foodscan-main,
+.ua-content-wrap,
+.ua-detail-wrap {
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin: 0 auto !important;
+  padding: 20px 28px 40px !important;
+  box-sizing: border-box !important;
+}
+
+.ua-hero-inner {
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin: 0 auto !important;
+  padding: 0 28px !important;
+  box-sizing: border-box !important;
+}
+
+.dashboard-footer {
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin: 0 auto !important;
+  padding: 24px 28px !important;
+  box-sizing: border-box !important;
+}
+
+/* 2. ĐỒNG BỘ TIÊU ĐỀ & KÍCH THƯỚC FONT CHỮ */
+/* H1 - Tiêu đề trang */
+.welcome-panel h1,
+.fs-page-heading h1,
+.fd-heading h1,
+.ua-hero-copy h1,
+.ua-favorites-heading-group h1,
+.hp-topbar__title h1 {
+  font-size: 27px !important;
+  font-weight: 750 !important;
+  color: #0f172a !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.25 !important;
+  margin: 0 0 6px !important;
+}
+
+/* Phụ đề dưới H1 */
+.welcome-panel p,
+.fs-page-heading p,
+.fd-heading p,
+.ua-hero-copy p,
+.ua-favorites-heading-group p {
+  font-size: 13.5px !important;
+  color: #64748b !important;
+  line-height: 1.55 !important;
+  margin: 0 !important;
+}
+
+/* Banner / Header trên cùng của từng trang (Fs-page-heading, Fd-heading, Dashboard-daybar) */
+.fs-page-heading,
+.fd-heading,
+.dashboard-daybar {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 16px 20px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  margin-bottom: 18px !important;
+}
+
+.fs-page-icon,
+.ua-favorites-hero-icon {
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  border-radius: 10px !important;
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 20px !important;
+}
+
+/* H2 - Tiêu đề mục / Thẻ chính */
+.panel-heading h2,
+.fd-panel-heading h2,
+.workout-panel .panel-heading h2,
+.ua-results-heading h2,
+.community-card-title,
+.wt-card-title {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  letter-spacing: -0.015em !important;
+  margin: 0 !important;
+}
+
+.panel-heading p,
+.fd-panel-heading p {
+  font-size: 12.5px !important;
+  color: #64748b !important;
+  margin: 3px 0 0 !important;
+}
+
+/* H3 - Tiêu đề món ăn, bài tập, tác giả */
+.meal-details h3,
+.ex-card-title,
+.user-card-name,
+.article-grid article h3 {
+  font-size: 14.5px !important;
+  font-weight: 650 !important;
+  color: #1e293b !important;
+}
+
+/* Đồng bộ các thẻ Card nội dung */
+.content-panel,
+.welcome-panel,
+.metric-card,
+.community-card,
+.fd-card,
+.ex-card,
+.ua-detail-article,
+.ua-detail-side-section {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* 4 Thẻ chỉ số dinh dưỡng Metric Cards */
+.metric-card {
+  padding: 14px 16px !important;
+}
+
+.metric-card > span {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+.metric-card > strong {
+  font-size: 25px !important;
+  font-weight: 750 !important;
+  color: #0f172a !important;
+  margin: 6px 0 !important;
+  display: block !important;
+}
+
+.metric-card > strong small {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #94a3b8 !important;
+  margin-left: 4px !important;
+}
+
+.metric-card > em {
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+}
+
+.metric-card > small {
+  font-size: 11.5px !important;
+  color: #64748b !important;
+}
+
+/* 3. TỐI ƯU CỘNG ĐỒNG VÀ THANH TÌM KIẾM MỚI */
+.community-container {
+  display: grid !important;
+  grid-template-columns: 290px minmax(0, 1fr) 330px !important;
+  gap: 22px !important;
+  align-items: start !important;
+  width: 100% !important;
+}
+
+.community-feed-search {
+  display: flex !important;
+  align-items: center !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  padding: 10px 16px !important;
+  gap: 10px !important;
+  margin-bottom: 14px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  transition: all 0.15s ease !important;
+}
+
+.community-feed-search:focus-within {
+  border-color: #059669 !important;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15) !important;
+}
+
+.community-feed-search i {
+  color: #64748b !important;
+  font-size: 15px !important;
+}
+
+.community-feed-search input {
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  font-size: 14px !important;
+  color: #1e293b !important;
+  width: 100% !important;
+}
+
+.community-feed-search .search-submit-icon-btn {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  color: #64748b !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.community-feed-search .search-submit-icon-btn:hover {
+  color: #059669 !important;
+}
+
+.community-feed-search .clear-search-btn {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  color: #94a3b8 !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.community-feed-search .clear-search-btn:hover {
+  color: #ef4444 !important;
+}
+
+/* Nút bấm chính trên toàn bộ giao diện người dùng */
+.community-btn-primary,
+.fd-submit-btn,
+.scanner-button,
+.solid-button {
+  background: #059669 !important;
+  border-color: #059669 !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+}
+
+.community-btn-primary:hover,
+.fd-submit-btn:hover,
+.scanner-button:hover,
+.solid-button:hover {
+  background: #047857 !important;
+  border-color: #047857 !important;
+}
+
+/* Responsive cho layout màn hình nhỏ hơn */
+@media (max-width: 1200px) {
+  .community-container {
+    grid-template-columns: 260px minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-header,
+  .ua-header {
+    padding: 0 16px !important;
+  }
+  .dashboard-main,
+  .community-main,
+  .ex-main,
+  .fd-main,
+  .wt-main,
+  .foodscan-main,
+  .ua-content-wrap,
+  .ua-detail-wrap {
+    padding: 16px 16px 36px !important;
+  }
+  .community-container {
+    grid-template-columns: 1fr !important;
+  }
+  .dashboard-nav {
+    display: none !important;
+  }
+}
+
+
+/* ==========================================================================
+   MODERN UI REDESIGN: TOP HEADER (NAVBAR) & SAAS FOOTER
+   ========================================================================== */
+
+/* 1. TOP HEADER & NAVBAR ENHANCEMENTS */
+.dashboard-header,
+.ua-header {
+  height: 70px !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03), 0 4px 12px rgba(15, 23, 42, 0.015) !important;
+  padding: 0 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 100 !important;
+}
+
+/* Brand Logo */
+.dashboard-logo {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  color: #0f172a !important;
+  font-size: 19px !important;
+  font-weight: 850 !important;
+  text-decoration: none !important;
+  letter-spacing: -0.03em !important;
+  transition: transform 0.15s ease !important;
+}
+
+.dashboard-logo:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-logo span {
+  width: 36px !important;
+  height: 36px !important;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border-radius: 10px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 17px !important;
+  box-shadow: 0 3px 10px rgba(5, 150, 105, 0.28) !important;
+}
+
+/* Nav Menu Track & Items */
+.dashboard-nav {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+  background: #f1f5f9 !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 9999px !important;
+  padding: 4px !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03) !important;
+}
+
+.dashboard-nav a,
+.dashboard-nav .food-nav-trigger {
+  color: #475569 !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  padding: 7px 16px !important;
+  border-radius: 9999px !important;
+  text-decoration: none !important;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: 1px solid transparent !important;
+}
+
+.dashboard-nav a:hover,
+.dashboard-nav .food-nav-trigger:hover {
+  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.75) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* Elevated Segmented Active Pill (Apple / Modern SaaS Style) */
+.dashboard-nav a.active,
+.dashboard-nav .food-nav-trigger.active {
+  background: #ffffff !important;
+  color: #059669 !important;
+  font-weight: 750 !important;
+  border: 1px solid rgba(226, 232, 240, 0.95) !important;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+}
+
+/* User Actions Group */
+.dashboard-actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  margin-left: auto !important;
+}
+
+.dashboard-bell,
+.foodscan-bell {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #475569 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 16px !important;
+  position: relative !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  transition: all 0.15s ease !important;
+}
+
+.dashboard-bell:hover,
+.foodscan-bell:hover {
+  background: #f8fafc !important;
+  color: #059669 !important;
+  border-color: #cbd5e1 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06) !important;
+}
+
+/* Modern User Chip Button */
+.dashboard-user-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+  padding: 4px 14px 4px 5px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 9999px !important;
+  cursor: pointer !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  transition: all 0.15s ease !important;
+  outline: none !important;
+}
+
+.dashboard-user-chip:hover {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.06) !important;
+}
+
+.dashboard-user-chip .dashboard-avatar {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+  border: 1.5px solid #a7f3d0 !important;
+  background: #059669 !important;
+  color: #ffffff !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  overflow: hidden !important;
+}
+
+.dashboard-user-chip .dashboard-avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.dashboard-user-name {
+  font-size: 13.5px !important;
+  font-weight: 650 !important;
+  color: #1e293b !important;
+  max-width: 140px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.dashboard-user-chevron {
+  font-size: 11px !important;
+  color: #94a3b8 !important;
+  transition: transform 0.2s ease !important;
+}
+
+.dashboard-user-chip[aria-expanded="true"] .dashboard-user-chevron {
+  transform: rotate(180deg) !important;
+}
+
+/* User Dropdown Menu Card */
+.profile-dropdown {
+  position: absolute !important;
+  top: calc(100% + 8px) !important;
+  right: 0 !important;
+  min-width: 240px !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04) !important;
+  padding: 8px !important;
+  z-index: 200 !important;
+}
+
+.profile-dropdown-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 10px 10px !important;
+}
+
+.profile-dropdown-avatar {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  background: #059669 !important;
+  color: #ffffff !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  border: 2px solid #a7f3d0 !important;
+  overflow: hidden !important;
+}
+
+.profile-dropdown-avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.profile-dropdown-meta {
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0 !important;
+}
+
+.profile-dropdown-meta strong {
+  font-size: 13.5px !important;
+  color: #0f172a !important;
+  font-weight: 700 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.profile-dropdown-meta small {
+  font-size: 11.5px !important;
+  color: #64748b !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.profile-dropdown-divider {
+  height: 1px !important;
+  background: #f1f5f9 !important;
+  margin: 4px 0 !important;
+}
+
+.profile-dropdown button {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 9px 12px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  font-size: 13px !important;
+  font-weight: 550 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  text-align: left !important;
+}
+
+.profile-dropdown .profile-link {
+  color: #334155 !important;
+}
+
+.profile-dropdown .profile-link i {
+  color: #059669 !important;
+  font-size: 16px !important;
+}
+
+.profile-dropdown .profile-link:hover {
+  background: #f0fdf4 !important;
+  color: #059669 !important;
+}
+
+.profile-dropdown .profile-logout-btn {
+  color: #dc2626 !important;
+}
+
+.profile-dropdown .profile-logout-btn i {
+  color: #dc2626 !important;
+  font-size: 16px !important;
+}
+
+.profile-dropdown .profile-logout-btn:hover {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+}
+
+
+/* 2. MODERN RICH SAAS FOOTER */
+.modern-footer {
+  width: 100% !important;
+  background: #ffffff !important;
+  border-top: 1px solid #e2e8f0 !important;
+  margin-top: 48px !important;
+  padding: 42px 0 38px !important;
+  box-sizing: border-box !important;
+}
+
+.modern-footer__container {
+  width: 100% !important;
+  max-width: 1600px !important;
+  margin: 0 auto !important;
+  padding: 0 32px !important;
+  box-sizing: border-box !important;
+}
+
+.modern-footer__grid {
+  display: grid !important;
+  grid-template-columns: 2fr 1fr 1fr 1fr !important;
+  gap: 40px !important;
+  margin-bottom: 0 !important;
+}
+
+.modern-footer__brand-col {
+  max-width: 440px !important;
+}
+
+.modern-footer__logo {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  text-decoration: none !important;
+  margin-bottom: 14px !important;
+}
+
+.modern-footer__logo-icon {
+  width: 32px !important;
+  height: 32px !important;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 15px !important;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.25) !important;
+}
+
+.modern-footer__logo-text {
+  font-size: 20px !important;
+  font-weight: 850 !important;
+  color: #0f172a !important;
+  letter-spacing: -0.03em !important;
+}
+
+.modern-footer__desc {
+  font-size: 13.5px !important;
+  line-height: 1.6 !important;
+  color: #64748b !important;
+  margin: 0 0 16px !important;
+}
+
+.modern-footer__trust-tags {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.modern-footer__tag {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 5px 11px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 9999px !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  color: #065f46 !important;
+}
+
+.modern-footer__tag i {
+  color: #059669 !important;
+}
+
+.modern-footer__title {
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  color: #0f172a !important;
+  margin: 0 0 16px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+.modern-footer__list {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 11px !important;
+}
+
+.modern-footer__list li a {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  color: #64748b !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  transition: all 0.15s ease !important;
+}
+
+.modern-footer__list li a i {
+  font-size: 14px !important;
+  color: #94a3b8 !important;
+  transition: color 0.15s ease !important;
+}
+
+.modern-footer__list li a:hover {
+  color: #059669 !important;
+  transform: translateX(2px) !important;
+}
+
+.modern-footer__list li a:hover i {
+  color: #059669 !important;
+}
+
+.modern-footer__divider {
+  width: 100% !important;
+  height: 1px !important;
+  background: #e2e8f0 !important;
+  margin: 0 0 24px !important;
+}
+
+.modern-footer__bottom {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: wrap !important;
+  gap: 16px !important;
+}
+
+.modern-footer__copyright {
+  font-size: 13px !important;
+  color: #64748b !important;
+}
+
+.modern-footer__status {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 4px 12px !important;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 9999px !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  color: #475569 !important;
+}
+
+.modern-footer__status-dot {
+  width: 7px !important;
+  height: 7px !important;
+  border-radius: 50% !important;
+  background: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25) !important;
+  display: inline-block !important;
+}
+
+/* Hide old footer classes if any residual markup */
+.dashboard-footer {
+  display: none !important;
+}
+
+/* Responsive Footer */
+@media (max-width: 1024px) {
+  .modern-footer__grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 32px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .modern-footer {
+    padding: 36px 0 24px !important;
+  }
+  .modern-footer__grid {
+    grid-template-columns: 1fr !important;
+    gap: 28px !important;
+  }
+  .modern-footer__bottom {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .dashboard-header,
+  .ua-header {
+    padding: 0 16px !important;
+  }
 }

@@ -6,6 +6,7 @@ import { userUpdated } from '../../store/slices/authSlice'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
 function getLocalDateValue() {
   const today = new Date()
@@ -758,9 +759,6 @@ export default function WeightTrackerPage() {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <span className="dashboard-search">
-            <i className="bi bi-search" />Tra cứu thực phẩm, món ăn...
-          </span>
           <button className="foodscan-bell" type="button" aria-label="Thông báo">
             <i className="bi bi-bell" />
           </button>
@@ -1881,6 +1879,7 @@ export default function WeightTrackerPage() {
           </section>
         </div>
       )}
-    </div>
+          <UserFooter />
+</div>
   )
 }

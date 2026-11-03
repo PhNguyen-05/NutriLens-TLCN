@@ -10,6 +10,7 @@ import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1238,7 +1239,6 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
           <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
           <UserNavMenu />
         </div>
@@ -1455,7 +1455,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
           </>
         )}
       </main>
-      <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span></footer>
+      <UserFooter />
       {reopenFood && <FoodReopenRequestModal food={reopenFood} submitting={reopenSubmitting} error={reopenError} onClose={() => setReopenFood(null)} onSubmit={handleSendReopenRequest} />}
       {cameraOpen && <div className="fs-camera-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeCamera() }}>
         <section className="fs-camera-modal" role="dialog" aria-modal="true" aria-labelledby="fs-camera-title">

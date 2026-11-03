@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
 const MEALS = [
   { value: 'breakfast', label: 'Bữa sáng', icon: 'bi-sunrise', color: '#13a879' },
@@ -254,7 +255,6 @@ export default function MealDiaryPage() {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <span className="dashboard-search"><i className="bi bi-search" />Tra cứu thực phẩm, món ăn...</span>
           <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
           <UserNavMenu />
         </div>
@@ -363,7 +363,7 @@ export default function MealDiaryPage() {
           <footer><button type="button" onClick={() => setEditingLog(null)}>Hủy</button><button type="submit" disabled={savingEdit}><i className={`bi ${savingEdit ? 'bi-hourglass-split' : 'bi-check2'}`} />{savingEdit ? 'Đang lưu...' : 'Lưu thay đổi'}</button></footer>
         </form>
       </div>}
-      <footer className="dashboard-footer"><span className="footer-copy"><b><i className="bi bi-leaf-fill" /></b>© 2026 NutriLens Health Inc. Dinh dưỡng chính xác bắt đầu từ hiểu rõ bữa ăn.</span><span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span></footer>
+      <UserFooter />
     </div>
   )
 }

@@ -45,7 +45,7 @@ export default function FoodNavMenu() {
         to="/food-scan"
         onClick={() => setIsOpen((prev) => !prev)}
       >
-        Nhận diện &amp; Đồ ăn
+        Nhận diện &amp; Đồ ăn <i className="bi bi-chevron-down" style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.7 }} />
       </Link>
       <div
         className="food-nav-dropdown"

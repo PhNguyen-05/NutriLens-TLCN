@@ -55,7 +55,7 @@ export default function ExerciseNavMenu() {
         to="/exercise"
         onClick={() => setIsOpen((prev) => !prev)}
       >
-        Luyện tập
+        Luyện tập <i className="bi bi-chevron-down" style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.7 }} />
       </Link>
       <div
         className="food-nav-dropdown"

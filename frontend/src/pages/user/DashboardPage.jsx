@@ -5,6 +5,7 @@ import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
 function resolveAvatarUrl(value) {
   const url = String(value || '').trim()
@@ -431,7 +432,6 @@ export default function DashboardPage() {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <span className="dashboard-search"><i className="bi bi-search" /> Tra cứu thực phẩm...</span>
           <i className="bi bi-bell dashboard-bell" />
           <UserNavMenu />
         </div>
@@ -849,12 +849,7 @@ export default function DashboardPage() {
         </section>
       </main>
 
-      <footer className="dashboard-footer">
-        <span className="footer-copy">
-          <b><i className="bi bi-leaf-fill" /></b> © 2026 NutriLens Health Inc. Đồng hành dinh dưỡng thông minh dựa trên AI.
-        </span>
-        <span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật y tế · Trung tâm hỗ trợ</span>
-      </footer>
+      <UserFooter />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
 const COMMUNITY_TAGS = [
   'Tất cả',
@@ -1462,38 +1463,7 @@ export default function CommunityPage() {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <form
-            className="community-header-search"
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleExecuteSearch()
-            }}
-          >
-            <button
-              type="submit"
-              className="search-submit-icon-btn"
-              title="Bấm để tìm kiếm (hoặc nhấn Enter)"
-              aria-label="Tìm kiếm"
-            >
-              <i className="bi bi-search" />
-            </button>
-            <input
-              type="text"
-              placeholder="Tìm kiếm bài viết, công thức..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="clear-search-btn"
-                onClick={handleClearSearch}
-                title="Xóa tìm kiếm"
-              >
-                <i className="bi bi-x-circle-fill" />
-              </button>
-            )}
-          </form>
+          <i className="bi bi-bell dashboard-bell" />
           <UserNavMenu />
         </div>
       </header>
@@ -1622,6 +1592,39 @@ export default function CommunityPage() {
 
           {/* CỘT GIỮA: FEED BÀI VIẾT FACEBOOK-STYLE */}
           <section className="community-col-feed">
+            {/* THANH TÌM KIẾM BÀI VIẾT CỘNG ĐỒNG */}
+            <form
+              className="community-feed-search"
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleExecuteSearch()
+              }}
+            >
+              <button
+                type="submit"
+                className="search-submit-icon-btn"
+                title="Bấm để tìm kiếm (hoặc nhấn Enter)"
+                aria-label="Tìm kiếm"
+              >
+                <i className="bi bi-search" />
+              </button>
+              <input
+                type="text"
+                placeholder="Tìm kiếm bài viết, công thức trong cộng đồng..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="clear-search-btn"
+                  onClick={handleClearSearch}
+                  title="Xóa tìm kiếm"
+                >
+                  <i className="bi bi-x-circle-fill" />
+                </button>
+              )}
+            </form>
             {/* TABS CHUYỂN ĐỔI: BẢNG TIN CHUNG VS BÀI VIẾT CỦA TÔI / TÁC GIẢ */}
             <div className="community-feed-tabs-card">
               <div className="community-feed-tabs">
@@ -3723,6 +3726,7 @@ export default function CommunityPage() {
           </div>
         </div>
       )}
-    </div>
+          <UserFooter />
+</div>
   )
 }

@@ -12,7 +12,7 @@ function resolveAvatarUrl(url) {
 
 /**
  * Menu tài khoản (Avatar Dropdown) dùng chung trên toàn bộ header của ứng dụng.
- * Tự động đồng bộ các mục: Hồ sơ cá nhân, Theo dõi cân nặng & tiến trình, Đăng xuất.
+ * Tự động đồng bộ các mục: Hồ sơ cá nhân, Đăng xuất.
  * Tự động đóng khi người dùng click ra ngoài.
  */
 export default function UserNavMenu() {
@@ -21,9 +21,8 @@ export default function UserNavMenu() {
   const [profileOpen, setProfileOpen] = useState(false)
   const menuRef = useRef(null)
 
-  const firstName = user?.fullName
-    ? user.fullName.trim().split(/\s+/).slice(-1)[0]
-    : 'bạn'
+  const displayName = user?.fullName || 'Người dùng'
+  const firstName = displayName.trim().split(/\s+/).slice(-1)[0] || 'Bạn'
 
   // Tự động đóng dropdown khi click ra ngoài
   useEffect(() => {
@@ -41,23 +40,40 @@ export default function UserNavMenu() {
   return (
     <div className="profile-menu" ref={menuRef}>
       <button
-        className="dashboard-avatar"
+        className="dashboard-user-chip"
         onClick={() => setProfileOpen((prev) => !prev)}
         aria-expanded={profileOpen}
         aria-haspopup="menu"
         title="Mở menu tài khoản"
         type="button"
       >
-        {user.avatarUrl ? (
-          <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" />
-        ) : (
-          firstName.charAt(0).toUpperCase()
-        )}
+        <span className="dashboard-avatar">
+          {user.avatarUrl ? (
+            <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" />
+          ) : (
+            firstName.charAt(0).toUpperCase()
+          )}
+        </span>
+        <span className="dashboard-user-name">{displayName}</span>
+        <i className="bi bi-chevron-down dashboard-user-chevron" />
       </button>
 
       {profileOpen && (
         <div className="profile-dropdown" role="menu">
-          <div className="profile-name">Xin chào, {firstName}</div>
+          <div className="profile-dropdown-header">
+            <div className="profile-dropdown-avatar">
+              {user.avatarUrl ? (
+                <img src={resolveAvatarUrl(user.avatarUrl)} alt="Ảnh đại diện" />
+              ) : (
+                firstName.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="profile-dropdown-meta">
+              <strong>{displayName}</strong>
+              <small>{user.email || 'Thành viên NutriLens'}</small>
+            </div>
+          </div>
+          <div className="profile-dropdown-divider" />
           <button
             className="profile-link"
             onClick={() => {
@@ -67,20 +83,11 @@ export default function UserNavMenu() {
             role="menuitem"
             type="button"
           >
-            <i className="bi bi-person-circle" /> Hồ sơ cá nhân &amp; Sức khỏe
+            <i className="bi bi-person-gear" /> Hồ sơ cá nhân &amp; Sức khỏe
           </button>
+          <div className="profile-dropdown-divider" />
           <button
-            className="profile-link"
-            onClick={() => {
-              setProfileOpen(false)
-              navigate('/community?filter=mine')
-            }}
-            role="menuitem"
-            type="button"
-          >
-            <i className="bi bi-journal-richtext" /> Bài đăng của tôi
-          </button>
-          <button
+            className="profile-logout-btn"
             onClick={() => {
               setProfileOpen(false)
               handleLogout()

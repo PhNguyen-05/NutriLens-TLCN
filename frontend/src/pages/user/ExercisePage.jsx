@@ -5,6 +5,7 @@ import { useAuth } from '../../hooks/useAuth'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
 function resolveAvatarUrl(value) {
   const url = String(value || '').trim()
@@ -520,9 +521,6 @@ export default function ExercisePage() {
           <Link to="/articles">Bài viết &amp; Mẹo</Link>
         </nav>
         <div className="dashboard-actions">
-          <span className="dashboard-search">
-            <i className="bi bi-search" />Tra cứu thực phẩm, món ăn...
-          </span>
           <button className="foodscan-bell" type="button" aria-label="Thông báo">
             <i className="bi bi-bell" />
           </button>
@@ -1336,12 +1334,7 @@ export default function ExercisePage() {
 
 
 
-      <footer className="dashboard-footer">
-        <span className="footer-copy">
-          <b><i className="bi bi-leaf-fill" /></b> © 2026 NutriLens Health Inc. Đồng hành dinh dưỡng thông minh.
-        </span>
-        <span className="footer-links">Điều khoản dịch vụ · Chính sách bảo mật · Trung tâm hỗ trợ</span>
-      </footer>
+      <UserFooter />
     </div>
   )
 }
