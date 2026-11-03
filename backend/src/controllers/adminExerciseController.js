@@ -340,6 +340,8 @@ async function createExercise(req, res) {
       description = '',
       icon = 'bi-activity',
       defaultDurationMinutes = 0,
+      imageUrl = '',
+      youtubeUrl = '',
       isActive = true,
     } = req.body;
 
@@ -409,6 +411,8 @@ async function createExercise(req, res) {
       description: String(description || '').trim(),
       icon: validIcon,
       defaultDurationMinutes: validDuration,
+      imageUrl: String(imageUrl || '').trim(),
+      youtubeUrl: String(youtubeUrl || '').trim(),
       isActive: Boolean(isActive),
     });
 
@@ -457,6 +461,8 @@ async function updateExercise(req, res) {
       description,
       icon,
       defaultDurationMinutes,
+      imageUrl,
+      youtubeUrl,
       isActive,
     } = req.body;
 
@@ -532,6 +538,8 @@ async function updateExercise(req, res) {
     if (description !== undefined) exercise.description = String(description || '').trim();
     exercise.icon = validIcon;
     exercise.defaultDurationMinutes = validDuration;
+    if (imageUrl !== undefined) exercise.imageUrl = String(imageUrl || '').trim();
+    if (youtubeUrl !== undefined) exercise.youtubeUrl = String(youtubeUrl || '').trim();
     if (isActive !== undefined) exercise.isActive = Boolean(isActive);
 
     await exercise.save();

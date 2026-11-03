@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
@@ -6,6 +6,27 @@ import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
+
+const EXERCISE_FALLBACK_IMAGES = {
+  cardio: 'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?auto=format&fit=crop&w=700&q=80',
+  strength: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&w=700&q=80',
+  sports: 'https://images.unsplash.com/photo-1534158914592-062992fbe900?auto=format&fit=crop&w=700&q=80',
+  flexibility: 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=700&q=80',
+  other: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?auto=format&fit=crop&w=700&q=80',
+}
+
+function getExerciseThumbnail(ex) {
+  if (ex?.imageUrl && String(ex.imageUrl).trim()) {
+    return ex.imageUrl.trim()
+  }
+  return EXERCISE_FALLBACK_IMAGES[ex?.category] || EXERCISE_FALLBACK_IMAGES.cardio
+}
+
+function extractYouTubeId(url) {
+  if (!url) return null
+  const match = String(url).match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/)
+  return match ? match[1] : null
+}
 
 function resolveAvatarUrl(value) {
   const url = String(value || '').trim()
@@ -157,6 +178,8 @@ export default function ExercisePage() {
     intensity: 'Trung bình',
     description: '',
     defaultDurationMinutes: 30,
+    imageUrl: '',
+    youtubeUrl: '',
   })
   const [customErr,       setCustomErr]        = useState('')
   const [savingCustom,    setSavingCustom]     = useState(false)
@@ -164,6 +187,9 @@ export default function ExercisePage() {
   // Xóa bài tập cá nhân
   const [deletingCustom,  setDeletingCustom]   = useState(null)
   const [isDeletingCustom,setIsDeletingCustom] = useState(false)
+  const [videoExercise,   setVideoExercise]    = useState(null)
+  const [customImgTab,    setCustomImgTab]     = useState('upload') // 'upload' | 'url'
+  const customFileInputRef                     = useRef(null)
 
   // ─── Data loaders ──────────────────────────────────────────────────────────
 
@@ -435,6 +461,54 @@ export default function ExercisePage() {
     } finally { setIsDeleting(false) }
   }
 
+  // ─── Custom Exercise Image Handler (Tải ảnh từ máy & nén canvas) ───────────
+  function handleCustomImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setCustomErr('Vui lòng chọn tệp hình ảnh hợp lệ (JPG, PNG, WebP)')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setCustomErr('Dung lượng ảnh không được vượt quá 10MB')
+      return
+    }
+    setCustomErr('')
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX_SIZE = 800
+        let width = img.width
+        let height = img.height
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width)
+            width = MAX_SIZE
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height)
+            height = MAX_SIZE
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82)
+        setCustomForm(p => ({ ...p, imageUrl: compressedDataUrl }))
+      }
+      img.onerror = () => {
+        setCustomErr('Không thể đọc tệp hình ảnh, vui lòng thử lại.')
+      }
+      img.src = evt.target.result
+    }
+    reader.readAsDataURL(file)
+  }
+
   // ─── Custom Exercise handlers ──────────────────────────────────────────────
 
   function openCreateModal(initialName = '') {
@@ -444,7 +518,11 @@ export default function ExercisePage() {
       intensity: 'Trung bình',
       description: '',
       defaultDurationMinutes: 30,
+      imageUrl: '',
+      youtubeUrl: '',
     })
+    setCustomImgTab('upload')
+    if (customFileInputRef.current) customFileInputRef.current.value = ''
     setCustomErr('')
     setCreatingCustom(true)
   }
@@ -703,11 +781,19 @@ export default function ExercisePage() {
                   const est  = userWeight ? calcCalories(ex.met, userWeight, 30) : null
                   return (
                     <article key={ex._id} className="fd-panel ex-card">
-                      <div className="ex-card-head">
-                        <div className="ex-card-icon">
-                          <i className={`bi ${ex.icon || 'bi-activity'}`} />
-                        </div>
-                        <div className="ex-card-badges">
+                      {/* Media (Hình ảnh & Video YouTube thay vì icon) */}
+                      <div className="ex-card-media">
+                        <img
+                          src={getExerciseThumbnail(ex)}
+                          alt={ex.name}
+                          className="ex-card-thumb"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null
+                            e.currentTarget.src = EXERCISE_FALLBACK_IMAGES[ex.category] || EXERCISE_FALLBACK_IMAGES.cardio
+                          }}
+                        />
+                        <div className="ex-card-badges-overlay">
                           {ex.isCustom && (
                             <span className="ex-chip ex-chip--custom" title="Bài tập cá nhân">
                               <i className="bi bi-person-fill" /> Cá nhân
@@ -718,6 +804,20 @@ export default function ExercisePage() {
                           </span>
                           <span className="ex-chip ex-chip--met">MET {ex.met}</span>
                         </div>
+                        {ex.youtubeUrl && (
+                          <button
+                            type="button"
+                            className="ex-card-yt-badge"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setVideoExercise(ex)
+                            }}
+                            title="Xem video hướng dẫn trên YouTube"
+                          >
+                            <i className="bi bi-youtube" />
+                            <span>Video hướng dẫn</span>
+                          </button>
+                        )}
                       </div>
                       <h3 className="ex-card-title">{ex.name}</h3>
                       <p className="ex-card-desc">{ex.description || (ex.isCustom ? 'Bài tập cá nhân do bạn tạo' : '')}</p>
@@ -879,6 +979,111 @@ export default function ExercisePage() {
         )}
       </main>
 
+      
+      {/* ══════════════════════════════════════════════════
+          MODAL: Video Hướng dẫn YouTube
+          ══════════════════════════════════════════════════ */}
+      {videoExercise && (
+        <div
+          className="ex-overlay ex-overlay--video"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => { if (e.target === e.currentTarget) setVideoExercise(null) }}
+        >
+          <div className="ex-dialog ex-dialog--video">
+            <div className="ex-dialog-head">
+              <div className="ex-dialog-title-group">
+                <small className="ex-dialog-cat-badge">
+                  <i className="bi bi-youtube" style={{ color: '#ef4444', marginRight: 4 }} />
+                  Video hướng dẫn bài tập
+                </small>
+                <h3>{videoExercise.name}</h3>
+              </div>
+              <div className="ex-video-head-actions">
+                <a
+                  href={videoExercise.youtubeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ex-btn ex-btn--ghost ex-btn--yt-ext"
+                  title="Mở video trên YouTube tab mới"
+                >
+                  <i className="bi bi-box-arrow-up-right" /> Mở YouTube
+                </a>
+                <button
+                  type="button"
+                  className="ex-dialog-close"
+                  onClick={() => setVideoExercise(null)}
+                  aria-label="Đóng"
+                >
+                  <i className="bi bi-x-lg" />
+                </button>
+              </div>
+            </div>
+
+            <div className="ex-video-player-wrap">
+              {extractYouTubeId(videoExercise.youtubeUrl) ? (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${extractYouTubeId(videoExercise.youtubeUrl)}?autoplay=1&rel=0`}
+                  title={`Video hướng dẫn ${videoExercise.name}`}
+                  className="ex-video-iframe"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="ex-video-fallback">
+                  <i className="bi bi-youtube" style={{ fontSize: '3rem', color: '#ef4444' }} />
+                  <h4>Xem video hướng dẫn trên YouTube</h4>
+                  <p>Bấm liên kết bên dưới để xem trực tiếp trên YouTube.</p>
+                  <a
+                    href={videoExercise.youtubeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ex-btn ex-btn--primary"
+                  >
+                    <i className="bi bi-play-circle-fill" /> Mở trên YouTube
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div className="ex-dialog-body ex-video-dialog-body">
+              <div className="ex-info-chips">
+                <span>MET: <b>{videoExercise.met}</b></span>
+                <span>Cường độ: <b>{videoExercise.intensity}</b></span>
+                <span>Nhóm: <b>{videoExercise.categoryName || videoExercise.category}</b></span>
+                {userWeight && (
+                  <span>Ước tính: <b>~{calcCalories(videoExercise.met, userWeight, videoExercise.defaultDurationMinutes || 30)} kcal</b> / {videoExercise.defaultDurationMinutes || 30}p</span>
+                )}
+              </div>
+              {videoExercise.description && (
+                <p className="ex-video-desc">{videoExercise.description}</p>
+              )}
+            </div>
+
+            <div className="ex-dialog-foot">
+              <button
+                type="button"
+                className="ex-btn ex-btn--ghost"
+                onClick={() => setVideoExercise(null)}
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                className="ex-btn ex-btn--primary"
+                onClick={() => {
+                  const target = videoExercise
+                  setVideoExercise(null)
+                  openLog(target)
+                }}
+              >
+                <i className="bi bi-plus-lg" /> Ghi nhận bài tập này
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══════════════════════════════════════════════════
           MODAL: Ghi nhận bài tập
           ══════════════════════════════════════════════════ */}
@@ -886,9 +1091,20 @@ export default function ExercisePage() {
         <div className="ex-overlay" role="dialog" aria-modal="true">
           <div className="ex-dialog">
             <div className="ex-dialog-head">
-              <div>
-                <small>Ghi nhận bài tập</small>
-                <h3>{logging.name}</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <img
+                  src={getExerciseThumbnail(logging)}
+                  alt=""
+                  className="ex-modal-thumb"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null
+                    e.currentTarget.src = EXERCISE_FALLBACK_IMAGES[logging.category] || EXERCISE_FALLBACK_IMAGES.cardio
+                  }}
+                />
+                <div>
+                  <small>Ghi nhận bài tập</small>
+                  <h3>{logging.name}</h3>
+                </div>
               </div>
               <button type="button" className="ex-dialog-close" onClick={() => setLogging(null)} aria-label="Đóng">
                 <i className="bi bi-x-lg" />
@@ -1273,6 +1489,102 @@ export default function ExercisePage() {
                   step="1"
                   value={customForm.defaultDurationMinutes}
                   onChange={e => setCustomForm(p => ({ ...p, defaultDurationMinutes: e.target.value }))}
+                />
+              </div>
+
+              {/* Hình ảnh (Kết hợp Tải ảnh từ máy & Nhập link URL) */}
+              <div className="ex-field">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label style={{ margin: 0 }}>
+                    Hình ảnh bài tập <span style={{ fontWeight: 400, color: '#94a3b8' }}>(tùy chọn)</span>
+                  </label>
+                  <div className="ex-img-mode-tabs">
+                    <button
+                      type="button"
+                      className={`ex-img-tab-btn ${customImgTab === 'upload' ? 'active' : ''}`}
+                      onClick={() => setCustomImgTab('upload')}
+                    >
+                      <i className="bi bi-upload" /> Tải ảnh lên
+                    </button>
+                    <button
+                      type="button"
+                      className={`ex-img-tab-btn ${customImgTab === 'url' ? 'active' : ''}`}
+                      onClick={() => setCustomImgTab('url')}
+                    >
+                      <i className="bi bi-link-45deg" /> Nhập link URL
+                    </button>
+                  </div>
+                </div>
+
+                {customForm.imageUrl ? (
+                  <div className="ex-img-preview-box">
+                    <img
+                      src={customForm.imageUrl}
+                      alt="Xem trước ảnh bài tập"
+                      className="ex-img-preview-thumb"
+                      onError={(e) => { e.currentTarget.style.display = 'none' }}
+                    />
+                    <div className="ex-img-preview-info">
+                      <strong>Đã chọn ảnh minh họa</strong>
+                      <span>
+                        {customForm.imageUrl.startsWith('data:') ? 'Ảnh tải từ thiết bị của bạn' : customForm.imageUrl}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="ex-btn-clear-img"
+                      onClick={() => {
+                        setCustomForm(p => ({ ...p, imageUrl: '' }))
+                        if (customFileInputRef.current) customFileInputRef.current.value = ''
+                      }}
+                      title="Xóa ảnh này"
+                    >
+                      <i className="bi bi-trash3" /> Xóa ảnh
+                    </button>
+                  </div>
+                ) : customImgTab === 'upload' ? (
+                  <div>
+                    <input
+                      type="file"
+                      ref={customFileInputRef}
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={handleCustomImageUpload}
+                    />
+                    <div
+                      className="ex-img-dropzone"
+                      onClick={() => customFileInputRef.current?.click()}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <i className="bi bi-cloud-arrow-up" />
+                      <div>
+                        <strong>Bấm để chọn ảnh từ máy tính / điện thoại</strong>
+                        <span>Hỗ trợ JPG, PNG, WebP (Tự động nén tối ưu)</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      type="url"
+                      placeholder="Dán đường link ảnh: https://images.unsplash.com/..."
+                      value={customForm.imageUrl || ''}
+                      onChange={e => setCustomForm(p => ({ ...p, imageUrl: e.target.value }))}
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Đường link YouTube */}
+              <div className="ex-field">
+                <label>Đường link YouTube hướng dẫn <span style={{ fontWeight: 400, color: '#94a3b8' }}>(tùy chọn)</span></label>
+                <input
+                  type="url"
+                  placeholder="https://www.youtube.com/watch?v=... hoặc https://youtu.be/..."
+                  value={customForm.youtubeUrl || ''}
+                  onChange={e => setCustomForm(p => ({ ...p, youtubeUrl: e.target.value }))}
                 />
               </div>
 

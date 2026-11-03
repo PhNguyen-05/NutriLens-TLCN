@@ -3,8 +3,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import axiosInstance from '../../api/axiosInstance'
 import { userUpdated } from '../../store/slices/authSlice'
+import FoodNavMenu from '../../components/common/FoodNavMenu'
+import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
+import UserNavMenu from '../../components/common/UserNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 
-const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'
+const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '')
 
 /** Regex số điện thoại Việt Nam: bắt đầu 0, đủ 10 chữ số */
 const PHONE_RE = /^0\d{9}$/
@@ -915,8 +919,8 @@ export default function HealthProfilePage() {
     if (!file) return
     setError('')
     setSuccess('')
-    if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 3 * 1024 * 1024) {
-      setError('Ảnh đại diện chỉ hỗ trợ JPG/PNG và không được vượt quá 3MB.')
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 3 * 1024 * 1024) {
+      setError('Ảnh đại diện chỉ hỗ trợ JPG, PNG hoặc WebP và không được vượt quá 3MB.')
       event.target.value = ''
       return
     }
@@ -927,9 +931,12 @@ export default function HealthProfilePage() {
       const { data } = await axiosInstance.post('/profile/avatar', avatarData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      dispatch(userUpdated(data.user))
-      setForm((current) => ({ ...current, avatarUrl: data.user.avatarUrl }))
-      setSuccess('Đã cập nhật ảnh đại diện.')
+      if (data?.user) {
+        dispatch(userUpdated(data.user))
+        setForm((current) => ({ ...current, avatarUrl: data.user.avatarUrl }))
+      }
+      setSuccess('Đã cập nhật ảnh đại diện thành công!')
+      setTimeout(() => setSuccess(''), 4000)
     } catch (err) {
       setError(err.response?.data?.message || 'Không thể cập nhật ảnh đại diện.')
     } finally {
@@ -1141,12 +1148,36 @@ export default function HealthProfilePage() {
   // ---------------------------------------------------------------------------
   if (loading) {
     return (
-      <div className="hp-loading">
-        <div className="hp-loading__spinner">
-          <div className="hp-loading__ring" />
-          <i className="bi bi-heart-pulse hp-loading__icon" />
+      <div className="dashboard-shell hp-shell">
+        <header className="dashboard-header">
+          <Link className="dashboard-logo" to="/dashboard">
+            <span><i className="bi bi-leaf-fill" /></span>NutriLens
+          </Link>
+          <nav className="dashboard-nav" aria-label="Điều hướng chính">
+            <Link to="/dashboard">Tổng quan</Link>
+            <FoodNavMenu />
+            <ExerciseNavMenu />
+            <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
+            <Link to="/community">Cộng đồng</Link>
+            <Link to="/articles">Bài viết &amp; Mẹo</Link>
+          </nav>
+          <div className="dashboard-actions">
+            <button className="foodscan-bell" type="button" aria-label="Thông báo">
+              <i className="bi bi-bell" />
+            </button>
+            <UserNavMenu />
+          </div>
+        </header>
+
+        <div className="hp-loading">
+          <div className="hp-loading__spinner">
+            <div className="hp-loading__ring" />
+            <i className="bi bi-heart-pulse hp-loading__icon" />
+          </div>
+          <p className="hp-loading__text">Đang tải hồ sơ sức khỏe của bạn…</p>
         </div>
-        <p className="hp-loading__text">Đang tải hồ sơ của bạn…</p>
+
+        <UserFooter />
       </div>
     )
   }
@@ -1155,28 +1186,56 @@ export default function HealthProfilePage() {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="hp-shell">
-      <main className="hp-main">
-        {/* Top bar */}
-        <header className="hp-topbar">
-          <Link to="/dashboard" className="hp-back" aria-label="Quay lại">
-            <i className="bi bi-arrow-left" />
-          </Link>
-          <div className="hp-topbar__title">
-            <span className="hp-topbar__eyebrow">NutriLens</span>
-            <h1>Hồ sơ cá nhân &amp; Sức khỏe</h1>
-          </div>
-          <button type="button" className="hp-skip" onClick={() => navigate('/dashboard')}>
-            Để sau
+    <div className="dashboard-shell hp-shell">
+      {/* ── Header chính dùng chung (đồng bộ với Dashboard, FoodScan, MealDiary, Exercise, WeightTracker, Articles) ── */}
+      <header className="dashboard-header">
+        <Link className="dashboard-logo" to="/dashboard">
+          <span><i className="bi bi-leaf-fill" /></span>NutriLens
+        </Link>
+        <nav className="dashboard-nav" aria-label="Điều hướng chính">
+          <Link to="/dashboard">Tổng quan</Link>
+          <FoodNavMenu />
+          <ExerciseNavMenu />
+          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
+          <Link to="/community">Cộng đồng</Link>
+          <Link to="/articles">Bài viết &amp; Mẹo</Link>
+        </nav>
+        <div className="dashboard-actions">
+          <button className="foodscan-bell" type="button" aria-label="Thông báo">
+            <i className="bi bi-bell" />
           </button>
-        </header>
+          <UserNavMenu />
+        </div>
+      </header>
+
+      <main className="hp-main">
+        {/* ── Page heading (đồng bộ kích thước, màu sắc & bố cục chuẩn hệ thống) ── */}
+        <section className="fs-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span className="fs-page-icon"><i className="bi bi-person-gear" /></span>
+            <div>
+              <h1 style={{ margin: 0, color: '#0f172a', fontSize: '1.7rem', fontWeight: 750 }}>Hồ Sơ Cá Nhân &amp; Sức Khỏe</h1>
+              <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.92rem' }}>
+                Quản lý thông tin thể chất, tính toán tự động chỉ số BMI, BMR/TDEE y khoa và thiết lập mục tiêu dinh dưỡng cá nhân hóa.
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Link to="/dashboard" className="wt-btn wt-btn--secondary" title="Quay lại Tổng quan">
+              <i className="bi bi-arrow-left" /> Tổng quan
+            </Link>
+            <Link to="/weight-tracker" className="wt-btn wt-btn--secondary" title="Xem tiến trình cân nặng">
+              <i className="bi bi-graph-up-arrow" /> Tiến trình cân nặng
+            </Link>
+          </div>
+        </section>
 
         {/* Info banner */}
         <div className="hp-banner">
           <i className="bi bi-shield-check" />
           <p>
-            Dữ liệu này giúp NutriLens tự động tính toán nhu cầu năng lượng và cá nhân hóa thực đơn phù hợp nhất cho bạn.{' '}
-            <strong>Thông tin mang tính tham khảo, không thay thế tư vấn của bác sĩ hoặc chuyên gia dinh dưỡng.</strong>
+            Dữ liệu này giúp NutriLens tự động tính toán nhu cầu năng lượng (BMR/TDEE) và cá nhân hóa thực đơn phù hợp nhất cho bạn.{' '}
+            <strong>Thông tin mang tính tham khảo y khoa, không thay thế chẩn đoán hoặc chỉ định trực tiếp của bác sĩ chuyên khoa.</strong>
           </p>
         </div>
 
@@ -1656,10 +1715,10 @@ export default function HealthProfilePage() {
             </div>
           </section>
 
-          {/* ── Section 2: Mức độ vận động & Tiêu hao năng lượng (TDEE) ── */}
+          {/* ── Section 3: Mức độ vận động & Tiêu hao năng lượng (TDEE) ── */}
           <section className="hp-card" aria-labelledby="sec-activity">
             <div className="hp-card__header">
-              <div className="hp-card__badge">2</div>
+              <div className="hp-card__badge">3</div>
               <div>
                 <h2 id="sec-activity">Mức độ vận động thể chất <span className="hp-required">*</span></h2>
                 <p>Chọn mức độ vận động để NutriLens tính toán chính xác tổng năng lượng tiêu hao mỗi ngày (TDEE) từ năng lượng chuyển hóa cơ bản (BMR).</p>
@@ -1746,10 +1805,10 @@ export default function HealthProfilePage() {
             ) : null}
           </section>
 
-          {/* ── Section 3: Mục tiêu dinh dưỡng ── */}
+          {/* ── Section 4: Mục tiêu dinh dưỡng & Phân bổ năng lượng ── */}
           <section className="hp-card" aria-labelledby="sec-goal">
             <div className="hp-card__header">
-              <div className="hp-card__badge">3</div>
+              <div className="hp-card__badge">4</div>
               <div>
                 <h2 id="sec-goal">Mục tiêu dinh dưỡng &amp; Phân bổ năng lượng</h2>
                 <p>Hệ thống tự động đề xuất mục tiêu calo và tỉ lệ macro dựa trên chỉ số trao đổi chất của bạn. Kết quả chỉ mang tính tham khảo.</p>
@@ -2009,11 +2068,11 @@ export default function HealthProfilePage() {
           {/* ── Footer actions ── */}
           <div className="hp-actions">
             <Link to="/dashboard" className="hp-actions__cancel">
-              <i className="bi bi-x" /> Hủy
+              <i className="bi bi-arrow-left" /> Quay lại
             </Link>
             <button type="submit" className="hp-actions__save" disabled={saving}>
               {saving ? (
-                <><div className="hp-spinner" /><span>Đang lưu…</span></>
+                <><div className="hp-spinner" /><span>Đang lưu hồ sơ…</span></>
               ) : (
                 <><i className="bi bi-check2" /><span>Lưu hồ sơ &amp; Mục tiêu</span></>
               )}
@@ -2021,6 +2080,9 @@ export default function HealthProfilePage() {
           </div>
         </form>
       </main>
+
+      {/* ── Footer chính dùng chung toàn hệ thống ── */}
+      <UserFooter />
 
       {/* ── Modal xác nhận mốc cân nặng sau chu kỳ 14 ngày (Tùy chọn 2) ── */}
       {milestoneModalOpen && (

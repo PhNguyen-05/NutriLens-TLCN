@@ -138,6 +138,8 @@ const EMPTY_FORM = {
   defaultDurationMinutes: '30',
   description: '',
   icon: '',
+  imageUrl: '',
+  youtubeUrl: '',
   isActive: true,
 }
 
@@ -206,9 +208,18 @@ function ExerciseDetailModal({ exercise, onClose, onEdit, onToggleStatus }) {
       <section className="fm-detail-modal exm-detail-modal" role="dialog" aria-modal="true">
         <header className="fm-detail-header">
           <div className="fm-detail-heading">
-            <span className="exm-icon-avatar">
-              <i className={`bi ${item.icon || DEFAULT_CATEGORY_ICONS[item.category] || 'bi-activity'}`} />
-            </span>
+            {item.imageUrl ? (
+              <img
+                src={item.imageUrl}
+                alt=""
+                style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover', border: '1px solid #e2e8f0', flexShrink: 0 }}
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <span className="exm-icon-avatar">
+                <i className={`bi ${item.icon || DEFAULT_CATEGORY_ICONS[item.category] || 'bi-activity'}`} />
+              </span>
+            )}
             <div>
               <h2>{item.name}</h2>
               <div className="fm-detail-badges">
@@ -276,6 +287,24 @@ function ExerciseDetailModal({ exercise, onClose, onEdit, onToggleStatus }) {
               <i className="bi bi-info-circle" /> Công thức chuẩn hóa: <code>Calories = (MET × 3.5 × Cân nặng(kg) × Thời gian(phút)) / 200</code>
             </small>
           </div>
+
+          {/* Link video YouTube nếu có */}
+          {item.youtubeUrl && (
+            <div className="fm-detail-section">
+              <h3 className="fm-detail-section-title">
+                <i className="bi bi-youtube" style={{ color: '#ef4444' }} /> Video hướng dẫn kỹ thuật trên YouTube
+              </h3>
+              <a
+                href={item.youtubeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ex-btn ex-btn--yt"
+                style={{ textDecoration: 'none', display: 'inline-flex', padding: '6px 14px', borderRadius: 8, gap: 6, alignItems: 'center' }}
+              >
+                <i className="bi bi-play-circle-fill" /> Xem trên YouTube: {item.youtubeUrl}
+              </a>
+            </div>
+          )}
 
           {/* Mô tả bài tập */}
           <div className="fm-detail-section">
@@ -516,6 +545,8 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
         defaultDurationMinutes: String(editTarget.defaultDurationMinutes || '30'),
         description: editTarget.description || '',
         icon: editTarget.icon || '',
+        imageUrl: editTarget.imageUrl || '',
+        youtubeUrl: editTarget.youtubeUrl || '',
         isActive: editTarget.isActive !== undefined ? editTarget.isActive : true,
       }
     }
@@ -609,6 +640,8 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
         defaultDurationMinutes: Number.isFinite(parsedDuration) && parsedDuration > 0 ? Math.round(parsedDuration) : 30,
         description: form.description.trim(),
         icon: form.icon,
+        imageUrl: String(form.imageUrl || '').trim(),
+        youtubeUrl: String(form.youtubeUrl || '').trim(),
         isActive: Boolean(form.isActive),
       }
 
@@ -884,6 +917,49 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Link hình ảnh & Link Video YouTube */}
+          <div className="fm-section">
+            <div className="fm-row">
+              <div className="fm-field">
+                <label className="fm-label" htmlFor="ex-image">LINK HÌNH ẢNH MINH HỌA (URL)</label>
+                <input
+                  id="ex-image"
+                  name="imageUrl"
+                  type="url"
+                  className="fm-input"
+                  value={form.imageUrl}
+                  onChange={change}
+                  placeholder="https://images.unsplash.com/..."
+                />
+                <span className="fm-hint"><i className="bi bi-image" /> URL hình ảnh hiển thị trên thẻ bài tập của người dùng</span>
+              </div>
+              <div className="fm-field">
+                <label className="fm-label" htmlFor="ex-yt">LINK VIDEO YOUTUBE HƯỚNG DẪN (URL)</label>
+                <input
+                  id="ex-yt"
+                  name="youtubeUrl"
+                  type="url"
+                  className="fm-input"
+                  value={form.youtubeUrl}
+                  onChange={change}
+                  placeholder="https://www.youtube.com/watch?v=..."
+                />
+                <span className="fm-hint"><i className="bi bi-youtube" style={{ color: '#ef4444' }} /> Video hướng dẫn kỹ thuật trên YouTube</span>
+              </div>
+            </div>
+            {form.imageUrl && (
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <img
+                  src={form.imageUrl}
+                  alt="Preview"
+                  style={{ width: 80, height: 50, objectFit: 'cover', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+                <span style={{ fontSize: '0.8rem', color: '#475569' }}>Xem trước hình ảnh minh họa bài tập</span>
+              </div>
+            )}
           </div>
 
           {/* Mô tả */}
@@ -1330,11 +1406,31 @@ export default function ExerciseManagementPage() {
                         <td className="fdm-td-center fdm-td-idx">{si + idx}</td>
                         <td>
                           <div className="fdm-food-cell">
-                            <span className="exm-icon-badge">
-                              <i className={`bi ${ex.icon || DEFAULT_CATEGORY_ICONS[ex.category] || 'bi-activity'}`} />
-                            </span>
+                            {ex.imageUrl ? (
+                              <img
+                                src={ex.imageUrl}
+                                alt=""
+                                className="exm-table-thumb"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <span className="exm-icon-badge">
+                                <i className={`bi ${ex.icon || DEFAULT_CATEGORY_ICONS[ex.category] || 'bi-activity'}`} />
+                              </span>
+                            )}
                             <div className="fdm-food-info">
                               <strong>{ex.name}</strong>
+                              {ex.youtubeUrl && (
+                                <a
+                                  href={ex.youtubeUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="exm-table-yt-link"
+                                  title="Xem video trên YouTube"
+                                >
+                                  <i className="bi bi-youtube" /> Video
+                                </a>
+                              )}
                             </div>
                           </div>
                         </td>

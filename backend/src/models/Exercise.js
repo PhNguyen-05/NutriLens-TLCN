@@ -60,6 +60,16 @@ const exerciseSchema = new mongoose.Schema(
       type: String,
       default: 'bi-activity',
     },
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    youtubeUrl: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     isActive: {
       type: Boolean,
       default: true,

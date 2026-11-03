@@ -4,7 +4,9 @@ const WeightLog = require('../models/WeightLog');
 const MealLog = require('../models/MealLog');
 const ExerciseLog = require('../models/ExerciseLog');
 const { calculateHealthMetrics, calcSafeCalorieTarget, CALORIE_FLOOR, getAge } = require('../utils/healthMetrics');
-const { uploadFileToCloudinary } = require('../services/cloudinaryStorage');
+const fs = require('fs');
+const path = require('path');
+const { uploadFileToCloudinary, isCloudinaryConfigured } = require('../services/cloudinaryStorage');
 
 const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
 const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight', 'eat_healthier'];
@@ -864,15 +866,50 @@ async function updateAvatar(req, res) {
       return res.status(400).json({ message: 'Ảnh đại diện không hợp lệ, vui lòng chọn ảnh JPG hoặc PNG' });
     }
 
-    const avatarUrl = await uploadFileToCloudinary(req.file, process.env.CLOUDINARY_AVATAR_FOLDER || 'nutrilens/avatars');
+    let avatarUrl = null;
+
+    // 1. Nếu đã cấu hình Cloudinary đầy đủ, ưu tiên tải lên Cloudinary
+    if (isCloudinaryConfigured()) {
+      try {
+        avatarUrl = await uploadFileToCloudinary(
+          req.file,
+          process.env.CLOUDINARY_AVATAR_FOLDER || 'nutrilens/avatars'
+        );
+      } catch (cloudErr) {
+        console.warn('[updateAvatar] Tải lên Cloudinary thất bại, tự động chuyển sang lưu máy chủ cục bộ:', cloudErr.message);
+      }
+    }
+
+    // 2. Nếu chưa cấu hình Cloudinary hoặc upload Cloudinary gặp sự cố, lưu vào thư mục tĩnh /uploads/avatars
+    if (!avatarUrl) {
+      const avatarDir = path.join(__dirname, '../../uploads/avatars');
+      if (!fs.existsSync(avatarDir)) {
+        fs.mkdirSync(avatarDir, { recursive: true });
+      }
+
+      const rawExt = path.extname(req.file.originalname || '').toLowerCase();
+      const ext = ['.jpg', '.jpeg', '.png', '.webp'].includes(rawExt)
+        ? rawExt
+        : (req.file.mimetype === 'image/png' ? '.png' : '.jpg');
+      const filename = String(req.user.id) + '-' + Date.now() + ext;
+      const filePath = path.join(avatarDir, filename);
+
+      fs.writeFileSync(filePath, req.file.buffer);
+      avatarUrl = '/uploads/avatars/' + filename;
+    }
+
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { $set: { avatarUrl } },
       { new: true, runValidators: true }
     );
-    return res.status(200).json({ message: 'Đã cập nhật ảnh đại diện', user: buildUserResponse(user) });
+
+    return res.status(200).json({
+      message: 'Đã cập nhật ảnh đại diện thành công',
+      user: buildUserResponse(user),
+    });
   } catch (err) {
-    console.error('[updateAvatar] Lỗi:', err.message);
+    console.error('[updateAvatar] Lỗi:', err);
     return res.status(500).json({ message: 'Không thể cập nhật ảnh đại diện, vui lòng thử lại' });
   }
 }
