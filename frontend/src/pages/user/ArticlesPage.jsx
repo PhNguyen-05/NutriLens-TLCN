@@ -335,6 +335,10 @@ export function ArticleDetailPage() {
   const viewSentForRef = useRef(null)
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [articleId])
+
+  useEffect(() => {
     let cancelled = false
     axiosInstance.get(`/blog/${articleId}`, { params: accessToken ? undefined : { viewerId } })
       .then(({ data }) => {

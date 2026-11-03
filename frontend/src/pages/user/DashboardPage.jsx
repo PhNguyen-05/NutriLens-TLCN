@@ -21,15 +21,16 @@ function localDate() {
 function formatDateVi(dateStr) {
   if (!dateStr) return ''
   const [y, m, d] = dateStr.split('-').map(Number)
-  const date = new Date(y, m - 1, d)
+  const date = new Date(y, m - 1, d, 12, 0, 0)
   const today = new Date()
   const isToday = date.toDateString() === today.toDateString()
-  const formatted = new Intl.DateTimeFormat('vi-VN', {
+  const raw = new Intl.DateTimeFormat('vi-VN', {
     weekday: 'long',
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
   }).format(date)
+  const formatted = raw.charAt(0).toUpperCase() + raw.slice(1)
   return isToday ? `Hôm nay (${formatted})` : formatted
 }
 
@@ -66,6 +67,197 @@ function formatArticleDate(dateStr) {
   const date = new Date(dateStr)
   if (Number.isNaN(date.getTime())) return 'Gần đây'
   return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
+}
+
+const ARTICLE_CATEGORY_FALLBACKS = {
+  vitamin: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=80',
+  'tiểu đường': 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=500&auto=format&fit=crop&q=80',
+  'sức khỏe': 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=500&auto=format&fit=crop&q=80',
+  'sức khoẻ': 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=500&auto=format&fit=crop&q=80',
+  'dinh dưỡng': 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=500&auto=format&fit=crop&q=80',
+  'mẹo ăn uống': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&auto=format&fit=crop&q=80',
+  'vận động': 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=80',
+  'tập luyện': 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=80',
+}
+
+const DEFAULT_ARTICLE_COVER = 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=500&auto=format&fit=crop&q=80'
+
+function getArticleFallbackImage(category = '') {
+  const normalized = String(category).trim().toLowerCase()
+  for (const [key, url] of Object.entries(ARTICLE_CATEGORY_FALLBACKS)) {
+    if (normalized.includes(key)) return url
+  }
+  return DEFAULT_ARTICLE_COVER
+}
+
+function getArticleExcerpt(content, maxLength = 80) {
+  if (!content) return ''
+  const clean = String(content)
+    .replace(/<[^>]+>/g, '')
+    .replace(/[#*`_~>[\]()]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return clean.length > maxLength ? clean.slice(0, maxLength) + '...' : clean
+}
+
+function DashboardArticleCard({ article }) {
+  const navigate = useNavigate()
+  const category = formatArticleCategory(article)
+  const publishDate = formatArticleDate(article.publishedAt || article.createdAt)
+  const resolvedUrl = resolveMediaUrl(article?.imageUrl)
+  const fallbackUrl = getArticleFallbackImage(category)
+  const [currentImg, setCurrentImg] = useState(resolvedUrl || fallbackUrl)
+  const [imageError, setImageError] = useState(false)
+
+  useEffect(() => {
+    const nextUrl = resolveMediaUrl(article?.imageUrl) || getArticleFallbackImage(category)
+    setCurrentImg(nextUrl)
+    setImageError(false)
+  }, [article?.imageUrl, category])
+
+  const handleImageError = () => {
+    if (currentImg !== fallbackUrl) {
+      setCurrentImg(fallbackUrl)
+    } else {
+      setImageError(true)
+    }
+  }
+
+  const excerpt = getArticleExcerpt(article.content, 75)
+
+  const handleCardClick = (e) => {
+    if (!e.target.closest('a') && !e.target.closest('button')) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      navigate(`/articles/${article._id}`)
+    }
+  }
+
+  const handleLinkClick = (e) => {
+    e.stopPropagation()
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }
+
+  return (
+    <article className="dashboard-article-card" onClick={handleCardClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(e) }}>
+      <div className="article-card-cover-wrap" aria-label={article.title} onClick={handleCardClick}>
+        {!imageError ? (
+          <img
+            src={currentImg}
+            alt={article.title}
+            className="article-card-img"
+            loading="lazy"
+            onError={handleImageError}
+          />
+        ) : (
+          <div className="article-card-fallback-cover">
+            <i className="bi bi-journal-richtext" />
+          </div>
+        )}
+        <span className="article-card-badge">{category}</span>
+      </div>
+
+      <div className="article-card-content">
+        <div className="article-card-meta">
+          <span><i className="bi bi-calendar3" /> {publishDate}</span>
+          {Boolean(article.viewCount) && (
+            <span><i className="bi bi-eye" /> {article.viewCount}</span>
+          )}
+        </div>
+
+        <h3 className="article-card-title" title={article.title}>
+          <Link to={`/articles/${article._id}`} onClick={handleLinkClick}>
+            {article.title}
+          </Link>
+        </h3>
+
+        {excerpt && (
+          <p className="article-card-snippet" title={excerpt}>
+            {excerpt}
+          </p>
+        )}
+
+        <div className="article-card-action">
+          <Link to={`/articles/${article._id}`} className="article-card-read-more" onClick={handleLinkClick}>
+            Đọc tiếp <i className="bi bi-arrow-right" />
+          </Link>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+
+function AnimatedNumber({ value, duration = 600 }) {
+  const [displayValue, setDisplayValue] = useState(0)
+  const target = typeof value === 'number' ? value : parseInt(String(value).replace(/\D/g, ''), 10) || 0
+
+  useEffect(() => {
+    if (target === 0) {
+      setDisplayValue(0)
+      return
+    }
+    const startTime = performance.now()
+    let frameId
+
+    const step = (now) => {
+      const progress = Math.min((now - startTime) / duration, 1)
+      const easeOut = 1 - Math.pow(1 - progress, 3)
+      setDisplayValue(Math.floor(easeOut * target))
+      if (progress < 1) {
+        frameId = requestAnimationFrame(step)
+      } else {
+        setDisplayValue(target)
+      }
+    }
+    frameId = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(frameId)
+  }, [target, duration])
+
+  return <>{displayValue.toLocaleString('vi-VN')}</>
+}
+
+function MetricCardSkeleton() {
+  return (
+    <article className="metric-card metric-skeleton">
+      <div className="skeleton-box skeleton-icon" />
+      <div className="skeleton-box" style={{ width: '60%', height: '12px', margin: '4px 0 10px' }} />
+      <div className="skeleton-box" style={{ width: '85%', height: '26px', margin: '8px 0' }} />
+      <div className="skeleton-box" style={{ width: '100%', height: '6px', margin: '8px 0 6px' }} />
+      <div className="skeleton-box" style={{ width: '45%', height: '10px' }} />
+    </article>
+  )
+}
+
+function MealRowSkeleton() {
+  return (
+    <div className="meal-row meal-skeleton-row">
+      <div className="skeleton-box" style={{ width: '84px', height: '74px', borderRadius: '8px' }} />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'center' }}>
+        <div className="skeleton-box" style={{ width: '35%', height: '12px' }} />
+        <div className="skeleton-box" style={{ width: '60%', height: '16px' }} />
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <div className="skeleton-box" style={{ width: '55px', height: '18px', borderRadius: '12px' }} />
+          <div className="skeleton-box" style={{ width: '55px', height: '18px', borderRadius: '12px' }} />
+          <div className="skeleton-box" style={{ width: '55px', height: '18px', borderRadius: '12px' }} />
+        </div>
+      </div>
+      <div className="skeleton-box" style={{ width: '55px', height: '18px', alignSelf: 'center' }} />
+    </div>
+  )
+}
+
+function ArticleCardSkeleton() {
+  return (
+    <div className="dashboard-article-card skeleton-card">
+      <div className="skeleton-box" style={{ width: '100%', height: '145px', borderRadius: 0 }} />
+      <div style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div className="skeleton-box" style={{ width: '40%', height: '12px' }} />
+        <div className="skeleton-box" style={{ width: '90%', height: '18px' }} />
+        <div className="skeleton-box" style={{ width: '70%', height: '14px' }} />
+        <div className="skeleton-box" style={{ width: '30%', height: '12px', marginTop: '10px', alignSelf: 'flex-end' }} />
+      </div>
+    </div>
+  )
 }
 
 function formatDateViShort(dateStr) {
@@ -279,13 +471,13 @@ export default function DashboardPage() {
 
   function handlePrevDay() {
     const [y, m, d] = selectedDate.split('-').map(Number)
-    const prev = new Date(y, m - 1, d - 1)
+    const prev = new Date(y, m - 1, d - 1, 12, 0, 0)
     setSelectedDate(prev.toLocaleDateString('sv-SE'))
   }
 
   function handleNextDay() {
     const [y, m, d] = selectedDate.split('-').map(Number)
-    const next = new Date(y, m - 1, d + 1)
+    const next = new Date(y, m - 1, d + 1, 12, 0, 0)
     const nextStr = next.toLocaleDateString('sv-SE')
     if (nextStr <= todayStr) {
       setSelectedDate(nextStr)
@@ -330,49 +522,63 @@ export default function DashboardPage() {
   const netCalories = dashboardData?.netCalories ?? (eatenCalo - burnedCalo)
   const remainingCalo = targetCalo - eatenCalo + burnedCalo
 
-  const caloPct = targetCalo > 0 ? Math.min(100, Math.round((eatenCalo / targetCalo) * 100)) : 0
-  const proteinPct = targetProtein > 0 ? Math.min(100, Math.round((eatenProtein / targetProtein) * 100)) : 0
-  const carbsPct = targetCarbs > 0 ? Math.min(100, Math.round((eatenCarbs / targetCarbs) * 100)) : 0
-  const fatPct = targetFat > 0 ? Math.min(100, Math.round((eatenFat / targetFat) * 100)) : 0
+  // Tỉ lệ phần trăm thực tế (không bị giới hạn 100% để hiển thị đúng khi vượt ngưỡng)
+  const realCaloPct = targetCalo > 0 ? Math.round((eatenCalo / targetCalo) * 100) : 0
+  const realProteinPct = targetProtein > 0 ? Math.round((eatenProtein / targetProtein) * 100) : 0
+  const realCarbsPct = targetCarbs > 0 ? Math.round((eatenCarbs / targetCarbs) * 100) : 0
+  const realFatPct = targetFat > 0 ? Math.round((eatenFat / targetFat) * 100) : 0
 
-  // 4 thẻ chỉ số dinh dưỡng chính (đã bỏ Nước uống theo yêu cầu)
+  const caloPct = Math.min(100, realCaloPct)
+  const proteinPct = Math.min(100, realProteinPct)
+  const carbsPct = Math.min(100, realCarbsPct)
+  const fatPct = Math.min(100, realFatPct)
+
+  // 4 thẻ chỉ số dinh dưỡng chính được chuẩn hóa theo mã màu nhóm chất
   const dynamicMetrics = [
-    [
-      'bi-fire',
-      'Tổng năng lượng',
-      eatenCalo.toLocaleString('vi-VN'),
-      `/ ${targetCalo.toLocaleString('vi-VN')} kcal`,
-      `${caloPct}%`,
-      remainingCalo >= 0 ? `Còn ${remainingCalo.toLocaleString('vi-VN')} kcal` : `Vượt ${Math.abs(remainingCalo).toLocaleString('vi-VN')} kcal`,
-      caloPct > 105 ? 'orange' : caloPct >= 80 ? 'green' : 'orange',
-    ],
-    [
-      'bi-lightning-charge',
-      'Đạm (Protein)',
-      `${eatenProtein}g`,
-      `/ ${targetProtein} g`,
-      `${proteinPct}%`,
-      targetProtein > eatenProtein ? `Thiếu ${Math.round(targetProtein - eatenProtein)}g` : 'Đã đạt chuẩn',
-      proteinPct >= 80 ? 'green' : 'orange',
-    ],
-    [
-      'bi-grid-3x3-gap',
-      'Tinh bột (Carbs)',
-      `${eatenCarbs}g`,
-      `/ ${targetCarbs} g`,
-      `${carbsPct}%`,
-      targetCarbs > eatenCarbs ? `Còn ${Math.round(targetCarbs - eatenCarbs)}g` : 'Đã đủ mục tiêu',
-      'orange',
-    ],
-    [
-      'bi-droplet',
-      'Chất béo (Lipid)',
-      `${eatenFat}g`,
-      `/ ${targetFat} g`,
-      `${fatPct}%`,
-      targetFat > eatenFat ? `Còn ${Math.round(targetFat - eatenFat)}g` : 'Đã đủ mục tiêu',
-      'blue',
-    ],
+    {
+      icon: 'bi-fire',
+      label: 'Tổng năng lượng',
+      numericVal: eatenCalo,
+      unit: '',
+      targetStr: `/ ${targetCalo.toLocaleString('vi-VN')} kcal`,
+      progress: `${caloPct}%`,
+      progressText: `${realCaloPct}% mục tiêu`,
+      note: remainingCalo >= 0 ? `Còn ${remainingCalo.toLocaleString('vi-VN')} kcal` : `Vượt ${Math.abs(remainingCalo).toLocaleString('vi-VN')} kcal`,
+      theme: realCaloPct > 105 ? 'metric-theme-coral' : 'metric-theme-green',
+    },
+    {
+      icon: 'bi-lightning-charge-fill',
+      label: 'Đạm (Protein)',
+      numericVal: Math.round(eatenProtein),
+      unit: 'g',
+      targetStr: `/ ${targetProtein} g`,
+      progress: `${proteinPct}%`,
+      progressText: `${realProteinPct}% mục tiêu`,
+      note: targetProtein > eatenProtein ? `Thiếu ${Math.round(targetProtein - eatenProtein)}g` : 'Đã đạt chuẩn',
+      theme: 'metric-theme-coral', // Đỏ san hô (#f43f5e)
+    },
+    {
+      icon: 'bi-pie-chart-fill',
+      label: 'Tinh bột (Carbs)',
+      numericVal: Math.round(eatenCarbs),
+      unit: 'g',
+      targetStr: `/ ${targetCarbs} g`,
+      progress: `${carbsPct}%`,
+      progressText: `${realCarbsPct}% mục tiêu`,
+      note: targetCarbs >= eatenCarbs ? (targetCarbs === eatenCarbs ? 'Đã đủ mục tiêu' : `Còn ${Math.round(targetCarbs - eatenCarbs)}g`) : `Vượt ${Math.round(eatenCarbs - targetCarbs)}g`,
+      theme: 'metric-theme-amber', // Vàng cam năng lượng (#f59e0b)
+    },
+    {
+      icon: 'bi-droplet-fill',
+      label: 'Chất béo (Fat)',
+      numericVal: Math.round(eatenFat),
+      unit: 'g',
+      targetStr: `/ ${targetFat} g`,
+      progress: `${fatPct}%`,
+      progressText: `${realFatPct}% mục tiêu`,
+      note: targetFat >= eatenFat ? (targetFat === eatenFat ? 'Đã đủ mục tiêu' : `Còn ${Math.round(targetFat - eatenFat)}g`) : `Vượt ${Math.round(eatenFat - targetFat)}g`,
+      theme: 'metric-theme-blue', // Xanh dương dịu (#3b82f6)
+    },
   ]
 
   const goalTitles = {
@@ -385,19 +591,37 @@ export default function DashboardPage() {
     : 'Mục tiêu dinh dưỡng: Chưa thiết lập'
 
   function getAiWelcomeAdvice() {
+    const isPast = selectedDate !== todayStr
     if (eatenCalo === 0 && burnedCalo === 0) {
-      return `Chào ${firstName}! Bạn chưa ghi nhận bữa ăn hoặc bài tập nào trong ngày ${selectedDate === todayStr ? 'hôm nay' : selectedDate}. Hãy mở Camera AI để quét món ăn đầu tiên và theo dõi mục tiêu nhé!`
+      return isPast
+        ? `Ngày ${formatDateViShort(selectedDate)} chưa có dữ liệu bữa ăn hoặc bài tập nào được ghi nhận.`
+        : `Chào ${firstName}! Bạn chưa ghi nhận bữa ăn hoặc bài tập nào hôm nay. Hãy dùng camera bên cạnh để chụp hoặc tải ảnh món ăn đầu tiên và theo dõi mục tiêu nhé!`
     }
     if (eatenCalo === 0 && burnedCalo > 0) {
-      return `Chào ${firstName}! Bạn đã tiêu hao ${burnedCalo} kcal qua bài tập thể chất! Hãy nhớ bổ sung bữa ăn đủ đạm để phục hồi năng lượng và cơ bắp.`
+      return isPast
+        ? `Ngày ${formatDateViShort(selectedDate)}: Đã tiêu hao xuất sắc ${burnedCalo} kcal qua bài tập vận động.`
+        : `Chào ${firstName}! Bạn đã tiêu hao xuất sắc ${burnedCalo} kcal qua vận động hôm nay. Hãy nhớ nạp thêm bữa ăn giàu protein để nuôi dưỡng và phục hồi cơ bắp nhé!`
+    }
+    if (eatenCarbs > targetCarbs * 0.75 && eatenProtein < targetProtein * 0.5) {
+      return isPast
+        ? `💡 Ngày ${formatDateViShort(selectedDate)}: Lượng tinh bột khá cao (${eatenCarbs}g Carbs / ${eatenProtein}g Protein), thiếu hụt đạm so với mục tiêu.`
+        : `💡 Lượng tinh bột hôm nay đang khá cao (${eatenCarbs}g Carbs / ${eatenProtein}g Protein). Bữa tiếp theo bạn nên ưu tiên thêm ức gà, trứng hoặc cá hồi và nhiều rau xanh để cân bằng đạm nhé!`
     }
     if (eatenCalo > targetCalo * 1.05) {
-      return `Hôm nay bạn đã nạp ${eatenCalo.toLocaleString('vi-VN')} kcal (vượt ${(eatenCalo - targetCalo).toLocaleString('vi-VN')} kcal so với mục tiêu). Hãy cân nhắc tập luyện thêm 20-30 phút hoặc đi bộ nhẹ để cân bằng calo!`
+      const over = eatenCalo - targetCalo
+      return isPast
+        ? `⚡ Ngày ${formatDateViShort(selectedDate)}: Nạp ${eatenCalo.toLocaleString('vi-VN')} kcal (vượt ${over.toLocaleString('vi-VN')} kcal so với mục tiêu).`
+        : `⚡ Hôm nay bạn đã nạp ${eatenCalo.toLocaleString('vi-VN')} kcal (vượt ${over.toLocaleString('vi-VN')} kcal so với mục tiêu). Hãy cân nhắc tập luyện thêm 20-30 phút hoặc đi bộ nhẹ để cân bằng calo!`
     }
     if (eatenProtein < targetProtein * 0.6) {
-      return `Lượng protein hiện tại đạt ${eatenProtein}g (còn thiếu ${Math.round(targetProtein - eatenProtein)}g). Hãy ưu tiên thực phẩm giàu đạm như ức gà, trứng hoặc đậu hũ cho bữa tiếp theo nhé!`
+      const missing = Math.round(targetProtein - eatenProtein)
+      return isPast
+        ? `🥩 Ngày ${formatDateViShort(selectedDate)}: Lượng Protein đạt ${eatenProtein}g (còn thiếu ${missing}g so với mục tiêu chuẩn).`
+        : `🥩 Lượng Protein hiện tại đạt ${eatenProtein}g (còn thiếu ${missing}g). Hãy ưu tiên thực phẩm giàu đạm như ức gà, cá, trứng hoặc đậu hũ cho bữa tiếp theo nhé!`
     }
-    return `Bạn đang kiểm soát dinh dưỡng rất tốt! Đã nạp ${eatenCalo.toLocaleString('vi-VN')} / ${targetCalo.toLocaleString('vi-VN')} kcal với ${eatenProtein}g Protein. Cố gắng tiếp tục duy trì phong độ nhé!`
+    return isPast
+      ? `✨ Ngày ${formatDateViShort(selectedDate)}: Kiểm soát dinh dưỡng tốt! Nạp ${eatenCalo.toLocaleString('vi-VN')} / ${targetCalo.toLocaleString('vi-VN')} kcal với ${eatenProtein}g Protein.`
+      : `✨ Bạn đang kiểm soát dinh dưỡng rất tốt! Đã nạp ${eatenCalo.toLocaleString('vi-VN')} / ${targetCalo.toLocaleString('vi-VN')} kcal với ${eatenProtein}g Protein. Cố gắng tiếp tục duy trì phong độ nhé!`
   }
 
   // Danh sách món ăn của ngày đang chọn (backend đã sắp xếp mới nhất lên đầu)
@@ -440,10 +664,29 @@ export default function DashboardPage() {
       <main className="dashboard-main">
         {/* THANH ĐIỀU HƯỚNG NGÀY & MỤC TIÊU */}
         <section className="dashboard-daybar">
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <strong>
               <i className="bi bi-calendar3" /> {formatDateVi(selectedDate)}
             </strong>
+            {streak > 0 && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: '#fff7ed',
+                  color: '#ea580c',
+                  border: '1px solid #fed7aa',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                }}
+                title="Chuỗi ngày liên tiếp ghi nhận nhật ký dinh dưỡng hoặc tập luyện"
+              >
+                🔥 Chuỗi {streak} ngày
+              </span>
+            )}
           </div>
           <div className="day-actions" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <button
@@ -458,7 +701,12 @@ export default function DashboardPage() {
               type="date"
               value={selectedDate}
               max={todayStr}
-              onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val && val <= todayStr) {
+                  setSelectedDate(val)
+                }
+              }}
               style={{
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
@@ -507,10 +755,20 @@ export default function DashboardPage() {
 
         {/* INTRO GRID: TỔNG QUAN NĂNG LƯỢNG & SCANNER */}
         <section className="dashboard-intro-grid">
-          <article className="welcome-panel">
-            <span className="eyebrow">Tổng quan năng lượng &amp; Chuyển hóa</span>
+          <article className="welcome-panel smart-ai-panel">
             <h1>Xin chào {firstName}!</h1>
-            <p>{getAiWelcomeAdvice()}</p>
+
+            <div className="ai-insight-box">
+              <div className="ai-insight-icon">
+                <i className="bi bi-robot" />
+              </div>
+              <div className="ai-insight-content">
+                <div className="ai-insight-title">
+                  <span>Lời khuyên cá nhân hóa cho bạn</span>
+                </div>
+                <p className="ai-insight-text">{getAiWelcomeAdvice()}</p>
+              </div>
+            </div>
           </article>
 
           <article className="scanner-panel">
@@ -564,23 +822,33 @@ export default function DashboardPage() {
 
         {/* 4 THẺ CHỈ SỐ DINH DƯỠNG TRONG NGÀY (4 CỘT CÂN ĐỐI) */}
         <section className="metric-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-          {dynamicMetrics.map(([icon, label, value, unit, progress, note, tone]) => (
-            <article className="metric-card" key={label}>
-              <div className={`metric-icon ${tone}`}>
-                <i className={`bi ${icon}`} />
-              </div>
-              <span>{label}</span>
-              <strong>
-                {value}
-                <small>{unit}</small>
-              </strong>
-              <div className="metric-progress">
-                <i style={{ width: progress }} />
-              </div>
-              <em className={tone}>{progress} mục tiêu</em>
-              <small>{note}</small>
-            </article>
-          ))}
+          {statsLoading ? (
+            <>
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+            </>
+          ) : (
+            dynamicMetrics.map((item) => (
+              <article className={`metric-card ${item.theme}`} key={item.label}>
+                <div className={`metric-icon ${item.theme}`}>
+                  <i className={`bi ${item.icon}`} />
+                </div>
+                <span>{item.label}</span>
+                <strong>
+                  <AnimatedNumber value={item.numericVal} />
+                  {item.unit && <span style={{ marginLeft: '2px', fontSize: '18px' }}>{item.unit}</span>}
+                  <small>{item.targetStr}</small>
+                </strong>
+                <div className="metric-progress">
+                  <i style={{ width: item.progress }} className={item.theme} />
+                </div>
+                <em className={item.theme}>{item.progressText || `${item.progress} mục tiêu`}</em>
+                <small>{item.note}</small>
+              </article>
+            ))
+          )}
         </section>
 
         {/* CỘT NHẬT KÝ MÓN ĂN & CHỈ SỐ CƠ THỂ */}
@@ -597,8 +865,10 @@ export default function DashboardPage() {
             />
 
             {statsLoading ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
-                <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Đang tải danh sách món ăn...
+              <div className="meal-skeleton-container" style={{ padding: '4px 0' }}>
+                <MealRowSkeleton />
+                <MealRowSkeleton />
+                <MealRowSkeleton />
               </div>
             ) : todayLatestMeals.length === 0 ? (
               <div style={{ padding: '36px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', margin: '14px 0', border: '1.5px dashed #cbd5e1' }}>
@@ -638,10 +908,16 @@ export default function DashboardPage() {
                         {meta.label} · {meal.servings} khẩu phần
                       </small>
                       <h3>{meal.foodName}</h3>
-                      <div>
-                        <span>Protein {meal.protein}g</span>
-                        <span>Carbs {meal.carbs}g</span>
-                        <span>Fat {meal.fat}g</span>
+                      <div className="meal-macros-row">
+                        <span className="macro-badge macro-protein">
+                          <i className="macro-dot protein-dot" /> Protein {meal.protein}g
+                        </span>
+                        <span className="macro-badge macro-carbs">
+                          <i className="macro-dot carbs-dot" /> Carbs {meal.carbs}g
+                        </span>
+                        <span className="macro-badge macro-fat">
+                          <i className="macro-dot fat-dot" /> Fat {meal.fat}g
+                        </span>
                       </div>
                     </div>
                     <strong className="meal-kcal">{meal.calories} kcal</strong>
@@ -650,14 +926,16 @@ export default function DashboardPage() {
               })
             )}
 
-            <div className="meal-footer">
-              <b>Tổng năng lượng các bữa ăn:</b>
-              <span>{eatenCalo.toLocaleString('vi-VN')} kcal ({meals.length} món)</span>
-              <small>Xem và quản lý thực đơn đầy đủ tại trang Nhật ký bữa ăn</small>
-              <button type="button" onClick={() => navigate(`/meal-diary?date=${selectedDate}`)}>
-                <i className="bi bi-journal-text" /> Xem toàn bộ nhật ký
-              </button>
-            </div>
+            {meals.length > 0 && (
+              <div className="meal-footer">
+                <b>Tổng năng lượng các bữa ăn:</b>
+                <span>{eatenCalo.toLocaleString('vi-VN')} kcal ({meals.length} món)</span>
+                <small>Xem và quản lý thực đơn đầy đủ tại trang Nhật ký bữa ăn</small>
+                <button type="button" onClick={() => navigate(`/meal-diary?date=${selectedDate}`)}>
+                  <i className="bi bi-journal-text" /> Xem toàn bộ nhật ký
+                </button>
+              </div>
+            )}
           </article>
 
           <aside className="side-stack">
@@ -683,8 +961,14 @@ export default function DashboardPage() {
                 </div>
               }
             />
-            <div className="bar-chart">
-              {weeklyDays.map((day) => {
+            {statsLoading ? (
+              <div style={{ height: '128px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: '8px' }}>
+                <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite' }} />
+                <span style={{ fontSize: '0.85rem' }}>Đang tổng hợp dữ liệu chuyển hóa tuần...</span>
+              </div>
+            ) : (
+              <div className="bar-chart">
+                {weeklyDays.map((day) => {
                 const inHeight = Math.min(95, Math.max(day.caloriesIn > 0 ? 6 : 2, Math.round(((day.caloriesIn || 0) / maxCaloInWeek) * 95)))
                 const outHeight = Math.min(95, Math.max(day.caloriesOut > 0 ? 6 : 2, Math.round(((day.caloriesOut || 0) / maxCaloInWeek) * 95)))
                 const isDaySelected = day.date === selectedDate
@@ -707,7 +991,8 @@ export default function DashboardPage() {
                   </div>
                 )
               })}
-            </div>
+              </div>
+            )}
             <div className="chart-summary">
               <span>
                 Thâm hụt TB tuần
@@ -721,8 +1006,17 @@ export default function DashboardPage() {
               </span>
               <span>
                 Đánh giá chuyển hóa
-                <strong className="orange-text">
-                  {eatenCalo <= targetCalo ? 'Đốt mỡ tối ưu' : 'Dư năng lượng'}
+                <strong className={eatenCalo > targetCalo * 1.05 ? 'orange-text' : ''}>
+                  {(() => {
+                    const goal = healthProfile?.nutritionGoal?.goal
+                    if (goal === 'gain_weight') {
+                      return eatenCalo >= targetCalo ? 'Thặng dư tăng cân' : 'Chưa đủ thặng dư'
+                    }
+                    if (goal === 'lose_weight') {
+                      return eatenCalo <= targetCalo ? 'Thâm hụt đốt mỡ' : 'Vượt mức calo'
+                    }
+                    return Math.abs(eatenCalo - targetCalo) <= targetCalo * 0.1 ? 'Cân bằng lý tưởng' : (eatenCalo > targetCalo ? 'Dư năng lượng' : 'Thâm hụt nhẹ')
+                  })()}
                 </strong>
               </span>
             </div>
@@ -775,7 +1069,7 @@ export default function DashboardPage() {
                         {ex.notes ? ` · ${ex.notes}` : ''}
                       </small>
                     </span>
-                    <button type="button" onClick={() => navigate('/exercise')}>
+                    <button type="button" onClick={() => navigate('/exercise?tab=history')}>
                       Xem nhật ký →
                     </button>
                   </div>
@@ -816,34 +1110,25 @@ export default function DashboardPage() {
           <PanelHeading
             title="Kiến thức & Đời sống"
             subtitle="Cập nhật kiến thức dinh dưỡng khoa học, mẹo ăn uống lành mạnh và lối sống cân bằng"
-            action={<Link to="/articles">Xem tất cả bài viết →</Link>}
+            action={<Link to="/articles" className="articles-heading-link">Xem tất cả bài viết →</Link>}
           />
           {blogLoading ? (
-            <div style={{ padding: '28px', textAlign: 'center', color: '#64748b' }}>
-              <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Đang tải bài viết...
+            <div className="article-grid">
+              <ArticleCardSkeleton />
+              <ArticleCardSkeleton />
+              <ArticleCardSkeleton />
+              <ArticleCardSkeleton />
             </div>
           ) : blogArticles.length === 0 ? (
-            <div style={{ padding: '28px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+            <div style={{ padding: '36px', textAlign: 'center', color: '#64748b', fontSize: '0.9rem' }}>
+              <i className="bi bi-journal-x" style={{ fontSize: '1.75rem', color: '#94a3b8', display: 'block', marginBottom: '8px' }} />
               Chưa có bài viết nào được xuất bản.
             </div>
           ) : (
             <div className="article-grid">
-              {blogArticles.map((article) => {
-                const category = formatArticleCategory(article)
-                const publishDate = formatArticleDate(article.publishedAt || article.createdAt)
-                return (
-                  <article key={article._id}>
-                    <span>{category}</span>
-                    <h3 title={article.title}>
-                      <Link to={`/articles/${article._id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                        {article.title}
-                      </Link>
-                    </h3>
-                    <small>{publishDate}</small>
-                    <Link to={`/articles/${article._id}`}>Đọc tiếp →</Link>
-                  </article>
-                )
-              })}
+              {blogArticles.map((article) => (
+                <DashboardArticleCard key={article._id} article={article} />
+              ))}
             </div>
           )}
         </section>
