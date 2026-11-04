@@ -553,7 +553,6 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
     return { ...EMPTY_FORM }
   })
 
-  const [showIconPicker, setShowIconPicker] = useState(false)
 
   const [isCustomDuration, setIsCustomDuration] = useState(() => {
     if (mode === 'edit' && editTarget) {
@@ -566,6 +565,41 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
   const [errors, setErrors] = useState({})
   const [apiError, setApiError] = useState('')
   const [saving, setSaving] = useState(false)
+  const adminFileInputRef = useRef(null)
+
+  function handleAdminImageUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX_SIZE = 800
+        let width = img.width
+        let height = img.height
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width)
+            width = MAX_SIZE
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height)
+            height = MAX_SIZE
+          }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        const compressed = canvas.toDataURL('image/jpeg', 0.82)
+        setForm((p) => ({ ...p, imageUrl: compressed }))
+      }
+      img.src = evt.target.result
+    }
+    reader.readAsDataURL(file)
+  }
 
   function change(e) {
     const { name, value, type, checked } = e.target
@@ -851,89 +885,50 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
             )}
           </div>
 
-          {/* Biểu tượng bài tập (Icon) */}
-          <div className="fm-section">
-            <div className="fm-field">
-              <div className="exm-icon-header-row">
-                <label className="fm-label">BIỂU TƯỢNG BÀI TẬP (ICON)</label>
-                <button
-                  type="button"
-                  className="exm-icon-browse-btn"
-                  onClick={() => setShowIconPicker(true)}
-                >
-                  <i className="bi bi-grid-3x3-gap-fill" /> Mở Kho biểu tượng ({EXERCISE_ICON_LIBRARY.length}+ icon)
-                </button>
-              </div>
-
-              {/* Thanh chọn icon trực quan */}
-              <div className="exm-icon-bar">
-                <div
-                  className="exm-icon-selected-box"
-                  onClick={() => setShowIconPicker(true)}
-                  title="Bấm để mở Kho biểu tượng"
-                >
-                  <span className="exm-icon-selected-badge">
-                    <i className={`bi ${form.icon || DEFAULT_CATEGORY_ICONS[form.category] || 'bi-activity'}`} />
-                  </span>
-                  <div className="exm-icon-selected-info">
-                    <strong>{getIconMeta(form.icon, form.category).name}</strong>
-                    <small>{form.icon ? 'Bấm để đổi biểu tượng' : 'Đang dùng mặc định theo nhóm bài tập'}</small>
-                  </div>
-                </div>
-
-                {/* Nút đặt về mặc định nếu đang dùng icon riêng */}
-                {form.icon && (
-                  <button
-                    type="button"
-                    className="exm-icon-reset-btn"
-                    onClick={() => setForm((p) => ({ ...p, icon: '' }))}
-                    title="Khôi phục về biểu tượng mặc định theo nhóm thể loại"
-                  >
-                    <i className="bi bi-arrow-counterclockwise" /> Về mặc định
-                  </button>
-                )}
-
-                <div className="exm-icon-quick-list">
-                  <span className="exm-icon-quick-label">Gợi ý nhanh:</span>
-                  {POPULAR_QUICK_ICONS.map((ic) => (
-                    <button
-                      key={ic}
-                      type="button"
-                      className={`exm-icon-choice ${form.icon === ic ? 'active' : ''}`}
-                      onClick={() => setForm((p) => ({ ...p, icon: ic }))}
-                      title={getIconMeta(ic, form.category).name}
-                    >
-                      <i className={`bi ${ic}`} />
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    className="exm-icon-more-btn"
-                    onClick={() => setShowIconPicker(true)}
-                    title="Xem thêm biểu tượng khác"
-                  >
-                    <i className="bi bi-three-dots" /> Thêm
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Link hình ảnh & Link Video YouTube */}
           <div className="fm-section">
             <div className="fm-row">
               <div className="fm-field">
-                <label className="fm-label" htmlFor="ex-image">LINK HÌNH ẢNH MINH HỌA (URL)</label>
-                <input
-                  id="ex-image"
-                  name="imageUrl"
-                  type="url"
-                  className="fm-input"
-                  value={form.imageUrl}
-                  onChange={change}
-                  placeholder="https://images.unsplash.com/..."
-                />
-                <span className="fm-hint"><i className="bi bi-image" /> URL hình ảnh hiển thị trên thẻ bài tập của người dùng</span>
+                <label className="fm-label" htmlFor="ex-image">HÌNH ẢNH MINH HỌA (URL HOẶC TẢI LÊN)</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    id="ex-image"
+                    name="imageUrl"
+                    type="url"
+                    className="fm-input"
+                    value={form.imageUrl}
+                    onChange={change}
+                    placeholder="https://images.unsplash.com/... hoặc bấm Tải ảnh"
+                  />
+                  <input
+                    type="file"
+                    ref={adminFileInputRef}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={handleAdminImageUpload}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adminFileInputRef.current?.click()}
+                    style={{
+                      padding: '0 14px',
+                      whiteSpace: 'nowrap',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                      borderRadius: 8,
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      color: '#0f172a',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <i className="bi bi-upload" /> Tải ảnh
+                  </button>
+                </div>
+                <span className="fm-hint"><i className="bi bi-image" /> Nhập đường dẫn ảnh hoặc bấm "Tải ảnh" để chọn từ thiết bị</span>
               </div>
               <div className="fm-field">
                 <label className="fm-label" htmlFor="ex-yt">LINK VIDEO YOUTUBE HƯỚNG DẪN (URL)</label>
@@ -950,14 +945,30 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
               </div>
             </div>
             {form.imageUrl && (
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                <img
-                  src={form.imageUrl}
-                  alt="Preview"
-                  style={{ width: 80, height: 50, objectFit: 'cover', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-                <span style={{ fontSize: '0.8rem', color: '#475569' }}>Xem trước hình ảnh minh họa bài tập</span>
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <img
+                    src={form.imageUrl}
+                    alt="Preview"
+                    style={{ width: 80, height: 50, objectFit: 'cover', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                  <div>
+                    <strong style={{ fontSize: '0.84rem', color: '#059669', display: 'block' }}>Ảnh minh họa đã sẵn sàng</strong>
+                    <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{form.imageUrl.startsWith('data:') ? 'Ảnh tải từ thiết bị' : form.imageUrl.slice(0, 50) + '...'}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="ex-btn-clear-img"
+                  onClick={() => {
+                    setForm((p) => ({ ...p, imageUrl: '' }))
+                    if (adminFileInputRef.current) adminFileInputRef.current.value = ''
+                  }}
+                  title="Xóa ảnh này"
+                >
+                  <i className="bi bi-trash3" /> Xóa ảnh
+                </button>
               </div>
             )}
           </div>
@@ -1015,14 +1026,7 @@ function ExerciseFormModal({ mode = 'add', editTarget, onClose, onSaved }) {
         </form>
       </section>
 
-      {showIconPicker && (
-        <IconPickerModal
-          currentIcon={form.icon}
-          currentCategory={form.category}
-          onSelect={(iconId) => setForm((p) => ({ ...p, icon: iconId }))}
-          onClose={() => setShowIconPicker(false)}
-        />
-      )}
+
     </div>
   )
 }
@@ -1420,17 +1424,6 @@ export default function ExerciseManagementPage() {
                             )}
                             <div className="fdm-food-info">
                               <strong>{ex.name}</strong>
-                              {ex.youtubeUrl && (
-                                <a
-                                  href={ex.youtubeUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="exm-table-yt-link"
-                                  title="Xem video trên YouTube"
-                                >
-                                  <i className="bi bi-youtube" /> Video
-                                </a>
-                              )}
                             </div>
                           </div>
                         </td>
