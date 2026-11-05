@@ -10639,7 +10639,7 @@ td.fdm-td-center { text-align: center !important; }
 }
 
 .stats-likes i {
-  color: #059669;
+  color: #ef4444;
 }
 
 .stats-comments {
@@ -10680,11 +10680,29 @@ td.fdm-td-center { text-align: center !important; }
 }
 
 .post-footer-btn.active-like {
-  color: #059669;
+  color: #ef4444;
+  background: #fef2f2;
 }
 
 .post-footer-btn.active-like i {
-  color: #059669;
+  color: #ef4444;
+  animation: heartPop 0.32s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.post-footer-btn.active-like:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.post-footer-btn:hover i.bi-heart {
+  color: #ef4444;
+  transform: scale(1.15);
+}
+
+@keyframes heartPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }
 
 .post-footer-btn--report:hover {
@@ -11054,28 +11072,152 @@ td.fdm-td-center { text-align: center !important; }
 /* EMPTY FEED */
 .empty-feed-card {
   text-align: center;
-  padding: 48px 24px;
+  padding: 48px 24px 40px;
 }
 
-.empty-feed-card i {
+.empty-feed-card > i {
   font-size: 48px;
   color: #059669;
   margin-bottom: 12px;
   display: inline-block;
 }
 
+.empty-feed-icon-badge {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.empty-feed-icon-badge.success {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  color: #059669;
+  border: 1.5px solid #a7f3d0;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.15);
+}
+
+.empty-feed-icon-badge.muted {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1.5px solid #e2e8f0;
+}
+
+.empty-feed-icon-badge i {
+  font-size: 32px !important;
+  margin: 0 !important;
+  display: inline-block !important;
+  color: inherit !important;
+}
+
+.empty-feed-card:hover .empty-feed-icon-badge {
+  transform: translateY(-2px) scale(1.02);
+}
+
 .empty-feed-card h3 {
   margin: 0 0 8px;
-  font-size: 18px;
+  font-size: 18.5px;
+  font-weight: 700;
   color: #1e293b;
 }
 
 .empty-feed-card p {
   color: #64748b;
   font-size: 13.5px;
-  max-width: 420px;
-  margin: 0 auto 20px;
-  line-height: 1.5;
+  max-width: 440px;
+  margin: 0 auto 22px;
+  line-height: 1.55;
+}
+
+.empty-actions-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.empty-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 11px 22px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  text-decoration: none;
+}
+
+.empty-btn-primary i {
+  font-size: 15px !important;
+  color: #ffffff !important;
+  margin: 0 !important;
+  display: inline-block !important;
+  line-height: 1 !important;
+}
+
+.empty-btn-primary:hover {
+  background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
+  box-shadow: 0 6px 18px rgba(5, 150, 105, 0.35) !important;
+  transform: translateY(-1.5px);
+}
+
+.empty-btn-primary:active {
+  transform: translateY(0);
+}
+
+.empty-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #ffffff !important;
+  color: #1e293b !important;
+  border: 1.5px solid #cbd5e1 !important;
+  border-radius: 10px !important;
+  padding: 11px 22px !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  text-decoration: none;
+}
+
+.empty-btn-secondary i {
+  font-size: 15px !important;
+  color: #059669 !important;
+  margin: 0 !important;
+  display: inline-block !important;
+  line-height: 1 !important;
+  transition: transform 0.2s ease;
+}
+
+.empty-btn-secondary:hover {
+  background: #f8fafc !important;
+  border-color: #10b981 !important;
+  color: #047857 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1.5px);
+}
+
+.empty-btn-secondary:hover i {
+  transform: rotate(15deg);
+}
+
+.empty-btn-secondary:active {
+  transform: translateY(0);
 }
 
 /* MODAL TẠO BÀI VIẾT (UC26) */

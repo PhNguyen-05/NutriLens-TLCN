@@ -881,7 +881,7 @@ export default function CommunityPage() {
       // Ngoại lệ 2a / 3a: Bài đăng không còn tồn tại
       // Ngoại lệ 3b / 4b: Không thể cập nhật trạng thái thích do lỗi hệ thống
       const errorMsg =
-        err.response?.data?.message || 'Không thể cập nhật trạng thái thích, vui lòng thử lại'
+        err.response?.data?.message || 'Không thể cập nhật trạng thái thả tim, vui lòng thử lại'
       setFeedbackError(errorMsg)
 
       if (err.response?.status === 404) {
@@ -1500,10 +1500,10 @@ export default function CommunityPage() {
                 </button>
                 <div
                   className="user-card-stat-item"
-                  title="Tổng số lượt thích bạn nhận được trên tất cả bài viết"
+                  title="Tổng số lượt tim bạn nhận được trên tất cả bài viết"
                 >
                   <strong>{myStats.totalLikes}</strong>
-                  <span>Lượt thích</span>
+                  <span>Lượt tim</span>
                 </div>
               </div>
 
@@ -1680,7 +1680,7 @@ export default function CommunityPage() {
                     <h4>Bài viết cá nhân của bạn</h4>
                     <p>
                       Bạn đã đăng <strong>{myStats.postsCount} bài viết</strong> và nhận được{' '}
-                      <strong>{myStats.totalLikes} lượt thích</strong> từ cộng đồng NutriLens.
+                      <strong>{myStats.totalLikes} lượt tim</strong> từ cộng đồng NutriLens.
                     </p>
                   </div>
                 </div>
@@ -1723,7 +1723,7 @@ export default function CommunityPage() {
                         <i className="bi bi-journal-text" /> <strong>{viewedAuthor.postsCount ?? posts.length}</strong> bài viết
                       </span>
                       <span>
-                        <i className="bi bi-heart-fill" style={{ color: '#ef4444' }} /> <strong>{viewedAuthor.totalLikes ?? 0}</strong> lượt thích
+                        <i className="bi bi-heart-fill" style={{ color: '#ef4444' }} /> <strong>{viewedAuthor.totalLikes ?? 0}</strong> tim
                       </span>
                     </p>
                   </div>
@@ -1868,7 +1868,9 @@ export default function CommunityPage() {
               <div className="community-card empty-feed-card">
                 {activeSearch || selectedTag !== 'Tất cả' ? (
                   <>
-                    <i className="bi bi-search" style={{ fontSize: '42px', color: '#94a3b8', marginBottom: '12px', display: 'inline-block' }} />
+                    <div className="empty-feed-icon-badge muted">
+                      <i className="bi bi-search" />
+                    </div>
                     {/* UC29 Ngoại lệ 4b / 5b: Không tìm thấy bài đăng phù hợp */}
                     <h3>Không tìm thấy kết quả phù hợp</h3>
                     <p>
@@ -1877,14 +1879,14 @@ export default function CommunityPage() {
                     <div className="empty-actions-wrap">
                       <button
                         type="button"
-                        className="community-btn-secondary"
+                        className="empty-btn-secondary"
                         onClick={handleResetAllFilters}
                       >
                         <i className="bi bi-arrow-counterclockwise" /> Xóa bộ lọc &amp; Tải lại
                       </button>
                       <button
                         type="button"
-                        className="community-btn-primary"
+                        className="empty-btn-primary"
                         onClick={() => handleOpenCreateModal(selectedTag !== 'Tất cả' ? selectedTag : 'Chia sẻ chung')}
                       >
                         <i className="bi bi-pencil-square" /> Tạo bài viết mới
@@ -1893,10 +1895,9 @@ export default function CommunityPage() {
                   </>
                 ) : feedMode === 'author' && viewedAuthor ? (
                   <>
-                    <i
-                      className="bi bi-person-x"
-                      style={{ fontSize: '46px', color: '#94a3b8', marginBottom: '12px', display: 'inline-block' }}
-                    />
+                    <div className="empty-feed-icon-badge muted">
+                      <i className="bi bi-person-x" />
+                    </div>
                     <h3>{viewedAuthor.fullName || 'Thành viên'} chưa có bài viết nào</h3>
                     <p>
                       Thành viên này hiện chưa đăng tải bài viết hoặc công thức nào lên cộng đồng NutriLens.
@@ -1904,19 +1905,18 @@ export default function CommunityPage() {
                     <div className="empty-actions-wrap">
                       <button
                         type="button"
-                        className="community-btn-primary"
+                        className="empty-btn-primary"
                         onClick={() => handleSwitchFeedMode('all')}
                       >
-                        <i className="bi bi-globe2" /> Quay lại Bảng tin chung
+                        <i className="bi bi-compass" /> Quay lại Bảng tin chung
                       </button>
                     </div>
                   </>
                 ) : feedMode === 'mine' ? (
                   <>
-                    <i
-                      className="bi bi-journal-plus"
-                      style={{ fontSize: '46px', color: '#059669', marginBottom: '12px', display: 'inline-block' }}
-                    />
+                    <div className="empty-feed-icon-badge success">
+                      <i className="bi bi-journal-plus" />
+                    </div>
                     <h3>Bạn chưa đăng bài viết nào</h3>
                     <p>
                       Hãy chia sẻ công thức ăn uống lành mạnh, thực đơn calo hoặc hành trình tập luyện đầu tiên của bạn với cộng đồng!
@@ -1924,34 +1924,38 @@ export default function CommunityPage() {
                     <div className="empty-actions-wrap">
                       <button
                         type="button"
-                        className="community-btn-primary"
+                        className="empty-btn-primary"
                         onClick={() => handleOpenCreateModal('Chia sẻ chung')}
                       >
                         <i className="bi bi-pencil-square" /> Tạo bài viết đầu tiên ngay
                       </button>
                       <button
                         type="button"
-                        className="community-btn-secondary"
+                        className="empty-btn-secondary"
                         onClick={() => handleSwitchFeedMode('all')}
                       >
-                        <i className="bi bi-globe2" /> Khám phá bảng tin chung
+                        <i className="bi bi-compass" /> Khám phá bảng tin chung
                       </button>
                     </div>
                   </>
                 ) : (
                   <>
-                    <i className="bi bi-chat-heart" />
+                    <div className="empty-feed-icon-badge success">
+                      <i className="bi bi-chat-heart" />
+                    </div>
                     <h3>Chưa có bài viết nào</h3>
                     <p>
                       Hãy là người đầu tiên chia sẻ công thức món ăn hoặc kinh nghiệm dinh dưỡng hôm nay!
                     </p>
-                    <button
-                      type="button"
-                      className="community-btn-primary"
-                      onClick={() => handleOpenCreateModal('Chia sẻ chung')}
-                    >
-                      <i className="bi bi-pencil-square" /> Đăng bài ngay
-                    </button>
+                    <div className="empty-actions-wrap">
+                      <button
+                        type="button"
+                        className="empty-btn-primary"
+                        onClick={() => handleOpenCreateModal('Chia sẻ chung')}
+                      >
+                        <i className="bi bi-pencil-square" /> Đăng bài ngay
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
@@ -2160,7 +2164,7 @@ export default function CommunityPage() {
                       {/* THỐNG KÊ TƯƠNG TÁC */}
                       <div className="post-stats-row">
                         <span className="stats-likes">
-                          <i className="bi bi-hand-thumbs-up-fill" /> {post.likeCount || 0} lượt thích
+                          <i className="bi bi-heart-fill" style={{ color: '#ef4444' }} /> {post.likeCount || 0} tim
                         </span>
                         <span
                           className="stats-comments"
@@ -2177,8 +2181,8 @@ export default function CommunityPage() {
                           className={`post-footer-btn ${isPostLiked ? 'active-like' : ''}`}
                           onClick={() => handleToggleLike(post._id)}
                         >
-                          <i className={`bi ${isPostLiked ? 'bi-hand-thumbs-up-fill' : 'bi-hand-thumbs-up'}`} />
-                          <span>{isPostLiked ? 'Đã thích' : 'Thích'}</span>
+                          <i className={`bi ${isPostLiked ? 'bi-heart-fill' : 'bi-heart'}`} />
+                          <span>{isPostLiked ? 'Đã thả tim' : 'Thả tim'}</span>
                         </button>
 
                         <button
@@ -2561,9 +2565,9 @@ export default function CommunityPage() {
                       )}
                       <span>{trendingRecipe.authorId?.fullName || 'Thành viên'}</span>
                     </div>
-                    <span className="trending-recipe-likes">
+                    <span className="trending-recipe-likes" title={`${trendingRecipe.likeCount || (trendingRecipe.likes ? trendingRecipe.likes.length : 0)} tim`}>
                       <i className="bi bi-heart-fill" />{' '}
-                      {trendingRecipe.likeCount || (trendingRecipe.likes ? trendingRecipe.likes.length : 0)}
+                      {trendingRecipe.likeCount || (trendingRecipe.likes ? trendingRecipe.likes.length : 0)} tim
                     </span>
                   </div>
                 </div>
