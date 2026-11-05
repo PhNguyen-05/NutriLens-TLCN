@@ -205,21 +205,21 @@ async function listExercises(req, res) {
       });
     }
 
-    // Thiết lập sắp xếp
-    let sortOptions = { createdAt: -1 };
+    // Thiết lập sắp xếp (kèm tie-breaker _id để đảm bảo thứ tự phân trang ổn định tuyệt đối, không trùng lặp bản ghi giữa các trang)
+    let sortOptions = { createdAt: -1, _id: -1 };
     let useCollation = false;
     if (sort === 'oldest') {
-      sortOptions = { createdAt: 1 };
+      sortOptions = { createdAt: 1, _id: 1 };
     } else if (sort === 'name_asc' || sort === 'a-z') {
-      sortOptions = { name: 1 };
+      sortOptions = { name: 1, _id: 1 };
       useCollation = true;
     } else if (sort === 'name_desc' || sort === 'z-a') {
-      sortOptions = { name: -1 };
+      sortOptions = { name: -1, _id: -1 };
       useCollation = true;
     } else if (sort === 'met_desc') {
-      sortOptions = { met: -1, name: 1 };
+      sortOptions = { met: -1, name: 1, _id: 1 };
     } else if (sort === 'met_asc') {
-      sortOptions = { met: 1, name: 1 };
+      sortOptions = { met: 1, name: 1, _id: 1 };
     }
 
     const pagination = normalizePagination(page, limit);
@@ -303,7 +303,7 @@ async function getExerciseDetail(req, res) {
     const [logCount, recentLogs] = await Promise.all([
       ExerciseLog.countDocuments({ exerciseId: exercise._id }),
       ExerciseLog.find({ exerciseId: exercise._id })
-        .sort({ date: -1, createdAt: -1 })
+        .sort({ date: -1, createdAt: -1, _id: -1 })
         .limit(5)
         .populate('userId', 'fullName email')
         .lean(),

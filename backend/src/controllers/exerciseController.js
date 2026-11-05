@@ -534,7 +534,7 @@ async function getExercises(req, res) {
     }
 
     const filter = conditions.length > 1 ? { $and: conditions } : conditions[0];
-    const exercises = await Exercise.find(filter).sort({ isCustom: -1, category: 1, name: 1 }).lean();
+    const exercises = await Exercise.find(filter).sort({ isCustom: -1, category: 1, name: 1, _id: 1 }).lean();
     return res.status(200).json({ exercises });
   } catch (err) {
     console.error('[getExercises] Lỗi:', err.message);
