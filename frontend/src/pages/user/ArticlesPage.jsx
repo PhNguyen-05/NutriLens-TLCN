@@ -1,10 +1,8 @@
+import UserHeader from '../../components/common/UserHeader'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
-import FoodNavMenu from '../../components/common/FoodNavMenu'
-import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
-import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
 
 const PAGE_SIZE = 7
@@ -76,29 +74,7 @@ function ArticleCover({ article, className = '' }) {
   return <div className={`ua-cover ${className}`}><img src={imageUrl} alt={article?.title ? `Ảnh minh họa ${article.title}` : ''} onError={() => setImageFailed(true)} /></div>
 }
 
-function UserHeader({ user, onLogout, isActive = false }) {
-  const navigate = useNavigate()
-  const [profileOpen, setProfileOpen] = useState(false)
-  const firstName = user?.fullName?.split(' ')[0] || 'bạn'
 
-  return (
-    <header className="dashboard-header ua-header">
-      <Link className="dashboard-logo" to="/dashboard"><span><i className="bi bi-leaf-fill" /></span>NutriLens</Link>
-      <nav className="dashboard-nav" aria-label="Điều hướng chính">
-        <Link to="/dashboard">Tổng quan</Link>
-        <FoodNavMenu />
-        <ExerciseNavMenu />
-        <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-        <Link to="/community">Cộng đồng</Link>
-        <Link className={isActive ? 'active' : ''} to="/articles">Bài viết &amp; Mẹo</Link>
-      </nav>
-      <div className="dashboard-actions">
-        <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
-        <UserNavMenu />
-      </div>
-    </header>
-  )
-}
 
 export default function ArticlesPage({ favoritesOnly = false }) {
   const { user, accessToken, handleLogout } = useAuth()
