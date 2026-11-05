@@ -8,6 +8,7 @@ import DashboardPage from './pages/user/DashboardPage'
 import ArticlesPage, { ArticleDetailPage } from './pages/user/ArticlesPage'
 import HealthProfilePage from './pages/user/HealthProfilePage'
 import WeightTrackerPage from './pages/user/WeightTrackerPage'
+import AnalyticsTrendsPage from './pages/user/AnalyticsTrendsPage'
 import FoodScanPage from './pages/user/FoodScanPage'
 import MealDiaryPage from './pages/user/MealDiaryPage'
 import ExercisePage from './pages/user/ExercisePage'
@@ -104,6 +105,18 @@ export default function App() {
       <Route
         path="/profile"
         element={<PrivateRoute><HealthProfilePage /></PrivateRoute>}
+      />
+      <Route
+        path="/trends"
+        element={<PrivateRoute><AnalyticsTrendsPage /></PrivateRoute>}
+      />
+      <Route
+        path="/analytics"
+        element={<Navigate to="/trends" replace />}
+      />
+      <Route
+        path="/stats"
+        element={<Navigate to="/trends" replace />}
       />
       <Route
         path="/weight-tracker"

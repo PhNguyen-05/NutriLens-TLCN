@@ -1,10 +1,8 @@
+import UserHeader from '../../components/common/UserHeader'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
-import FoodNavMenu from '../../components/common/FoodNavMenu'
-import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
-import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
 
 const EXERCISE_FALLBACK_IMAGES = {
@@ -586,25 +584,7 @@ export default function ExercisePage() {
       )}
 
       {/* ── Header (đồng bộ với MealDiaryPage) ── */}
-      <header className="dashboard-header">
-        <Link className="dashboard-logo" to="/dashboard">
-          <span><i className="bi bi-leaf-fill" /></span>NutriLens
-        </Link>
-        <nav className="dashboard-nav" aria-label="Điều hướng chính">
-          <Link to="/dashboard">Tổng quan</Link>
-          <FoodNavMenu />
-          <ExerciseNavMenu />
-          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-          <Link to="/community">Cộng đồng</Link>
-          <Link to="/articles">Bài viết &amp; Mẹo</Link>
-        </nav>
-        <div className="dashboard-actions">
-          <button className="foodscan-bell" type="button" aria-label="Thông báo">
-            <i className="bi bi-bell" />
-          </button>
-          <UserNavMenu />
-        </div>
-      </header>
+      <UserHeader />
 
       <main className="ex-main">
 

@@ -1166,8 +1166,504 @@ async function getDashboardStats(req, res) {
     return res.status(500).json({ message: 'Không thể tải thống kê bảng điều khiển' });
   }
 }
+
+/**
+ * Lấy toàn bộ số liệu chỉ số & xu hướng thống kê cá nhân hóa của người dùng (UC Analytics & Trends)
+ * Hỗ trợ các chu kỳ: 7d, 14d, 30d, 90d
+ */
+async function getUserAnalytics(req, res) {
+  try {
+    const userId = req.user.id;
+    const now = new Date();
+    const todayVietnam = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+    const period = (req.query.period || '7d').toLowerCase();
+    let numDays = 7;
+    if (period === '14d') numDays = 14;
+    else if (period === '30d') numDays = 30;
+    else if (period === '90d') numDays = 90;
+
+    let endStr = (req.query.endDate && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endDate))
+      ? req.query.endDate
+      : todayVietnam;
+
+    // Tính danh sách ngày từ (endStr - numDays + 1) đến endStr
+    const [ey, em, ed] = endStr.split('-').map(Number);
+    const dateList = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date(ey, em - 1, ed - i);
+      const yStr = d.getFullYear();
+      const mStr = String(d.getMonth() + 1).padStart(2, '0');
+      const dStr = String(d.getDate()).padStart(2, '0');
+      dateList.push(`${yStr}-${mStr}-${dStr}`);
+    }
+    const startStr = dateList[0];
+
+    // Lấy song song dữ liệu user, profile, mealLogs, exerciseLogs và weightLogs
+    const [user, profile, mealLogs, exerciseLogs, allWeightLogs] = await Promise.all([
+      User.findById(userId).select('fullName email avatarUrl gender dateOfBirth').lean(),
+      UserProfile.findOne({ user: userId }).lean(),
+      MealLog.find({ userId, date: { $in: dateList } }).lean(),
+      ExerciseLog.find({ userId, date: { $in: dateList } }).lean(),
+      WeightLog.find({ user: userId }).sort({ recordedDate: 1 }).lean(),
+    ]);
+
+    // Mục tiêu calo & macro
+    const calorieTarget = profile?.nutritionGoal?.calorieTarget || profile?.healthMetrics?.tdee || 2000;
+    const bmr = profile?.healthMetrics?.bmr || 1500;
+    const tdee = profile?.healthMetrics?.tdee || 2000;
+    const proteinTarget = profile?.nutritionGoal?.proteinG || Math.round((calorieTarget * 0.25) / 4) || 125;
+    const carbsTarget = profile?.nutritionGoal?.carbsG || Math.round((calorieTarget * 0.50) / 4) || 250;
+    const fatTarget = profile?.nutritionGoal?.fatG || Math.round((calorieTarget * 0.25) / 9) || 55;
+    const targetWeightKg = profile?.targetWeightKg || null;
+    const initialWeightKg = profile?.currentWeightKg || (allWeightLogs[0]?.weightKg ?? 60);
+
+    // Map weight logs theo 'YYYY-MM-DD'
+    const weightMap = new Map();
+    allWeightLogs.forEach((log) => {
+      if (log.recordedDate) {
+        const dStr = new Date(log.recordedDate).toISOString().slice(0, 10);
+        weightMap.set(dStr, log.weightKg);
+      }
+    });
+
+    const dayLabelsMap = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+
+    let totalCaloriesIn = 0;
+    let totalCaloriesBurned = 0;
+    let totalExerciseMinutes = 0;
+    let totalWorkouts = 0;
+    let totalProtein = 0;
+    let totalCarbs = 0;
+    let totalFat = 0;
+    let totalFiber = 0;
+    let totalSodium = 0;
+
+    const mealCategoryCount = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+    const mealCategoryCalories = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+    const workoutCategoryMap = {};
+    const exerciseStatsMap = {};
+    const foodFrequencyMap = {};
+
+    let daysWithMeals = 0;
+    let daysWithExercises = 0;
+    let daysLogged = 0;
+    let daysMeetingCalorieGoal = 0;
+
+    const dailyData = dateList.map((dStr) => {
+      const [y, m, d] = dStr.split('-').map(Number);
+      const dObj = new Date(y, m - 1, d);
+      const dayOfWeekIdx = dObj.getDay();
+      const dayLabel = dayLabelsMap[dayOfWeekIdx];
+
+      const dayMeals = mealLogs.filter((item) => item.date === dStr);
+      const dayExercises = exerciseLogs.filter((item) => item.date === dStr);
+
+      let dayCalIn = 0;
+      let dayProtein = 0;
+      let dayCarbs = 0;
+      let dayFat = 0;
+      let dayFiber = 0;
+      let daySodium = 0;
+      const dayMealTypes = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
+
+      dayMeals.forEach((item) => {
+        const s = item.servings || 1;
+        const cal = Math.round((item.nutrition?.calories || 0) * s);
+        const pro = (item.nutrition?.protein || 0) * s;
+        const carb = (item.nutrition?.carbs || 0) * s;
+        const fat = (item.nutrition?.fat || 0) * s;
+        const fib = (item.nutrition?.fiber || 0) * s;
+        const sod = (item.nutrition?.sodium || 0) * s;
+
+        dayCalIn += cal;
+        dayProtein += pro;
+        dayCarbs += carb;
+        dayFat += fat;
+        dayFiber += fib;
+        daySodium += sod;
+
+        const mType = (item.mealType && mealCategoryCalories[item.mealType] !== undefined)
+          ? item.mealType
+          : 'lunch';
+        dayMealTypes[mType] += cal;
+        mealCategoryCalories[mType] += cal;
+        mealCategoryCount[mType] += 1;
+
+        const fKey = item.foodName || 'Món ăn';
+        if (!foodFrequencyMap[fKey]) {
+          foodFrequencyMap[fKey] = { name: fKey, count: 0, calories: 0, imageUrl: item.imageUrl };
+        }
+        foodFrequencyMap[fKey].count += 1;
+        foodFrequencyMap[fKey].calories += cal;
+      });
+
+      let dayCalBurned = 0;
+      let dayMinutes = 0;
+
+      dayExercises.forEach((ex) => {
+        const burned = ex.caloriesBurned || 0;
+        const mins = ex.durationMinutes || 0;
+        dayCalBurned += burned;
+        dayMinutes += mins;
+
+        const cat = ex.category || 'other';
+        if (!workoutCategoryMap[cat]) {
+          workoutCategoryMap[cat] = { category: cat, minutes: 0, calories: 0, count: 0 };
+        }
+        workoutCategoryMap[cat].minutes += mins;
+        workoutCategoryMap[cat].calories += burned;
+        workoutCategoryMap[cat].count += 1;
+
+        const exName = ex.exerciseName || 'Bài tập';
+        if (!exerciseStatsMap[exName]) {
+          exerciseStatsMap[exName] = { name: exName, count: 0, minutes: 0, calories: 0, category: cat };
+        }
+        exerciseStatsMap[exName].count += 1;
+        exerciseStatsMap[exName].minutes += mins;
+        exerciseStatsMap[exName].calories += burned;
+      });
+
+      const hasDayMeal = dayMeals.length > 0;
+      const hasDayEx = dayExercises.length > 0;
+      const dayWeight = weightMap.has(dStr) ? weightMap.get(dStr) : null;
+      const hasAnyData = hasDayMeal || hasDayEx || dayWeight !== null;
+
+      if (hasDayMeal) daysWithMeals++;
+      if (hasDayEx) daysWithExercises++;
+      if (hasAnyData) daysLogged++;
+
+      totalCaloriesIn += dayCalIn;
+      totalCaloriesBurned += dayCalBurned;
+      totalExerciseMinutes += dayMinutes;
+      totalWorkouts += dayExercises.length;
+      totalProtein += dayProtein;
+      totalCarbs += dayCarbs;
+      totalFat += dayFat;
+      totalFiber += dayFiber;
+      totalSodium += daySodium;
+
+      const netCalories = dayCalIn - dayCalBurned;
+      const deficit = netCalories - calorieTarget;
+
+      if (hasDayMeal && Math.abs(deficit) <= 250) {
+        daysMeetingCalorieGoal++;
+      }
+
+      return {
+        date: dStr,
+        dayLabel,
+        dayOfWeek: dayOfWeekIdx,
+        formattedDate: `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`,
+        caloriesIn: dayCalIn,
+        caloriesBurned: dayCalBurned,
+        netCalories,
+        calorieTarget,
+        deficit,
+        exerciseMinutes: dayMinutes,
+        mealCount: dayMeals.length,
+        workoutCount: dayExercises.length,
+        protein: Math.round(dayProtein * 10) / 10,
+        carbs: Math.round(dayCarbs * 10) / 10,
+        fat: Math.round(dayFat * 10) / 10,
+        fiber: Math.round(dayFiber * 10) / 10,
+        sodium: Math.round(daySodium * 10) / 10,
+        mealBreakdown: dayMealTypes,
+        weightKg: dayWeight,
+        hasData: hasAnyData,
+        isToday: dStr === todayVietnam,
+      };
+    });
+
+    // Tính streak hiện tại
+    const streakMeals = await MealLog.find({ userId }).select('date').lean();
+    const streakExercises = await ExerciseLog.find({ userId }).select('date').lean();
+    const allLoggedDates = new Set([
+      ...streakMeals.map((item) => item.date),
+      ...streakExercises.map((item) => item.date),
+      ...Array.from(weightMap.keys()),
+    ]);
+
+    let streak = 0;
+    const offset = allLoggedDates.has(todayVietnam) ? 0 : 1;
+    for (let i = offset; i < 365; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+      if (allLoggedDates.has(dStr)) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    const activeLoggingDays = Math.max(1, daysLogged);
+    const avgCaloriesIn = Math.round(totalCaloriesIn / activeLoggingDays);
+    const avgCaloriesBurned = Math.round(totalCaloriesBurned / activeLoggingDays);
+    const avgNetCalories = avgCaloriesIn - avgCaloriesBurned;
+    const avgDeficit = avgNetCalories - calorieTarget;
+
+    const avgProtein = Math.round((totalProtein / activeLoggingDays) * 10) / 10;
+    const avgCarbs = Math.round((totalCarbs / activeLoggingDays) * 10) / 10;
+    const avgFat = Math.round((totalFat / activeLoggingDays) * 10) / 10;
+    const avgFiber = Math.round((totalFiber / activeLoggingDays) * 10) / 10;
+    const avgSodium = Math.round(totalSodium / activeLoggingDays);
+
+    const macroProCal = avgProtein * 4;
+    const macroCarbCal = avgCarbs * 4;
+    const macroFatCal = avgFat * 9;
+    const totalMacroCal = (macroProCal + macroCarbCal + macroFatCal) || 1;
+    const actualProteinPct = Math.round((macroProCal / totalMacroCal) * 100);
+    const actualCarbsPct = Math.round((macroCarbCal / totalMacroCal) * 100);
+    const actualFatPct = Math.max(0, 100 - actualProteinPct - actualCarbsPct);
+
+    const targetProteinPct = profile?.nutritionGoal?.macroPercentages?.protein || 25;
+    const targetCarbsPct = profile?.nutritionGoal?.macroPercentages?.carbs || 50;
+    const targetFatPct = profile?.nutritionGoal?.macroPercentages?.fat || 25;
+
+    const totalDeficitKcal = (calorieTarget * activeLoggingDays) - (totalCaloriesIn - totalCaloriesBurned);
+    const projectedWeightChangeKg = Number((-totalDeficitKcal / 7700).toFixed(2));
+
+    const validWeightsInPeriod = dailyData.filter((d) => d.weightKg !== null).map((d) => d.weightKg);
+    const latestWeight = allWeightLogs.length ? allWeightLogs[allWeightLogs.length - 1].weightKg : (profile?.currentWeightKg || 60);
+    const firstWeightOfPeriod = validWeightsInPeriod.length > 0 ? validWeightsInPeriod[0] : (allWeightLogs[0]?.weightKg || latestWeight);
+    const actualWeightChangeInPeriod = Number((latestWeight - firstWeightOfPeriod).toFixed(1));
+
+    const heightM = (profile?.heightCm || 170) / 100;
+    const currentBmi = Number((latestWeight / (heightM * heightM)).toFixed(1));
+    let bmiCategory = 'Bình thường';
+    if (currentBmi < 18.5) bmiCategory = 'Thiếu cân';
+    else if (currentBmi >= 25) bmiCategory = 'Béo phì';
+    else if (currentBmi >= 23) bmiCategory = 'Thừa cân';
+
+    const minHealthyWeight = Number((18.5 * heightM * heightM).toFixed(1));
+    const maxHealthyWeight = Number((22.9 * heightM * heightM).toFixed(1));
+
+    // Thống kê theo thứ trong tuần
+    const dowStats = dayLabelsMap.map((label, idx) => {
+      const daysOfThisDow = dailyData.filter((d) => d.dayOfWeek === idx);
+      const withMeals = daysOfThisDow.filter((d) => d.caloriesIn > 0);
+      const withEx = daysOfThisDow.filter((d) => d.caloriesBurned > 0);
+      const avgIn = withMeals.length ? Math.round(withMeals.reduce((s, d) => s + d.caloriesIn, 0) / withMeals.length) : 0;
+      const avgOut = withEx.length ? Math.round(withEx.reduce((s, d) => s + d.caloriesBurned, 0) / withEx.length) : 0;
+      return {
+        dayLabel: label,
+        dayOfWeek: idx,
+        avgCaloriesIn: avgIn,
+        avgCaloriesBurned: avgOut,
+        count: daysOfThisDow.length,
+      };
+    });
+
+    const sortedDowStats = [
+      dowStats[1], dowStats[2], dowStats[3], dowStats[4], dowStats[5], dowStats[6], dowStats[0],
+    ];
+
+    const topFoods = Object.values(foodFrequencyMap)
+      .sort((a, b) => b.calories - a.calories)
+      .slice(0, 5);
+
+    const topExercises = Object.values(exerciseStatsMap)
+      .sort((a, b) => b.calories - a.calories)
+      .slice(0, 5);
+
+    const workoutCategories = Object.values(workoutCategoryMap).map((cat) => ({
+      ...cat,
+      percent: totalCaloriesBurned > 0 ? Math.round((cat.calories / totalCaloriesBurned) * 100) : 0,
+    }));
+
+    const totalMealCal = (mealCategoryCalories.breakfast + mealCategoryCalories.lunch + mealCategoryCalories.dinner + mealCategoryCalories.snack) || 1;
+    const mealBreakdownSummary = {
+      breakfast: { calories: mealCategoryCalories.breakfast, count: mealCategoryCount.breakfast, percent: Math.round((mealCategoryCalories.breakfast / totalMealCal) * 100) },
+      lunch: { calories: mealCategoryCalories.lunch, count: mealCategoryCount.lunch, percent: Math.round((mealCategoryCalories.lunch / totalMealCal) * 100) },
+      dinner: { calories: mealCategoryCalories.dinner, count: mealCategoryCount.dinner, percent: Math.round((mealCategoryCalories.dinner / totalMealCal) * 100) },
+      snack: { calories: mealCategoryCalories.snack, count: mealCategoryCount.snack, percent: Math.round((mealCategoryCalories.snack / totalMealCal) * 100) },
+    };
+
+    const smartInsights = [];
+
+    if (daysLogged === 0) {
+      smartInsights.push({
+        type: 'info',
+        icon: 'bi-info-circle',
+        title: 'Chưa có dữ liệu ghi nhận trong kỳ',
+        message: 'Hãy bắt đầu quét món ăn bằng AI và ghi lại các bài tập mỗi ngày để NutriLens tự động phân tích biểu đồ xu hướng cho bạn!',
+      });
+    } else {
+      if (avgDeficit < -600) {
+        smartInsights.push({
+          type: 'warning',
+          icon: 'bi-exclamation-triangle-fill',
+          title: 'Thâm hụt calo khá sâu',
+          message: `Mức thâm hụt trung bình của bạn là ${Math.abs(avgDeficit)} kcal/ngày. Thâm hụt quá sâu có thể làm giảm cơ và chậm trao đổi chất. Hãy bổ sung thêm các bữa phụ lành mạnh.`,
+        });
+      } else if (avgDeficit >= -600 && avgDeficit <= -200) {
+        smartInsights.push({
+          type: 'success',
+          icon: 'bi-check-circle-fill',
+          title: 'Tỷ lệ thâm hụt calo lý tưởng',
+          message: `Bạn đang duy trì mức thâm hụt ${Math.abs(avgDeficit)} kcal/ngày. Đây là khoảng tối ưu vàng để giảm mỡ an toàn (dự kiến thâm hụt tương đương ~${Math.abs(projectedWeightChangeKg)} kg mỡ trong kỳ).`,
+        });
+      } else if (avgDeficit > -200 && avgDeficit <= 150) {
+        smartInsights.push({
+          type: 'info',
+          icon: 'bi-shield-check',
+          title: 'Cân bằng năng lượng ổn định',
+          message: `Lượng calo nạp vào xấp xỉ mức tiêu hao (chênh lệch ${avgDeficit > 0 ? '+' : ''}${avgDeficit} kcal). Rất tuyệt vời để duy trì vóc dáng và sức khỏe hiện tại!`,
+        });
+      } else {
+        smartInsights.push({
+          type: 'tip',
+          icon: 'bi-lightning-charge-fill',
+          title: 'Thặng dư calo nhẹ',
+          message: `Calo nạp vào trung bình cao hơn tiêu hao +${avgDeficit} kcal/ngày. Nếu mục tiêu là tăng cân/tăng cơ nạc thì đây là xu hướng tốt, nếu muốn giảm cân hãy giảm bớt khẩu phần tinh bột hoặc ăn vặt.`,
+        });
+      }
+
+      if (avgProtein >= proteinTarget * 0.9) {
+        smartInsights.push({
+          type: 'success',
+          icon: 'bi-trophy-fill',
+          title: 'Nạp đạm (Protein) xuất sắc',
+          message: `Lượng đạm trung bình đạt ${avgProtein}g/ngày (~${Math.round((avgProtein / proteinTarget) * 100)}% mục tiêu). Điều này giúp bảo vệ cơ bắp tối đa và tăng cảm giác no lâu.`,
+        });
+      } else {
+        smartInsights.push({
+          type: 'tip',
+          icon: 'bi-egg-fried',
+          title: 'Cần tăng thêm Protein',
+          message: `Lượng đạm hiện tại (${avgProtein}g/ngày) mới đạt ${Math.round((avgProtein / proteinTarget) * 100)}% mục tiêu (${proteinTarget}g). Hãy thêm ức gà, cá, trứng, sữa hạt hoặc đậu phụ vào khẩu phần nhé.`,
+        });
+      }
+
+      if (totalWorkouts >= Math.max(1, Math.round(numDays * 0.35))) {
+        smartInsights.push({
+          type: 'success',
+          icon: 'bi-fire',
+          title: 'Tinh thần thể thao tuyệt vời',
+          message: `Bạn đã hoàn thành ${totalWorkouts} buổi tập, đốt cháy tổng cộng ${totalCaloriesBurned.toLocaleString()} kcal (${totalExerciseMinutes} phút). Tiếp tục duy trì phong độ!`,
+        });
+      } else if (totalWorkouts > 0) {
+        smartInsights.push({
+          type: 'info',
+          icon: 'bi-activity',
+          title: 'Duy trì tần suất vận động',
+          message: `Bạn có ${totalWorkouts} buổi tập trong ${numDays} ngày qua. Cố gắng đạt 3-4 buổi/tuần để tối ưu sức bền tim mạch và chỉ số trao đổi chất BMR.`,
+        });
+      }
+
+      const weekendDays = dailyData.filter((d) => d.dayOfWeek === 0 || d.dayOfWeek === 6);
+      const weekdayDays = dailyData.filter((d) => d.dayOfWeek >= 1 && d.dayOfWeek <= 5);
+      const avgWeekendIn = weekendDays.filter(d => d.caloriesIn > 0).length ? Math.round(weekendDays.reduce((s, d) => s + d.caloriesIn, 0) / weekendDays.filter(d => d.caloriesIn > 0).length) : 0;
+      const avgWeekdayIn = weekdayDays.filter(d => d.caloriesIn > 0).length ? Math.round(weekdayDays.reduce((s, d) => s + d.caloriesIn, 0) / weekdayDays.filter(d => d.caloriesIn > 0).length) : 0;
+      if (avgWeekendIn > avgWeekdayIn * 1.15 && avgWeekdayIn > 0) {
+        const diffPercent = Math.round(((avgWeekendIn - avgWeekdayIn) / avgWeekdayIn) * 100);
+        smartInsights.push({
+          type: 'warning',
+          icon: 'bi-calendar-event',
+          title: 'Calo cuối tuần có xu hướng tăng cao',
+          message: `Vào Thứ 7 & Chủ Nhật, bạn nạp calo trung bình cao hơn ngày thường ${diffPercent}%. Hãy chú ý kiểm soát các bữa tiệc ngoài hoặc đồ uống ngọt!`,
+        });
+      }
+    }
+
+    return res.status(200).json({
+      period,
+      numDays,
+      startDate: startStr,
+      endDate: endStr,
+      todayDate: todayVietnam,
+      user: {
+        id: user?._id,
+        fullName: user?.fullName || 'Người dùng',
+        avatarUrl: user?.avatarUrl,
+        gender: user?.gender,
+      },
+      profile: {
+        heightCm: profile?.heightCm || 170,
+        currentWeightKg: latestWeight,
+        targetWeightKg,
+        initialWeightKg,
+        activityLevel: profile?.activityLevel || 'moderate',
+        healthGoal: profile?.healthGoal || 'maintain_weight',
+        bmr,
+        tdee,
+        calorieTarget,
+        proteinTarget,
+        carbsTarget,
+        fatTarget,
+      },
+      kpiSummary: {
+        calorieTarget,
+        totalCaloriesIn,
+        avgCaloriesIn,
+        totalCaloriesBurned,
+        avgCaloriesBurned,
+        totalExerciseMinutes,
+        totalWorkouts,
+        avgNetCalories,
+        avgDeficit,
+        projectedWeightChangeKg,
+        daysLogged,
+        totalDays: numDays,
+        consistencyPercent: Math.round((daysLogged / numDays) * 100),
+        daysMeetingCalorieGoal,
+        streak: Math.max(0, streak),
+      },
+      macroAnalysis: {
+        avgProtein,
+        avgCarbs,
+        avgFat,
+        avgFiber,
+        avgSodium,
+        actualPercentages: {
+          protein: actualProteinPct,
+          carbs: actualCarbsPct,
+          fat: actualFatPct,
+        },
+        targetPercentages: {
+          protein: targetProteinPct,
+          carbs: targetCarbsPct,
+          fat: targetFatPct,
+        },
+        targets: {
+          proteinG: proteinTarget,
+          carbsG: carbsTarget,
+          fatG: fatTarget,
+          fiberG: 28,
+          sodiumMg: 2000,
+        },
+      },
+      weightAnalysis: {
+        currentWeight: latestWeight,
+        initialWeight: firstWeightOfPeriod,
+        targetWeight: targetWeightKg,
+        weightChange: actualWeightChangeInPeriod,
+        bmi: currentBmi,
+        bmiCategory,
+        minHealthyWeight,
+        maxHealthyWeight,
+      },
+      exerciseAnalysis: {
+        categories: workoutCategories,
+        topExercises,
+      },
+      mealAnalysis: {
+        mealBreakdown: mealBreakdownSummary,
+        topFoods,
+      },
+      dayOfWeekAnalysis: sortedDowStats,
+      dailyData,
+      smartInsights,
+    });
+  } catch (err) {
+    console.error('[getUserAnalytics] Lỗi:', err);
+    return res.status(500).json({ message: 'Không thể tải dữ liệu chỉ số & xu hướng thống kê' });
+  }
+}
+
 module.exports = {
-  getProfile,
+getProfile,
   saveProfile,
   updateAvatar,
   getWeightLogs,
@@ -1177,4 +1673,6 @@ module.exports = {
   saveNutritionGoal,
   applyMilestoneWeight,
   getDashboardStats,
+  getUserAnalytics,
 };
+

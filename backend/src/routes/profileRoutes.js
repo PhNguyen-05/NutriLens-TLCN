@@ -13,6 +13,7 @@ const {
   saveNutritionGoal,
   applyMilestoneWeight,
   getDashboardStats,
+  getUserAnalytics,
 } = require('../controllers/profileController');
 
 const router = express.Router();
@@ -27,6 +28,8 @@ router.use(requireAuth);
 router.get('/', getProfile);
 router.put('/', saveProfile);
 router.get('/dashboard-stats', getDashboardStats);
+router.get('/analytics', getUserAnalytics);
+router.get('/trends', getUserAnalytics);
 router.get('/weight-logs', getWeightLogs);
 router.post('/weight-logs', saveWeightLog);
 router.delete('/weight-logs/:id', deleteWeightLog);

@@ -1,10 +1,8 @@
+import UserHeader from '../../components/common/UserHeader'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
-import FoodNavMenu from '../../components/common/FoodNavMenu'
-import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
-import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
 
 function resolveAvatarUrl(value) {
@@ -643,23 +641,7 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-shell">
-      <header className="dashboard-header">
-        <a className="dashboard-logo" href="/dashboard">
-          <span><i className="bi bi-leaf-fill" /></span> NutriLens
-        </a>
-        <nav className="dashboard-nav">
-          <a className="active" href="/dashboard">Tổng quan</a>
-          <FoodNavMenu />
-          <ExerciseNavMenu />
-          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-          <Link to="/community">Cộng đồng</Link>
-          <Link to="/articles">Bài viết &amp; Mẹo</Link>
-        </nav>
-        <div className="dashboard-actions">
-          <i className="bi bi-bell dashboard-bell" />
-          <UserNavMenu />
-        </div>
-      </header>
+      <UserHeader />
 
       <main className="dashboard-main">
         {/* THANH ĐIỀU HƯỚNG NGÀY & MỤC TIÊU */}
@@ -955,9 +937,14 @@ export default function DashboardPage() {
               title="Cân bằng năng lượng tuần: Nạp vào vs Tiêu hao"
               subtitle="Dữ liệu tổng hợp 7 ngày gần nhất giữa bữa ăn và vận động"
               action={
-                <div className="chart-legend">
-                  <span>Nạp vào (kcal)</span>
-                  <span>Tiêu hao (kcal)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <div className="chart-legend">
+                    <span>Nạp vào (kcal)</span>
+                    <span>Tiêu hao (kcal)</span>
+                  </div>
+                  <Link to="/trends" style={{ fontSize: '12px', fontWeight: 600, color: '#059669', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', padding: '4px 10px', borderRadius: '9999px', border: '1px solid #a7f3d0' }}>
+                    Chỉ số &amp; Xu hướng <i className="bi bi-arrow-right" />
+                  </Link>
                 </div>
               }
             />

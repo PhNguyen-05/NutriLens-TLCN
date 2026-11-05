@@ -1,11 +1,9 @@
+import UserHeader from '../../components/common/UserHeader'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import axiosInstance from '../../api/axiosInstance'
 import { userUpdated } from '../../store/slices/authSlice'
-import FoodNavMenu from '../../components/common/FoodNavMenu'
-import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
-import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
 
 const BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '')
@@ -1149,25 +1147,7 @@ export default function HealthProfilePage() {
   if (loading) {
     return (
       <div className="dashboard-shell hp-shell">
-        <header className="dashboard-header">
-          <Link className="dashboard-logo" to="/dashboard">
-            <span><i className="bi bi-leaf-fill" /></span>NutriLens
-          </Link>
-          <nav className="dashboard-nav" aria-label="Điều hướng chính">
-            <Link to="/dashboard">Tổng quan</Link>
-            <FoodNavMenu />
-            <ExerciseNavMenu />
-            <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-            <Link to="/community">Cộng đồng</Link>
-            <Link to="/articles">Bài viết &amp; Mẹo</Link>
-          </nav>
-          <div className="dashboard-actions">
-            <button className="foodscan-bell" type="button" aria-label="Thông báo">
-              <i className="bi bi-bell" />
-            </button>
-            <UserNavMenu />
-          </div>
-        </header>
+        <UserHeader />
 
         <div className="hp-loading">
           <div className="hp-loading__spinner">
@@ -1188,25 +1168,7 @@ export default function HealthProfilePage() {
   return (
     <div className="dashboard-shell hp-shell">
       {/* ── Header chính dùng chung (đồng bộ với Dashboard, FoodScan, MealDiary, Exercise, WeightTracker, Articles) ── */}
-      <header className="dashboard-header">
-        <Link className="dashboard-logo" to="/dashboard">
-          <span><i className="bi bi-leaf-fill" /></span>NutriLens
-        </Link>
-        <nav className="dashboard-nav" aria-label="Điều hướng chính">
-          <Link to="/dashboard">Tổng quan</Link>
-          <FoodNavMenu />
-          <ExerciseNavMenu />
-          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-          <Link to="/community">Cộng đồng</Link>
-          <Link to="/articles">Bài viết &amp; Mẹo</Link>
-        </nav>
-        <div className="dashboard-actions">
-          <button className="foodscan-bell" type="button" aria-label="Thông báo">
-            <i className="bi bi-bell" />
-          </button>
-          <UserNavMenu />
-        </div>
-      </header>
+      <UserHeader />
 
       <main className="hp-main">
         {/* ── Page heading (đồng bộ kích thước, màu sắc & bố cục chuẩn hệ thống) ── */}

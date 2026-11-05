@@ -55,6 +55,11 @@ export default function UserFooter() {
                 </Link>
               </li>
               <li>
+                <Link to="/trends">
+                  <i className="bi bi-bar-chart-line" /> Chỉ số &amp; Xu hướng (Thống kê)
+                </Link>
+              </li>
+              <li>
                 <Link to="/weight-tracker">
                   <i className="bi bi-graph-up-arrow" /> Tiến trình cân nặng
                 </Link>

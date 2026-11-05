@@ -1,0 +1,44 @@
+import { Link, useLocation } from 'react-router-dom'
+import FoodNavMenu from './FoodNavMenu'
+import ExerciseNavMenu from './ExerciseNavMenu'
+import UserNavMenu from './UserNavMenu'
+
+export default function UserHeader() {
+  const { pathname } = useLocation()
+
+  return (
+    <header className="dashboard-header">
+      <Link className="dashboard-logo" to="/dashboard">
+        <span><i className="bi bi-leaf-fill" /></span> NutriLens
+      </Link>
+      <nav className="dashboard-nav" aria-label="Điều hướng chính">
+        <Link className={pathname === '/dashboard' ? 'active' : ''} to="/dashboard">
+          Tổng quan
+        </Link>
+        <FoodNavMenu />
+        <ExerciseNavMenu />
+        <Link
+          className={pathname === '/trends' || pathname === '/analytics' || pathname === '/stats' ? 'active' : ''}
+          to="/trends"
+        >
+          Chỉ số &amp; Xu hướng
+        </Link>
+        <Link className={pathname === '/weight-tracker' ? 'active' : ''} to="/weight-tracker">
+          Tiến trình &amp; Cân nặng
+        </Link>
+        <Link className={pathname === '/community' ? 'active' : ''} to="/community">
+          Cộng đồng
+        </Link>
+        <Link className={pathname.startsWith('/articles') ? 'active' : ''} to="/articles">
+          Bài viết &amp; Mẹo
+        </Link>
+      </nav>
+      <div className="dashboard-actions">
+        <button className="dashboard-bell" type="button" aria-label="Thông báo" title="Thông báo">
+          <i className="bi bi-bell" />
+        </button>
+        <UserNavMenu />
+      </div>
+    </header>
+  )
+}

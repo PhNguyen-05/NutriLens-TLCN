@@ -85,6 +85,17 @@ export default function UserNavMenu() {
           >
             <i className="bi bi-person-gear" /> Hồ sơ cá nhân &amp; Sức khỏe
           </button>
+          <button
+            className="profile-link"
+            onClick={() => {
+              setProfileOpen(false)
+              navigate('/trends')
+            }}
+            role="menuitem"
+            type="button"
+          >
+            <i className="bi bi-graph-up-arrow" /> Chỉ số &amp; Xu hướng
+          </button>
           <div className="profile-dropdown-divider" />
           <button
             className="profile-logout-btn"

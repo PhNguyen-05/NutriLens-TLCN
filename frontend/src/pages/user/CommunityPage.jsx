@@ -1,10 +1,8 @@
+import UserHeader from '../../components/common/UserHeader'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
-import FoodNavMenu from '../../components/common/FoodNavMenu'
-import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
-import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
 
 const COMMUNITY_TAGS = [
@@ -1450,23 +1448,7 @@ export default function CommunityPage() {
   return (
     <div className="dashboard-shell community-shell">
       {/* HEADER NUTRILENS TIÊU CHUẨN */}
-      <header className="dashboard-header">
-        <Link className="dashboard-logo" to="/dashboard">
-          <span><i className="bi bi-leaf-fill" /></span> NutriLens
-        </Link>
-        <nav className="dashboard-nav" aria-label="Điều hướng chính">
-          <Link to="/dashboard">Tổng quan</Link>
-          <FoodNavMenu />
-          <ExerciseNavMenu />
-          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-          <Link className="active" to="/community">Cộng đồng</Link>
-          <Link to="/articles">Bài viết &amp; Mẹo</Link>
-        </nav>
-        <div className="dashboard-actions">
-          <i className="bi bi-bell dashboard-bell" />
-          <UserNavMenu />
-        </div>
-      </header>
+      <UserHeader />
 
       {/* TOAST FEEDBACK FLOATING */}
       {feedbackSuccess && (

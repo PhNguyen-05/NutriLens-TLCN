@@ -3,13 +3,11 @@
  * UC13 — Nhận diện món ăn qua ảnh và thêm vào nhật ký bữa ăn.
  */
 
+import UserHeader from '../../components/common/UserHeader'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import { useAuth } from '../../hooks/useAuth'
-import FoodNavMenu from '../../components/common/FoodNavMenu'
-import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
-import UserNavMenu from '../../components/common/UserNavMenu'
 import UserFooter from '../../components/common/UserFooter'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1228,21 +1226,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
 
   return (
     <div className="dashboard-shell foodscan-shell">
-      <header className="dashboard-header">
-        <Link className="dashboard-logo" to="/dashboard"><span><i className="bi bi-leaf-fill" /></span>NutriLens</Link>
-        <nav className="dashboard-nav" aria-label="Điều hướng chính">
-          <Link to="/dashboard">Tổng quan</Link>
-          <FoodNavMenu />
-          <ExerciseNavMenu />
-          <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-          <Link to="/community">Cộng đồng</Link>
-          <Link to="/articles">Bài viết &amp; Mẹo</Link>
-        </nav>
-        <div className="dashboard-actions">
-          <button className="foodscan-bell" type="button" aria-label="Thông báo"><i className="bi bi-bell" /></button>
-          <UserNavMenu />
-        </div>
-      </header>
+      <UserHeader />
 
       <main className="dashboard-main foodscan-main">
         {requestMode ? requestListMode ? (
