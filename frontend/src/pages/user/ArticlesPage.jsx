@@ -1,6 +1,6 @@
 import UserHeader from '../../components/common/UserHeader'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
 import UserFooter from '../../components/common/UserFooter'
@@ -78,7 +78,9 @@ function ArticleCover({ article, className = '' }) {
 
 export default function ArticlesPage({ favoritesOnly = false }) {
   const { user, accessToken, handleLogout } = useAuth()
+  const location = useLocation()
   const navigate = useNavigate()
+  const [articleLoginNotice, setArticleLoginNotice] = useState(() => Boolean(location.state?.articleLoginRequired))
   const [viewerId] = useState(getBlogViewerId)
   const [articles, setArticles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -90,6 +92,18 @@ export default function ArticlesPage({ favoritesOnly = false }) {
   const [sortOrder, setSortOrder] = useState('newest')
   const [page, setPage] = useState(1)
   const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    if (location.state?.articleLoginRequired) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
+    if (!articleLoginNotice) return undefined
+    const timer = window.setTimeout(() => setArticleLoginNotice(false), 5000)
+    return () => window.clearTimeout(timer)
+  }, [articleLoginNotice])
 
   useEffect(() => {
     let cancelled = false
@@ -169,9 +183,25 @@ export default function ArticlesPage({ favoritesOnly = false }) {
     setPage(1)
   }
 
+  function openArticleDetail(articleId) {
+    if (!user || !accessToken) {
+      setArticleLoginNotice(true)
+      return
+    }
+    navigate(`/articles/${articleId}`)
+  }
+
   return (
     <div className="dashboard-shell ua-shell">
       <UserHeader user={user} onLogout={handleLogout} isActive />
+      {articleLoginNotice && !user && (
+        <div className="ua-article-login-notice" role="status" aria-live="polite">
+          <i className="bi bi-lock-fill" aria-hidden="true" />
+          <span>Bạn cần đăng nhập để xem chi tiết bài viết.</span>
+          <Link to="/login">Đăng nhập</Link>
+          <button type="button" onClick={() => setArticleLoginNotice(false)} aria-label="Đóng thông báo"><i className="bi bi-x-lg" /></button>
+        </div>
+      )}
       <main>
         {favoritesOnly ? <section className="ua-favorites-hero">
           <div className="ua-favorites-hero-inner">
@@ -235,7 +265,7 @@ export default function ArticlesPage({ favoritesOnly = false }) {
                 : loadError ? <div className="ua-state ua-error"><i className="bi bi-exclamation-circle" /><span>{loadError}</span><button type="button" onClick={retryLoading}>Thử lại</button></div>
                   : filteredArticles.length === 0 ? <div className="ua-state ua-empty"><i className="bi bi-journal-x" /><strong>{favoritesOnly ? 'Bạn chưa có bài viết yêu thích' : 'Chưa tìm thấy bài viết phù hợp'}</strong><span>{favoritesOnly ? 'Những bài viết bạn đã yêu thích sẽ xuất hiện tại đây.' : 'Hãy thử đổi từ khóa hoặc xóa bớt bộ lọc.'}</span>{favoritesOnly ? <button type="button" onClick={() => navigate('/articles')}>Xem tất cả bài viết</button> : hasActiveFilters && <button type="button" onClick={clearFilters}>Xóa bộ lọc</button>}</div>
                     : <>
-                      {!favoritesOnly && featuredArticle && <button type="button" className="ua-featured" onClick={() => navigate(`/articles/${featuredArticle._id}`)}>
+                      {!favoritesOnly && featuredArticle && <button type="button" className="ua-featured" onClick={() => openArticleDetail(featuredArticle._id)}>
                         <ArticleCover article={featuredArticle} className="ua-featured-image" />
                         <span className="ua-featured-copy">
                           <span className="ua-featured-label"><i className="bi bi-stars" />Nổi bật</span>
@@ -247,7 +277,7 @@ export default function ArticlesPage({ favoritesOnly = false }) {
                       </button>}
 
                       {articleGridItems.length > 0 && <div className={`ua-article-grid${favoritesOnly ? ' ua-favorites-grid' : ''}`}>
-                        {articleGridItems.map((article) => <button type="button" className="ua-article-card" key={article._id} onClick={() => navigate(`/articles/${article._id}`)}>
+                        {articleGridItems.map((article) => <button type="button" className="ua-article-card" key={article._id} onClick={() => openArticleDetail(article._id)}>
                           <ArticleCover article={article} className="ua-card-image" />
                           <span className="ua-article-card-content">
                             <span className="ua-card-category">{formatCategory(getArticleCategory(article))}</span>

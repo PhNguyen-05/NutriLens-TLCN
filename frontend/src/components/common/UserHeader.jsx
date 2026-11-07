@@ -8,11 +8,11 @@ export default function UserHeader() {
 
   return (
     <header className="dashboard-header">
-      <Link className="dashboard-logo" to="/dashboard">
+      <Link className="dashboard-logo" to="/">
         <span><i className="bi bi-leaf-fill" /></span> NutriLens
       </Link>
       <nav className="dashboard-nav" aria-label="Điều hướng chính">
-        <Link className={pathname === '/dashboard' ? 'active' : ''} to="/dashboard">
+        <Link className={pathname === '/dashboard' || pathname === '/' ? 'active' : ''} to="/">
           Tổng quan
         </Link>
         <FoodNavMenu />

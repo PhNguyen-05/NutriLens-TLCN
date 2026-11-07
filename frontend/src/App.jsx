@@ -14,6 +14,7 @@ import MealDiaryPage from './pages/user/MealDiaryPage'
 import ExercisePage from './pages/user/ExercisePage'
 import CommunityPage from './pages/user/CommunityPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import GuestLandingPage from './pages/guest/GuestLandingPage'
 import { useIdleTimer } from './hooks/useIdleTimer'
 
 function isAdminUser(user) {
@@ -39,6 +40,14 @@ function AdminRoute({ children }) {
   return user && accessToken && isAdminUser(user) ? children : <Navigate to="/dashboard" replace />
 }
 
+function ArticleDetailRoute() {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  if (!user || !accessToken) {
+    return <Navigate to="/articles" replace state={{ articleLoginRequired: true }} />
+  }
+  return isAdminUser(user) ? <Navigate to="/admin" replace /> : <ArticleDetailPage />
+}
+
 /**
  * Route chỉ dành cho user CHƯA đăng nhập (login, register, forgot-password).
  * Redirect về /dashboard nếu đã xác thực, tránh truy cập lại form login khi đang có session.
@@ -46,6 +55,12 @@ function AdminRoute({ children }) {
 function PublicRoute({ children }) {
   const { user, accessToken } = useSelector((state) => state.auth)
   return user && accessToken ? <Navigate to={isAdminUser(user) ? '/admin' : '/dashboard'} replace /> : children
+}
+
+function HomeRoute() {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  if (user && accessToken) return <Navigate to={isAdminUser(user) ? '/admin' : '/dashboard'} replace />
+  return <GuestLandingPage />
 }
 
 // ---------------------------------------------------------------------------
@@ -68,8 +83,8 @@ export default function App() {
     <>
       <ScrollToTop />
       <Routes>
-      {/* Mặc định redirect về trang đăng nhập */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      {/* Trang giới thiệu dành cho khách chưa đăng nhập */}
+      <Route path="/" element={<HomeRoute />} />
 
       {/* Auth (Public) */}
       <Route
@@ -92,7 +107,7 @@ export default function App() {
       />
       <Route
         path="/articles/favorites"
-        element={<ArticlesPage favoritesOnly />}
+        element={<PrivateRoute><ArticlesPage favoritesOnly /></PrivateRoute>}
       />
       <Route
         path="/articles"
@@ -100,7 +115,7 @@ export default function App() {
       />
       <Route
         path="/articles/:articleId"
-        element={<ArticleDetailPage />}
+        element={<ArticleDetailRoute />}
       />
       <Route
         path="/profile"
@@ -156,7 +171,7 @@ export default function App() {
       />
 
       {/* Catch-all */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </>
   )
