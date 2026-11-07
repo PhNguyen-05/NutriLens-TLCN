@@ -7053,11 +7053,11 @@ td.fdm-td-center { text-align: center !important; }
 .ua-favorites-back:hover { border-color: #a8d9c4; background: #f5fbf8; color: #087b5b; }
 .ua-hero { overflow: hidden; border-bottom: 1px solid #e1edf4; background: #edf6fb; }
 .ua-hero-inner { position: relative; display: flex; align-items: center; width: min(1120px, calc(100% - 48px)); min-height: 242px; margin: 0 auto; }
-.ua-hero-copy { position: relative; z-index: 1; width: 100%; padding: 20px 0 23px; }
+.ua-hero-copy { position: relative; z-index: 1; width: 100%; padding: 20px 0 23px; text-align: center; }
 .ua-eyebrow { color: #008e68; font-size: 12px; font-weight: 800; }
 .ua-hero-copy h1 { max-width: none; margin: 6px 0 8px; color: #154b3d; font-size: 28px; line-height: 1.2; white-space: nowrap; }
 .ua-hero-copy p { max-width: none; margin: 0; color: #617b72; font-size: 13px; line-height: 1.65; white-space: nowrap; }
-.ua-search-row { display: flex; width: min(900px, 100%); align-items: center; gap: 10px; margin-top: 14px; }
+.ua-search-row { display: flex; width: min(900px, 100%); align-items: center; gap: 10px; margin: 14px auto 0; }
 .ua-search-form { display: flex; width: auto; min-width: 0; height: 42px; flex: 1; padding: 3px; border: 1px solid #e0ebe5; border-radius: 24px; background: #fff; box-shadow: 0 4px 14px rgba(28, 79, 61, .05); }
 .ua-search-form label { display: flex; min-width: 0; flex: 1; align-items: center; gap: 9px; padding: 0 12px; color: #668177; }
 .ua-search-form label i { flex: 0 0 auto; }

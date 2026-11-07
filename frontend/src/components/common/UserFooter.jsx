@@ -1,6 +1,24 @@
 import { Link } from 'react-router-dom'
 
-export default function UserFooter() {
+function FooterLink({ to, isGuest, requiresLogin = false, onRequireLogin, children }) {
+  if (isGuest && requiresLogin) {
+    return (
+      <a
+        href="#login-required"
+        onClick={(event) => {
+          event.preventDefault()
+          onRequireLogin?.('Bạn cần đăng nhập để sử dụng tính năng dành cho thành viên.')
+        }}
+      >
+        {children}
+      </a>
+    )
+  }
+
+  return <Link to={isGuest && to === '/dashboard' ? '/' : to}>{children}</Link>
+}
+
+export default function UserFooter({ isGuest = false, onRequireLogin }) {
   return (
     <footer className="modern-footer">
       <div className="modern-footer__container">
@@ -8,7 +26,7 @@ export default function UserFooter() {
         <div className="modern-footer__grid">
           {/* CỘT 1: THƯƠNG HIỆU & GIỚI THIỆU */}
           <div className="modern-footer__brand-col">
-            <Link to="/dashboard" className="modern-footer__logo">
+            <Link to={isGuest ? '/' : '/dashboard'} className="modern-footer__logo">
               <span className="modern-footer__logo-icon">
                 <i className="bi bi-leaf-fill" />
               </span>
@@ -35,34 +53,34 @@ export default function UserFooter() {
             <h4 className="modern-footer__title">Tính năng cốt lõi</h4>
             <ul className="modern-footer__list">
               <li>
-                <Link to="/dashboard">
+                <FooterLink to="/dashboard" isGuest={isGuest}>
                   <i className="bi bi-speedometer2" /> Tổng quan dinh dưỡng
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/food-scan">
+                <FooterLink to="/food-scan" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-camera" /> Nhận diện món ăn AI
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/meal-diary">
+                <FooterLink to="/meal-diary" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-journal-text" /> Nhật ký bữa ăn
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/exercise">
+                <FooterLink to="/exercise" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-activity" /> Luyện tập &amp; Vận động
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/trends">
+                <FooterLink to="/trends" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-bar-chart-line" /> Chỉ số &amp; Xu hướng (Thống kê)
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/weight-tracker">
+                <FooterLink to="/weight-tracker" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-graph-up-arrow" /> Tiến trình cân nặng
-                </Link>
+                </FooterLink>
               </li>
             </ul>
           </div>
@@ -72,24 +90,24 @@ export default function UserFooter() {
             <h4 className="modern-footer__title">Khám phá &amp; Kết nối</h4>
             <ul className="modern-footer__list">
               <li>
-                <Link to="/community">
+                <FooterLink to="/community" isGuest={isGuest}>
                   <i className="bi bi-people" /> Cộng đồng NutriLens
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/articles">
+                <FooterLink to="/articles" isGuest={isGuest}>
                   <i className="bi bi-journal-richtext" /> Bài viết &amp; Mẹo sống khỏe
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/profile">
+                <FooterLink to="/profile" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-person-gear" /> Hồ sơ cá nhân &amp; Sức khỏe
-                </Link>
+                </FooterLink>
               </li>
               <li>
-                <Link to="/food-requests">
+                <FooterLink to="/food-requests" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
                   <i className="bi bi-plus-circle" /> Yêu cầu bổ sung món
-                </Link>
+                </FooterLink>
               </li>
             </ul>
           </div>

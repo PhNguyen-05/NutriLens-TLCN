@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
 import UserFooter from '../../components/common/UserFooter'
+import { GuestHeader } from '../guest/GuestLandingPage'
 
 const PAGE_SIZE = 7
 const FAVORITES_PAGE_SIZE = 6
@@ -80,7 +81,9 @@ export default function ArticlesPage({ favoritesOnly = false }) {
   const { user, accessToken, handleLogout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  const [articleLoginNotice, setArticleLoginNotice] = useState(() => Boolean(location.state?.articleLoginRequired))
+  const [articleLoginNotice, setArticleLoginNotice] = useState(() => (
+    location.state?.articleLoginRequired ? 'Bạn cần đăng nhập để xem chi tiết bài viết.' : ''
+  ))
   const [viewerId] = useState(getBlogViewerId)
   const [articles, setArticles] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -101,7 +104,7 @@ export default function ArticlesPage({ favoritesOnly = false }) {
 
   useEffect(() => {
     if (!articleLoginNotice) return undefined
-    const timer = window.setTimeout(() => setArticleLoginNotice(false), 5000)
+    const timer = window.setTimeout(() => setArticleLoginNotice(''), 5000)
     return () => window.clearTimeout(timer)
   }, [articleLoginNotice])
 
@@ -185,7 +188,7 @@ export default function ArticlesPage({ favoritesOnly = false }) {
 
   function openArticleDetail(articleId) {
     if (!user || !accessToken) {
-      setArticleLoginNotice(true)
+      setArticleLoginNotice('Bạn cần đăng nhập để xem chi tiết bài viết.')
       return
     }
     navigate(`/articles/${articleId}`)
@@ -193,13 +196,13 @@ export default function ArticlesPage({ favoritesOnly = false }) {
 
   return (
     <div className="dashboard-shell ua-shell">
-      <UserHeader user={user} onLogout={handleLogout} isActive />
-      {articleLoginNotice && !user && (
+      {user && accessToken ? <UserHeader user={user} onLogout={handleLogout} isActive /> : <GuestHeader activePage="articles" onRequireLogin={setArticleLoginNotice} />}
+      {articleLoginNotice && (!user || !accessToken) && (
         <div className="ua-article-login-notice" role="status" aria-live="polite">
           <i className="bi bi-lock-fill" aria-hidden="true" />
-          <span>Bạn cần đăng nhập để xem chi tiết bài viết.</span>
+          <span>{articleLoginNotice}</span>
           <Link to="/login">Đăng nhập</Link>
-          <button type="button" onClick={() => setArticleLoginNotice(false)} aria-label="Đóng thông báo"><i className="bi bi-x-lg" /></button>
+          <button type="button" onClick={() => setArticleLoginNotice('')} aria-label="Đóng thông báo"><i className="bi bi-x-lg" /></button>
         </div>
       )}
       <main>
@@ -299,7 +302,7 @@ export default function ArticlesPage({ favoritesOnly = false }) {
         </div>
       </main>
 
-      <UserFooter />
+      <UserFooter isGuest={!user || !accessToken} onRequireLogin={setArticleLoginNotice} />
 
     </div>
   )

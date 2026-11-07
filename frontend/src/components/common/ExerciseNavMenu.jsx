@@ -18,7 +18,7 @@ const exerciseMenuItems = [
   },
 ]
 
-export default function ExerciseNavMenu() {
+export default function ExerciseNavMenu({ onRequireLogin }) {
   const { pathname, search } = useLocation()
   const isExercise = pathname === '/exercise'
   const [isOpen, setIsOpen] = useState(false)
@@ -43,6 +43,21 @@ export default function ExerciseNavMenu() {
     }
   }
 
+  const handleProtectedClick = (event) => {
+    if (!onRequireLogin) return
+    event.preventDefault()
+    handleItemClick()
+    onRequireLogin()
+  }
+
+  const handleTriggerClick = (event) => {
+    if (onRequireLogin) {
+      handleProtectedClick(event)
+      return
+    }
+    setIsOpen((prev) => !prev)
+  }
+
   return (
     <div
       ref={menuRef}
@@ -53,7 +68,7 @@ export default function ExerciseNavMenu() {
       <Link
         className={`food-nav-trigger${isExercise ? ' active' : ''}`}
         to="/exercise"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={handleTriggerClick}
       >
         Luyện tập <i className="bi bi-chevron-down" style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.7 }} />
       </Link>
@@ -73,7 +88,7 @@ export default function ExerciseNavMenu() {
               className={`food-nav-dropdown-item${isActive ? ' active' : ''}`}
               key={to}
               to={to}
-              onClick={handleItemClick}
+              onClick={onRequireLogin ? handleProtectedClick : handleItemClick}
             >
               <i className={`bi ${icon}`} aria-hidden="true" />
               <span><strong>{title}</strong><small>{description}</small></span>

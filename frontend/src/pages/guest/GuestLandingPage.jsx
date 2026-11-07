@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
+import UserFooter from '../../components/common/UserFooter'
 import './GuestLandingPage.css'
 
 const topicPreviews = [
@@ -69,7 +70,25 @@ function articleDate(article, preview) {
   return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
 }
 
-function GuestHeader() {
+export function GuestHeader({ activePage, onRequireLogin }) {
+  const { pathname } = useLocation()
+  const currentPage = pathname.startsWith('/articles')
+    ? 'articles'
+    : pathname === '/community'
+      ? 'community'
+      : pathname === '/'
+        ? 'home'
+        : activePage
+  const navClass = (page) => (currentPage === page ? 'is-current' : undefined)
+  const currentPageAttr = (page) => (currentPage === page ? 'page' : undefined)
+  const showMemberLoginNotice = () => {
+    onRequireLogin?.('Bạn cần đăng nhập để sử dụng tính năng dành cho thành viên.')
+  }
+  const requireMemberLogin = (event) => {
+    event.preventDefault()
+    showMemberLoginNotice()
+  }
+
   return (
     <header className="guest-header">
       <Link className="guest-logo" to="/" aria-label="NutriLens – Trang chủ">
@@ -78,18 +97,18 @@ function GuestHeader() {
       </Link>
 
       <nav className="guest-nav" aria-label="Điều hướng chính">
-        <Link className="is-current" to="/">Tổng quan</Link>
-        <FoodNavMenu />
-        <ExerciseNavMenu />
-        <Link to="/trends">Chỉ số &amp; Xu hướng</Link>
-        <Link to="/weight-tracker">Tiến trình &amp; Cân nặng</Link>
-        <Link to="/community">Cộng đồng</Link>
-        <Link to="/articles">Bài viết &amp; Mẹo</Link>
+        <Link className={navClass('home')} aria-current={currentPageAttr('home')} to="/">Tổng quan</Link>
+        <FoodNavMenu onRequireLogin={showMemberLoginNotice} />
+        <ExerciseNavMenu onRequireLogin={showMemberLoginNotice} />
+        <Link to="/trends" onClick={requireMemberLogin}>Chỉ số &amp; Xu hướng</Link>
+        <Link to="/weight-tracker" onClick={requireMemberLogin}>Tiến trình &amp; Cân nặng</Link>
+        <Link className={navClass('community')} aria-current={currentPageAttr('community')} to="/community">Cộng đồng</Link>
+        <Link className={navClass('articles')} aria-current={currentPageAttr('articles')} to="/articles">Bài viết &amp; Mẹo</Link>
       </nav>
 
       <div className="guest-auth-actions">
         <Link className="guest-login-button" to="/login">Đăng nhập</Link>
-        <Link className="guest-register-button" to="/register">Đăng ký <i className="bi bi-arrow-right" /></Link>
+        <Link className="guest-register-button" to="/register">Đăng ký</Link>
       </div>
     </header>
   )
@@ -154,7 +173,7 @@ export default function GuestLandingPage() {
 
   return (
     <div className="guest-home" id="home">
-      <GuestHeader />
+      <GuestHeader onRequireLogin={requireLogin} />
       {loginNotice && (
         <div className="guest-login-notice" role="status" aria-live="polite">
           <i className="bi bi-lock-fill" aria-hidden="true" />
@@ -202,7 +221,7 @@ export default function GuestLandingPage() {
         <section className="guest-spotlight-grid section-wrap" id="member-tools">
           <article className="guest-spotlight-panel">
             <div className="guest-card-heading">
-              <span className="guest-section-icon"><i className="bi bi-journal-text" /></span>
+              <span className="guest-section-icon"><i className="bi bi-journal-check" /></span>
               <h2>Nhật ký bữa ăn</h2>
             </div>
             <div className="guest-spotlight-content">
@@ -276,42 +295,7 @@ export default function GuestLandingPage() {
         </section>
       </main>
 
-      <footer className="guest-footer">
-        <div className="guest-footer-main">
-          <div className="guest-footer-brand">
-            <Link className="guest-logo" to="/"><span className="guest-logo-mark"><i className="bi bi-leaf-fill" /></span><span>Nutri<span>Lens</span></span></Link>
-            <p>Hành trình sống khỏe mạnh bắt đầu từ những lựa chọn nhỏ mỗi ngày.</p>
-            <div className="guest-socials" aria-label="Mạng xã hội NutriLens">
-              <span className="facebook"><i className="bi bi-facebook" /></span>
-              <span className="youtube"><i className="bi bi-youtube" /></span>
-              <span className="tiktok"><i className="bi bi-tiktok" /></span>
-            </div>
-          </div>
-          <div className="guest-footer-col">
-            <strong>THÔNG TIN</strong>
-            <Link to="/">Giới thiệu</Link>
-            <span>Liên hệ</span>
-            <span>Điều khoản sử dụng</span>
-            <span>Chính sách bảo mật</span>
-          </div>
-          <div className="guest-footer-col">
-            <strong>HỖ TRỢ</strong>
-            <span>Câu hỏi thường gặp</span>
-            <span>Hướng dẫn sử dụng</span>
-            <Link to="/community">Góp ý</Link>
-          </div>
-          <div className="guest-footer-col guest-footer-connect">
-            <strong>KẾT NỐI</strong>
-            <a href="#community">Cộng đồng NutriLens</a>
-            <span>Theo dõi chúng tôi</span>
-            <div className="guest-socials" aria-hidden="true">
-              <span className="facebook"><i className="bi bi-facebook" /></span>
-              <span className="youtube"><i className="bi bi-youtube" /></span>
-              <span className="tiktok"><i className="bi bi-tiktok" /></span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <UserFooter isGuest onRequireLogin={requireLogin} />
     </div>
   )
 }

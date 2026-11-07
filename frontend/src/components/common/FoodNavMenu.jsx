@@ -10,7 +10,7 @@ const foodMenuItems = [
   { to: '/food-requests', icon: 'bi-clipboard-check', title: 'Yêu cầu bổ sung của tôi', description: 'Theo dõi trạng thái và kết quả duyệt' },
 ]
 
-export default function FoodNavMenu() {
+export default function FoodNavMenu({ onRequireLogin }) {
   const { pathname } = useLocation()
   const isFoodSection = foodRoutes.includes(pathname)
   const [isOpen, setIsOpen] = useState(false)
@@ -33,6 +33,21 @@ export default function FoodNavMenu() {
     }
   }
 
+  const handleProtectedClick = (event) => {
+    if (!onRequireLogin) return
+    event.preventDefault()
+    handleItemClick()
+    onRequireLogin()
+  }
+
+  const handleTriggerClick = (event) => {
+    if (onRequireLogin) {
+      handleProtectedClick(event)
+      return
+    }
+    setIsOpen((prev) => !prev)
+  }
+
   return (
     <div
       ref={menuRef}
@@ -43,7 +58,7 @@ export default function FoodNavMenu() {
       <Link
         className={`food-nav-trigger${isFoodSection ? ' active' : ''}`}
         to="/food-scan"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={handleTriggerClick}
       >
         Nhận diện &amp; Đồ ăn <i className="bi bi-chevron-down" style={{ fontSize: '10px', marginLeft: '4px', opacity: 0.7 }} />
       </Link>
@@ -58,7 +73,7 @@ export default function FoodNavMenu() {
             className={`food-nav-dropdown-item${pathname === to ? ' active' : ''}`}
             key={to}
             to={to}
-            onClick={handleItemClick}
+            onClick={onRequireLogin ? handleProtectedClick : handleItemClick}
           >
             <i className={`bi ${icon}`} aria-hidden="true" />
             <span><strong>{title}</strong><small>{description}</small></span>

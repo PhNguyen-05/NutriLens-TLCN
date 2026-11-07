@@ -14,7 +14,7 @@ const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scr
  *
  * - Chỉ kích hoạt khi user đang đăng nhập (có accessToken).
  * - Reset timer mỗi khi user có tương tác với trang.
- * - Khi hết thời gian idle → dispatch logout() và redirect về /login.
+ * - Khi hết thời gian idle → dispatch logout() và trở về giao diện guest.
  *
  * @param {number} [timeoutMs] - Thời gian idle tối đa tính bằng milliseconds.
  *                               Mặc định 30 phút.
@@ -32,7 +32,7 @@ export function useIdleTimer(timeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
 
   const handleLogout = useCallback(() => {
     dispatch(logout())
-    navigate('/login', { replace: true })
+    navigate('/', { replace: true })
   }, [dispatch, navigate])
 
   const resetTimer = useCallback(() => {

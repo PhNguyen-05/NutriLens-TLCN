@@ -15,6 +15,7 @@ import ExercisePage from './pages/user/ExercisePage'
 import CommunityPage from './pages/user/CommunityPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import GuestLandingPage from './pages/guest/GuestLandingPage'
+import GuestCommunityPage from './pages/guest/GuestCommunityPage'
 import { useIdleTimer } from './hooks/useIdleTimer'
 
 function isAdminUser(user) {
@@ -27,11 +28,11 @@ function isAdminUser(user) {
 
 /**
  * Route chỉ dành cho user ĐÃ đăng nhập.
- * Redirect về /login nếu chưa xác thực.
+ * Đưa khách chưa xác thực về trang tổng quan guest.
  */
 function PrivateRoute({ children }) {
   const { user, accessToken } = useSelector((state) => state.auth)
-  if (!user || !accessToken) return <Navigate to="/login" replace />
+  if (!user || !accessToken) return <Navigate to="/" replace />
   return isAdminUser(user) ? <Navigate to="/admin" replace /> : children
 }
 
@@ -61,6 +62,12 @@ function HomeRoute() {
   const { user, accessToken } = useSelector((state) => state.auth)
   if (user && accessToken) return <Navigate to={isAdminUser(user) ? '/admin' : '/dashboard'} replace />
   return <GuestLandingPage />
+}
+
+function CommunityRoute() {
+  const { user, accessToken } = useSelector((state) => state.auth)
+  if (!user || !accessToken) return <GuestCommunityPage />
+  return isAdminUser(user) ? <Navigate to="/admin" replace /> : <CommunityPage />
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +166,7 @@ export default function App() {
       />
       <Route
         path="/community"
-        element={<PrivateRoute><CommunityPage /></PrivateRoute>}
+        element={<CommunityRoute />}
       />
       <Route
         path="/nutrition-goal"

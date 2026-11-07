@@ -16,7 +16,7 @@ export function useAuth() {
 
   function handleLogout() {
     dispatch(logout())
-    navigate('/login', { replace: true })
+    navigate('/', { replace: true })
   }
 
   return {
