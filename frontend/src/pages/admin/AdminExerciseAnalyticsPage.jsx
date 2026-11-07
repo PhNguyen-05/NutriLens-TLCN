@@ -78,7 +78,7 @@ function CaloriesChart({ rows }) {
     return `${x},${y}`
   }).join(' ')
 
-  return <div className="aa-exercise-chart" role="img" aria-label="Calories tiêu hao theo ngày">
+  return <div className="aa-exercise-chart" role="img" aria-label="Năng lượng tiêu hao theo ngày, đơn vị kcal">
     <div className="aa-exercise-axis"><span>{number(maxCalories)}</span><span>{number(maxCalories * .75)}</span><span>{number(maxCalories * .5)}</span><span>{number(maxCalories * .25)}</span><span>0</span></div>
     <div className="aa-exercise-plot">
       <div className="aa-exercise-grid-lines" />

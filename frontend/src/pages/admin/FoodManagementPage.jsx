@@ -351,7 +351,7 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
       setErrors(errs)
       const fieldLabels = {
         name: 'Tên món ăn',
-        calories: 'Năng lượng (Calo)',
+        calories: 'Năng lượng (kcal/100g)',
         protein: 'Chất đạm (Protein)',
         fat: 'Chất béo (Fat)',
         carbs: 'Đường bột (Carbs)',
@@ -527,7 +527,7 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
                     onClick={autoFillCalories}
                     title="Tự động tính năng lượng = Protein*4 + Carbs*4 + Fat*9"
                   >
-                    <i className="bi bi-magic" /> Tự tính Calo (~{calcMacroKcal.kcal})
+                    <i className="bi bi-magic" /> Tự tính năng lượng (~{calcMacroKcal.kcal} kcal)
                   </button>
                 )}
               </div>
@@ -535,7 +535,7 @@ function FoodFormModal({ mode, editTarget, totalFoods, allExistingGroups = [], o
 
             <div className="fm-nutrients">
               {[
-                { key: 'calories', label: 'Năng lượng (Calo)', unit: 'kcal', color: 'cal', icon: 'bi-fire', ph: 'VD: 250' },
+                { key: 'calories', label: 'Năng lượng', unit: 'kcal', color: 'cal', icon: 'bi-fire', ph: 'VD: 250' },
                 { key: 'protein',  label: 'Chất đạm (Protein)', unit: 'g',    color: 'pro', icon: 'bi-droplet-fill', ph: 'VD: 15' },
                 { key: 'carbs',    label: 'Đường bột (Carbs)',  unit: 'g',    color: 'carb', icon: 'bi-basket2-fill', ph: 'VD: 30' },
                 { key: 'fat',      label: 'Chất béo (Fat)',     unit: 'g',    color: 'fat', icon: 'bi-egg-fried', ph: 'VD: 8' },
@@ -1315,7 +1315,7 @@ export default function FoodManagementPage() {
                   <th>Món ăn</th>
                   <th>Nhóm</th>
                   <th className="fdm-th-center">Mã món</th>
-                  <th className="fdm-th-center">Calo</th>
+                  <th className="fdm-th-center">Năng lượng (kcal/100g)</th>
                   <th className="fdm-th-center">Protein</th>
                   <th className="fdm-th-center">Carbs</th>
                   <th className="fdm-th-center">Fat</th>
@@ -1352,7 +1352,7 @@ export default function FoodManagementPage() {
                       </td>
                       <td><span className="fdm-group-chip">{food.foodGroup || '—'}</span></td>
                       <td className="fdm-td-center"><code className="fdm-code">{food.foodCode || '—'}</code></td>
-                      <td className="fdm-td-center fdm-td-num fdm-num--cal">{food.calories}</td>
+                      <td className="fdm-td-center fdm-td-num fdm-num--cal">{food.calories} kcal</td>
                       <td className="fdm-td-center fdm-td-num fdm-num--pro">{food.protein}g</td>
                       <td className="fdm-td-center fdm-td-num fdm-num--carb">{food.carbs}g</td>
                       <td className="fdm-td-center fdm-td-num fdm-num--fat">{food.fat}g</td>

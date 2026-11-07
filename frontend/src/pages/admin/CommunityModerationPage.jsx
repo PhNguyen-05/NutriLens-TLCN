@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import axiosInstance from '../../api/axiosInstance'
-import { COMMUNITY_POSTS_STORAGE_KEY, getCommunityPostsSnapshot, saveCommunityPosts } from './communityPostStore'
 import './CommunityModerationPage.css'
 
 const FILTERS = [
@@ -35,6 +34,49 @@ function formatPostDate(value) {
   return `${day} ${time}`
 }
 
+function getPostTitle(content) {
+  const firstLine = String(content || '').split(/\r?\n/)[0].trim() || 'Bài đăng cộng đồng'
+  return firstLine.length > 90 ? `${firstLine.slice(0, 87)}…` : firstLine
+}
+
+function mapCommunityPost(post) {
+  const author = post.authorId && typeof post.authorId === 'object' ? post.authorId : {}
+  const id = String(post._id || post.id || '')
+  const content = String(post.content || '')
+  const pendingReports = Number(post.pendingReportCount ?? 0)
+  const reportDetails = (post.reportDetails || []).map((report) => ({
+    ...report,
+    reason: [report.reason, report.note].filter(Boolean).join(' · '),
+  }))
+
+  return {
+    id,
+    author: author.fullName || 'Người dùng NutriLens',
+    handle: author._id ? `@${String(author._id).slice(-6)}` : '@thành viên',
+    avatar: author.fullName?.charAt(0)?.toUpperCase() || 'U',
+    avatarUrl: author.avatarUrl || null,
+    title: getPostTitle(content),
+    content,
+    category: post.tag || 'Chia sẻ chung',
+    createdAt: post.createdAt,
+    status: post.status === 'hidden' ? 'Đã ẩn' : 'Đang hiển thị',
+    reports: pendingReports,
+    reviewPending: pendingReports > 0,
+    comments: Number(post.commentCount || 0),
+    likes: Number(post.likeCount || 0),
+    imageUrl: post.imageUrl || null,
+    imageTone: 'community',
+    reportReason: reportDetails[0]?.reason || '',
+    reportDetails,
+  }
+}
+
+function getMediaUrl(url) {
+  if (!url || /^(data:|https?:\/\/)/i.test(url)) return url || ''
+  const origin = axiosInstance.defaults.baseURL.replace(/\/api\/?$/, '')
+  return `${origin}${url.startsWith('/') ? url : `/${url}`}`
+}
+
 function statusLabel(post) {
   return post.reviewPending ? 'Cần xem xét' : post.status
 }
@@ -61,11 +103,17 @@ function getReportDetails(post) {
 }
 
 export default function CommunityModerationPage({ initialFilter = 'all' }) {
-  const [posts, setPosts] = useState(getCommunityPostsSnapshot)
+  const [posts, setPosts] = useState([])
+  const [filterCounts, setFilterCounts] = useState({ all: 0, displaying: 0, reported: 0, hidden: 0 })
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 })
   const [selectedId, setSelectedId] = useState(null)
   const [activeFilter, setActiveFilter] = useState(['approved', 'pending'].includes(initialFilter) ? 'displaying' : initialFilter)
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
+  const [page, setPage] = useState(1)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [toast, setToast] = useState('')
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isKeepModalOpen, setIsKeepModalOpen] = useState(false)
@@ -77,43 +125,35 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
   const toastTimer = useRef(null)
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), [])
-  useEffect(() => saveCommunityPosts(posts), [posts])
   useEffect(() => {
-    function refreshPosts(event) {
-      if (!event.key || event.key === COMMUNITY_POSTS_STORAGE_KEY) setPosts(getCommunityPostsSnapshot())
+    let active = true
+    setLoading(true)
+    setLoadError('')
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data } = await axiosInstance.get('/admin/community/posts', {
+          params: { page, limit: pagination.limit, filter: activeFilter, search: query.trim(), sortBy },
+        })
+        if (!active) return
+        setPosts((data.data || []).map(mapCommunityPost))
+        setFilterCounts(data.counts || { all: 0, displaying: 0, reported: 0, hidden: 0 })
+        setPagination(data.pagination || { page, limit: pagination.limit, total: 0, totalPages: 1 })
+      } catch (error) {
+        if (!active) return
+        setPosts([])
+        setLoadError(error.response?.data?.message || 'Không thể tải bài đăng Community. Vui lòng thử lại.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }, query.trim() ? 250 : 0)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
     }
-    window.addEventListener('storage', refreshPosts)
-    return () => window.removeEventListener('storage', refreshPosts)
-  }, [])
+  }, [activeFilter, page, pagination.limit, query, reloadKey, sortBy])
 
-  const filterCounts = useMemo(() => ({
-    all: posts.length,
-    displaying: posts.filter((post) => post.status === 'Đang hiển thị' && !post.reviewPending).length,
-    reported: posts.filter((post) => post.reviewPending).length,
-    hidden: posts.filter((post) => post.status === 'Đã ẩn' && !post.reviewPending).length,
-  }), [posts])
-
-  const visiblePosts = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase('vi')
-    return posts
-      .filter((post) => {
-        const matchesFilter = activeFilter === 'all'
-          || (activeFilter === 'displaying' && post.status === 'Đang hiển thị' && !post.reviewPending)
-          || (activeFilter === 'reported' && post.reviewPending)
-          || (activeFilter === 'hidden' && post.status === 'Đã ẩn' && !post.reviewPending)
-        const reportText = getReportDetails(post).map((report) => `${report.reporter} ${report.reason}`).join(' ')
-        const matchesQuery = !normalizedQuery || [post.title, post.content, post.author, post.handle, post.category, post.reportReason, reportText]
-          .some((value) => String(value).toLocaleLowerCase('vi').includes(normalizedQuery))
-        return matchesFilter && matchesQuery
-      })
-      .sort((left, right) => sortBy === 'reports'
-        ? right.reports - left.reports || new Date(right.createdAt) - new Date(left.createdAt)
-        : sortBy === 'oldest'
-          ? new Date(left.createdAt) - new Date(right.createdAt)
-          : new Date(right.createdAt) - new Date(left.createdAt))
-  }, [posts, activeFilter, query, sortBy])
-
-  const selectedPost = visiblePosts.find((post) => post.id === selectedId) || null
+  const selectedPost = posts.find((post) => post.id === selectedId) || null
 
   function notify(message) {
     window.clearTimeout(toastTimer.current)
@@ -155,25 +195,26 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
   async function confirmKeepPost(event) {
     event.preventDefault()
     if (!selectedPost || !selectedPost.reviewPending || !keepReason) return
+    try {
+      await axiosInstance.patch(`/admin/community/posts/${selectedPost.id}/moderation`, {
+        action: 'keep',
+        reason: keepReason,
+        note: keepNote.trim(),
+      })
+    } catch (error) {
+      notify(error.response?.data?.message || 'Không thể cập nhật trạng thái bài đăng. Vui lòng thử lại.')
+      return
+    }
     const wasLogged = await recordModerationAction(
       'keep_community_report',
       selectedPost,
       'Giữ bài đăng sau khi xem xét báo cáo Community',
       `Lý do: ${keepReason}. ${keepNote.trim() ? `Ghi chú: ${keepNote.trim()}` : ''}`,
     )
-    setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? {
-          ...post,
-          status: 'Đang hiển thị',
-          reports: 0,
-          reviewPending: false,
-          reportReason: '',
-          keepReason,
-          keepNote: keepNote.trim(),
-        }
-      : post))
     setSelectedId(selectedPost.id)
     setActiveFilter('displaying')
+    setPage(1)
+    setReloadKey((current) => current + 1)
     closeKeepForm()
     notifyModerationResult('Đã xử lý báo cáo và giữ bài đăng ở trạng thái hiển thị.', wasLogged)
   }
@@ -196,53 +237,52 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
     event.preventDefault()
     if (!selectedPost || !hideReason) return
     if (selectedPost.status !== 'Đang hiển thị' && !selectedPost.reviewPending) return
+    try {
+      await axiosInstance.patch(`/admin/community/posts/${selectedPost.id}/moderation`, {
+        action: 'hide',
+        reason: hideReason,
+        note: hideNote.trim(),
+      })
+    } catch (error) {
+      notify(error.response?.data?.message || 'Không thể cập nhật trạng thái bài đăng. Vui lòng thử lại.')
+      return
+    }
     const wasLogged = await recordModerationAction(
       'hide_community_post',
       selectedPost,
       'Ẩn bài đăng Community',
       `Lý do: ${hideReason}. ${hideNote.trim() ? `Ghi chú: ${hideNote.trim()}` : ''}`,
     )
-    setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? {
-          ...post,
-          status: 'Đã ẩn',
-          hideReason,
-          hideNote: hideNote.trim(),
-          reports: 0,
-          reviewPending: false,
-          reportReason: '',
-        }
-      : post))
     setSelectedId(selectedPost.id)
     setActiveFilter('hidden')
+    setPage(1)
+    setReloadKey((current) => current + 1)
     closeHideForm()
     notifyModerationResult('Đã ẩn bài đăng khỏi Community.', wasLogged)
   }
 
   async function showPostAgain() {
     if (!selectedPost || selectedPost.status !== 'Đã ẩn') return
+    try {
+      await axiosInstance.patch(`/admin/community/posts/${selectedPost.id}/moderation`, { action: 'restore' })
+    } catch (error) {
+      notify(error.response?.data?.message || 'Không thể cập nhật trạng thái bài đăng. Vui lòng thử lại.')
+      return
+    }
     const wasLogged = await recordModerationAction(
       'restore_community_post',
       selectedPost,
       'Hiển thị lại bài đăng Community',
       'Trạng thái: Đã ẩn → Đang hiển thị.',
     )
-    setPosts((current) => current.map((post) => post.id === selectedPost.id
-      ? {
-          ...post,
-          status: 'Đang hiển thị',
-          reports: 0,
-          reviewPending: false,
-          reportReason: '',
-        }
-      : post))
     setActiveFilter('displaying')
+    setPage(1)
+    setReloadKey((current) => current + 1)
     notifyModerationResult('Đã hiển thị lại bài đăng trên Community.', wasLogged)
   }
 
-  function refreshDemo() {
-    setPosts(getCommunityPostsSnapshot())
-    notify('Đã làm mới danh sách bài đăng.')
+  function refreshPosts() {
+    setReloadKey((current) => current + 1)
   }
 
   return (
@@ -258,14 +298,14 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
               aria-selected={activeFilter === filter.id}
               className={activeFilter === filter.id ? 'active' : ''}
               key={filter.id}
-              onClick={() => setActiveFilter(filter.id)}
+              onClick={() => { setActiveFilter(filter.id); setPage(1) }}
             >
               {filter.label}<span>{filterCounts[filter.id]}</span>
             </button>
           ))}
         </div>
-        <button type="button" className="cm-refresh-button" onClick={refreshDemo}>
-          <i className="bi bi-arrow-clockwise" /> Làm mới
+        <button type="button" className="cm-refresh-button" onClick={refreshPosts} disabled={loading}>
+          <i className={`bi ${loading ? 'bi-arrow-repeat' : 'bi-arrow-clockwise'}`} /> {loading ? 'Đang tải' : 'Làm mới'}
         </button>
       </div>
 
@@ -274,12 +314,12 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
           <div className="cm-list-tools">
             <label className="cm-search">
               <i className="bi bi-search" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm kiếm bài đăng, người đăng, lý do báo cáo…" />
-              {query && <button type="button" aria-label="Xóa tìm kiếm" onClick={() => setQuery('')}><i className="bi bi-x-lg" /></button>}
+              <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} placeholder="Tìm kiếm bài đăng, người đăng, lý do báo cáo…" />
+              {query && <button type="button" aria-label="Xóa tìm kiếm" onClick={() => { setQuery(''); setPage(1) }}><i className="bi bi-x-lg" /></button>}
             </label>
             <label className="cm-sort">
               <i className="bi bi-filter" />
-              <select aria-label="Sắp xếp bài đăng" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <select aria-label="Sắp xếp bài đăng" value={sortBy} onChange={(event) => { setSortBy(event.target.value); setPage(1) }}>
                 <option value="newest">Mới nhất</option>
                 <option value="oldest">Cũ nhất</option>
                 <option value="reports">Nhiều báo cáo</option>
@@ -289,7 +329,11 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
           </div>
 
           <div className="cm-post-list">
-            {visiblePosts.length ? visiblePosts.map((post) => (
+            {loading ? (
+              <div className="cm-empty-list"><span><i className="bi bi-arrow-repeat" /></span><b>Đang tải bài đăng</b><small>Đang lấy dữ liệu mới nhất từ Community.</small></div>
+            ) : loadError ? (
+              <div className="cm-empty-list cm-error-state" role="alert"><span><i className="bi bi-exclamation-circle" /></span><b>Không thể tải dữ liệu</b><small>{loadError}</small><button type="button" onClick={refreshPosts}>Thử lại</button></div>
+            ) : posts.length ? posts.map((post) => (
               <button
                 type="button"
                 className={`cm-post-card ${selectedPost?.id === post.id ? 'selected' : ''}`}
@@ -297,9 +341,9 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
                 onClick={() => { setSelectedId(post.id); setIsDetailOpen(true) }}
                 aria-pressed={selectedPost?.id === post.id}
               >
-                <span className={`cm-post-image ${post.imageTone}`} aria-hidden="true">{post.image}</span>
+                <span className={`cm-post-image ${post.imageTone}`} aria-hidden="true">{post.imageUrl ? <img src={getMediaUrl(post.imageUrl)} alt="" /> : <i className="bi bi-chat-square-heart" />}</span>
                 <span className="cm-post-copy">
-                  <span className="cm-post-author"><span className="cm-avatar">{post.avatar}</span><b>{post.author}</b><small>{post.handle}</small><em>· {formatPostDate(post.createdAt).split(' ')[0]}</em></span>
+                  <span className="cm-post-author"><span className="cm-avatar">{post.avatarUrl ? <img src={getMediaUrl(post.avatarUrl)} alt="" /> : post.avatar}</span><b>{post.author}</b><small>{post.handle}</small><em>· {formatPostDate(post.createdAt).split(' ')[0]}</em></span>
                   <strong>{post.title}</strong>
                   <span className="cm-post-excerpt">{post.content}</span>
                   <span className="cm-post-meta"><em>#{post.category}</em><span><i className="bi bi-heart" /> {getEngagementCount(post, 'likes')}</span><span><i className="bi bi-chat" /> {getEngagementCount(post, 'comments')}</span>{post.reports > 0 && <span className="cm-report-count"><i className="bi bi-flag" /> {post.reports} báo cáo</span>}</span>
@@ -312,7 +356,8 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
           </div>
 
           <div className="cm-list-footer">
-            <span className="cm-pagination"><button disabled aria-label="Trang trước"><i className="bi bi-chevron-left" /></button><button className="current">1</button><button disabled aria-label="Trang sau"><i className="bi bi-chevron-right" /></button></span>
+            <span>{pagination.total.toLocaleString('vi-VN')} bài đăng</span>
+            <span className="cm-pagination"><button type="button" disabled={loading || page <= 1} aria-label="Trang trước" onClick={() => setPage((current) => Math.max(1, current - 1))}><i className="bi bi-chevron-left" /></button><span className="cm-page-count">Trang {page} / {pagination.totalPages}</span><button type="button" disabled={loading || page >= pagination.totalPages} aria-label="Trang sau" onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}><i className="bi bi-chevron-right" /></button></span>
           </div>
         </section>
 
@@ -322,11 +367,11 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
               <div className="cm-detail-heading"><h2>Chi tiết bài đăng</h2><button type="button" onClick={() => setIsDetailOpen(false)} aria-label="Đóng chi tiết bài đăng"><i className="bi bi-x-lg" /></button></div>
               <article className="cm-detail-post">
                 <div className="cm-detail-post-heading">
-                  <div className={`cm-detail-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.image}</div>
+                  <div className={`cm-detail-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.imageUrl ? <img src={getMediaUrl(selectedPost.imageUrl)} alt="" /> : <i className="bi bi-chat-square-heart" />}</div>
                   <h3>{selectedPost.title}</h3>
                   <span className={`cm-status ${statusClass(selectedPost)}`}>{statusLabel(selectedPost)}</span>
                 </div>
-                <div className="cm-detail-author"><span className="cm-avatar large">{selectedPost.avatar}</span><span><b>{selectedPost.author}</b><small>{selectedPost.handle}</small></span></div>
+                <div className="cm-detail-author"><span className="cm-avatar large">{selectedPost.avatarUrl ? <img src={getMediaUrl(selectedPost.avatarUrl)} alt="" /> : selectedPost.avatar}</span><span><b>{selectedPost.author}</b><small>{selectedPost.handle}</small></span></div>
                 <p className="cm-detail-time"><i className="bi bi-clock" /> {formatPostDate(selectedPost.createdAt)}</p>
                 <p className="cm-detail-content">{selectedPost.content}</p>
                 <div className="cm-detail-engagement"><span><i className="bi bi-heart" /> {getEngagementCount(selectedPost, 'likes')} lượt thích</span><span><i className="bi bi-chat" /> {getEngagementCount(selectedPost, 'comments')} bình luận</span></div>
@@ -345,7 +390,7 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
               {selectedPost.reports > 0 && (
                 <section className="cm-report-details" aria-label="Thông tin báo cáo">
                   <h3><i className="bi bi-exclamation-circle-fill" />Thông tin báo cáo ({selectedPost.reports} báo cáo)</h3>
-                  {selectedPost.reviewPending && <p className="cm-report-review-note"><i className="bi bi-eye-slash-fill" />Bài đăng đã được ẩn tự động và đang chờ Admin xem xét.</p>}
+                  {selectedPost.reviewPending && <p className="cm-report-review-note"><i className="bi bi-eye-slash-fill" />Bài đăng đang chờ Admin xem xét báo cáo.</p>}
                   <ul>{getReportDetails(selectedPost).map((report, index) => (
                     <li key={`${report.reporter}-${report.reportedAt}-${index}`}>
                       <span className="cm-reporter-avatar"><i className="bi bi-person-fill" /></span>
@@ -389,7 +434,7 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
             </div>
 
             <div className="cm-keep-post">
-              <div className={`cm-keep-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.image}</div>
+              <div className={`cm-keep-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.imageUrl ? <img src={getMediaUrl(selectedPost.imageUrl)} alt="" /> : <i className="bi bi-chat-square-heart" />}</div>
               <div><b>{selectedPost.author}</b><p>{selectedPost.content}</p></div>
             </div>
 
@@ -425,7 +470,7 @@ export default function CommunityModerationPage({ initialFilter = 'all' }) {
             </div>
 
             <div className="cm-keep-post">
-              <div className={`cm-keep-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.image}</div>
+              <div className={`cm-keep-image ${selectedPost.imageTone}`} aria-hidden="true">{selectedPost.imageUrl ? <img src={getMediaUrl(selectedPost.imageUrl)} alt="" /> : <i className="bi bi-chat-square-heart" />}</div>
               <div><b>{selectedPost.author}</b><p>{selectedPost.content}</p></div>
             </div>
 

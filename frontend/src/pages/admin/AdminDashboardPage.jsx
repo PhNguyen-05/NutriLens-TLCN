@@ -293,7 +293,7 @@ export default function AdminDashboardPage() {
                   : activeItem === 'Blog'
                   ? 'Quản lý nội dung và trạng thái xuất bản các bài viết sức khỏe, dinh dưỡng.'
                   : activeItem === 'Kiểm duyệt cộng đồng'
-                  ? 'Xem xét và xử lý các bài đăng được người dùng báo cáo có dấu hiệu vi phạm.'
+                  ? 'Xem tất cả bài đăng Community của người dùng, theo dõi báo cáo và xử lý vi phạm.'
 
                   : activeItem === 'Bài tập'
                   ? 'Thêm, chỉnh sửa, ẩn hoặc hiển thị thông tin bài tập và chỉ số MET làm cơ sở tính calories cho người dùng.'

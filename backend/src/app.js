@@ -6,6 +6,7 @@ const path = require('path');
 
 const authRoutes = require('./routes/authRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
+const adminCommunityRoutes = require('./routes/adminCommunityRoutes');
 const adminFoodRoutes = require('./routes/adminFoodRoutes');
 const adminFoodRequestRoutes = require('./routes/adminFoodRequestRoutes');
 
@@ -41,6 +42,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/users', adminUserRoutes);
+app.use('/api/admin/community', adminCommunityRoutes);
 app.use('/api/admin/foods', adminFoodRoutes);
 app.use('/api/admin/food-requests', adminFoodRequestRoutes);
 
