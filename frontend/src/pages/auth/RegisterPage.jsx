@@ -146,7 +146,7 @@ export default function RegisterPage() {
           theme: 'outline',
           size: 'large',
           text: 'signup_with',
-          shape: 'rectangular',
+          shape: 'pill',
           width: 400,
           logo_alignment: 'left',
         })
@@ -282,12 +282,10 @@ export default function RegisterPage() {
       {/* ── Tiêu đề ── */}
       <div className="mb-3">
         <p className="auth-eyebrow">Bắt đầu hành trình</p>
-        <h2 className="fw-bold mb-0" style={{ fontSize: '1.9rem' }}>
+        <h2 className="fw-bold mb-0" style={{ fontSize: '2rem', letterSpacing: '-0.02em' }}>
           Tạo tài khoản
         </h2>
-        <p className="text-muted small mb-0 mt-1">
-          Miễn phí, không cần thẻ tín dụng.
-        </p>
+      
       </div>
 
       <StepIndicator steps={STEPS} current={step} />
@@ -504,8 +502,8 @@ export default function RegisterPage() {
                     if (formError) setFormError('')
                   }}
                 />
-                <label className="form-check-label" htmlFor="reg-medical-confirm">
-                  Tôi xác nhận đủ điều kiện sức khỏe trên và hiểu rằng NutriLens không thay thế chỉ định y khoa. <span className="text-danger">*</span>
+                <label className="form-check-label" htmlFor="reg-medical-confirm" style={{ fontSize: '11.4px', lineHeight: 1.6 }}>
+                  Tôi xác nhận đủ điều kiện sức khỏe trên và hiểu rằng NutriLens không thay thế chỉ định y khoa.{' '}<span className="text-danger" style={{ whiteSpace: 'nowrap' }}>*</span>
                 </label>
               </div>
             </div>
@@ -524,6 +522,7 @@ export default function RegisterPage() {
               loading={loading}
               loadingText="Đang xử lý..."
               className="btn btn-brand w-100 py-2 fw-semibold"
+              style={{ height: 48 }}
             >
               <i className="bi bi-person-plus me-2" aria-hidden="true" />
               Đăng ký tài khoản
@@ -542,15 +541,15 @@ export default function RegisterPage() {
             <div
               className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
               style={{
-                width: 64,
-                height: 64,
-                background: '#f0faf6',
-                border: '2px solid #d9f7c9',
+                width: 72,
+                height: 72,
+                background: 'linear-gradient(135deg, #d1fae5, #ecfdf5)',
+                border: '2px solid #a7f3d0',
               }}
             >
               <i className="bi bi-envelope-check fs-3" style={{ color: 'var(--nl-brand-mid)' }} aria-hidden="true" />
             </div>
-            <p className="mb-1 fw-semibold">Kiểm tra hộp thư của bạn</p>
+            <p className="mb-1 fw-semibold" style={{ fontSize: '1.1rem' }}>Kiểm tra hộp thư của bạn</p>
             <p className="text-muted small mb-0">
               Mã xác thực 6 chữ số đã được gửi đến
             </p>
@@ -571,6 +570,7 @@ export default function RegisterPage() {
             loadingText="Đang xác thực..."
             className="btn btn-brand w-100 py-2 fw-semibold mt-1"
             disabled={otp.length < 6}
+            style={{ height: 48 }}
           >
             <i className="bi bi-shield-check me-2" aria-hidden="true" />
             Xác thực tài khoản

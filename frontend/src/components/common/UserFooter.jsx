@@ -74,7 +74,7 @@ export default function UserFooter({ isGuest = false, onRequireLogin }) {
               </li>
               <li>
                 <FooterLink to="/trends" isGuest={isGuest} requiresLogin onRequireLogin={onRequireLogin}>
-                  <i className="bi bi-bar-chart-line" /> Chỉ số &amp; Xu hướng (Thống kê)
+                  <i className="bi bi-bar-chart-line" /> Chỉ số &amp; Xu hướng
                 </FooterLink>
               </li>
               <li>

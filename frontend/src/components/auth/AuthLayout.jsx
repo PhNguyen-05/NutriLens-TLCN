@@ -1,4 +1,5 @@
-import heroImg from '../../assets/hero.png'
+import heroMeal from '../../assets/hero-meal.jpg'
+import nutrilensLogo from '../../assets/nutrilens-logo.jpg'
 
 const FEATURES = [
   { icon: 'bi-camera', text: 'Nhận diện món ăn bằng AI' },
@@ -18,18 +19,22 @@ export default function AuthLayout({ children }) {
     <div className="auth-shell">
       {/* ── Brand Panel ── */}
       <section className="brand-panel" aria-label="NutriLens">
-        <div>
-          <div className="brand-mark">NL</div>
-          <p className="brand-eyebrow">NutriLens</p>
-          <h1 className="brand-heading">
-            Theo dõi dinh dưỡng từ bữa ăn hằng ngày
-          </h1>
-          <p className="brand-copy">
-            Nhận diện món ăn, quản lý mục tiêu sức khỏe và giữ dữ liệu tài
-            khoản an toàn trong một trải nghiệm gọn gàng.
-          </p>
+        <div className="brand-panel__content">
+          {/* Logo + Brand name inline */}
+          <div className="brand-logo-row">
+            <img
+              src={nutrilensLogo}
+              alt="NutriLens Logo"
+              className="brand-logo-img"
+            />
+            <span className="brand-logo-text">NutriLens</span>
+          </div>
 
-          <ul className="brand-features list-unstyled mt-4">
+          <h1 className="brand-heading">
+            Theo dõi dinh dưỡng thông minh mỗi ngày
+          </h1>
+
+          <ul className="brand-features list-unstyled mt-3">
             {FEATURES.map(({ icon, text }) => (
               <li key={text} className="brand-feature-item">
                 <span className="brand-feature-icon">
@@ -42,7 +47,14 @@ export default function AuthLayout({ children }) {
 
         </div>
 
-        <img src={heroImg} alt="" className="brand-image" aria-hidden="true" />
+        {/* ── Hero image ── */}
+        <div className="brand-hero-wrap">
+          <img
+            src={heroMeal}
+            alt="NutriLens nhận diện dinh dưỡng món ăn bằng AI"
+            className="brand-hero-img"
+          />
+        </div>
       </section>
 
       {/* ── Auth Panel ── */}

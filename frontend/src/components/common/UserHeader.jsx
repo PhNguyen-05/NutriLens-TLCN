@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import FoodNavMenu from './FoodNavMenu'
 import ExerciseNavMenu from './ExerciseNavMenu'
 import UserNavMenu from './UserNavMenu'
+import nutrilensLogo from '../../assets/nutrilens-logo.jpg'
 
 export default function UserHeader() {
   const { pathname } = useLocation()
@@ -9,7 +10,7 @@ export default function UserHeader() {
   return (
     <header className="dashboard-header">
       <Link className="dashboard-logo" to="/">
-        <span><i className="bi bi-leaf-fill" /></span> NutriLens
+        <img src={nutrilensLogo} alt="NutriLens" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }} /> NutriLens
       </Link>
       <nav className="dashboard-nav" aria-label="Điều hướng chính">
         <Link className={pathname === '/dashboard' || pathname === '/' ? 'active' : ''} to="/">

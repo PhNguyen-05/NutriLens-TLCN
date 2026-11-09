@@ -1,19 +1,20 @@
 :root {
-  --nl-brand-dark:    #0f3029;
-  --nl-brand-mid:     #137a5b;
-  --nl-brand-hover:   #0f6048;
-  --nl-brand-light:   #d9f7c9;
-  --nl-brand-text:    #eef8f2;
-  --nl-brand-copy:    #cbe8dd;
+  --nl-brand-dark:    #0a2a1f;
+  --nl-brand-mid:     #0d9668;
+  --nl-brand-hover:   #0b7d57;
+  --nl-brand-light:   #d1fae5;
+  --nl-brand-text:    #f0fdf4;
+  --nl-brand-copy:    #bbf7d0;
 
   --nl-surface:       #ffffff;
-  --nl-bg:            #f4f7f5;
-  --nl-border:        #dee2df;
+  --nl-bg:            #f0fdf4;
+  --nl-border:        #d1d5db;
 
-  --nl-radius-sm:     8px;
-  --nl-radius-md:     12px;
+  --nl-radius-sm:     10px;
+  --nl-radius-md:     16px;
 
-  --nl-shadow-card:   0 4px 24px rgba(15, 48, 41, 0.08);
+  --nl-shadow-card:   0 8px 32px rgba(10, 42, 31, 0.10);
+  --nl-shadow-elevated: 0 20px 60px rgba(10, 42, 31, 0.12);
 }
 
 /* --------------------------------------------------------------------------
@@ -26,10 +27,12 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  height: 100%;
 }
 
 body {
   margin: 0;
+  height: 100%;
   background: var(--nl-bg);
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
   color: #1a2e28;
@@ -40,108 +43,205 @@ body {
    Auth Shell — 2-Panel Layout
    -------------------------------------------------------------------------- */
 .auth-shell {
-  min-height: 100svh;
+  height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(340px, 0.85fr) minmax(380px, 1.15fr);
+  grid-template-columns: minmax(360px, 0.9fr) minmax(400px, 1.1fr);
 }
 
 /* --------------------------------------------------------------------------
    Brand Panel (left dark-green column)
    -------------------------------------------------------------------------- */
 .brand-panel {
-  background: var(--nl-brand-dark);
+  background: linear-gradient(165deg, #052e21 0%, #0a3d2e 30%, #064e3b 60%, #065f46 100%);
   color: var(--nl-brand-text);
-  padding: 56px 52px;
+  padding: 40px 44px 0 44px;
   display: flex;
   flex-direction: column;
   gap: 0;
   overflow: hidden;
   position: relative;
+  height: 100%;
 }
 
-/* Subtle radial glow accent */
+/* Multi-layer radial glow accent */
 .brand-panel::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse at 20% 30%, rgba(19, 122, 91, 0.25) 0%, transparent 70%);
+  background:
+    radial-gradient(ellipse at 20% 25%, rgba(13, 150, 104, 0.3) 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 80%, rgba(16, 185, 129, 0.15) 0%, transparent 50%);
   pointer-events: none;
 }
 
-.brand-mark {
-  width: 52px;
-  height: 52px;
-  border-radius: 12px;
-  background: var(--nl-brand-light);
-  color: #164139;
-  font-weight: 800;
-  font-size: 17px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  letter-spacing: -0.5px;
+/* Floating decorative circle */
+.brand-panel::after {
+  content: '';
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  right: -180px;
+  bottom: -200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+  pointer-events: none;
 }
 
-.brand-eyebrow {
-  margin: 24px 0 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--nl-brand-mid);
+.brand-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-logo-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+.brand-logo-text {
+  font-size: 2.35rem;
+  line-height: 1;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.02em;
 }
 
 .brand-heading {
-  margin: 0 0 16px;
-  font-size: 2.2rem;
-  font-weight: 700;
-  line-height: 1.12;
+  margin: 18px 0 12px;
+  font-size: clamp(1.25rem, 1.65vw, 1.55rem);
+  font-weight: 800;
+  line-height: 1.25;
   color: #ffffff;
-  max-width: 480px;
+  max-width: 100%;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 .brand-copy {
   margin: 0;
-  color: var(--nl-brand-copy);
+  color: rgba(187, 247, 208, 0.85);
   font-size: 15.5px;
-  line-height: 1.65;
+  line-height: 1.7;
   max-width: 440px;
 }
 
 .brand-features {
-  margin-top: 28px;
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .brand-feature-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: var(--nl-brand-copy);
+  gap: 12px;
+  font-size: 14.5px;
+  color: rgba(209, 250, 229, 0.9);
+  font-weight: 500;
 }
 
 .brand-feature-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--nl-brand-light);
-  font-size: 13px;
+  color: #6ee7b7;
+  font-size: 15px;
 }
 
+/* Trust badges below features */
+.brand-trust-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 32px;
+}
+
+.brand-trust-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #a7f3d0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.brand-trust-badge i {
+  font-size: 12px;
+  color: #6ee7b7;
+}
+
+.brand-panel__content {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.brand-hero-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 240px;
+  margin-left: -52px;
+  margin-right: -52px;
+  margin-bottom: -56px;
+  margin-top: 24px;
+  z-index: 1;
+  overflow: hidden;
+}
+
+/* Gradient fade top so image blends into green panel seamlessly */
+.brand-hero-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(5, 46, 33, 0.85) 0%,
+    rgba(6, 95, 70, 0.3) 30%,
+    transparent 55%
+  );
+  z-index: 1;
+  pointer-events: none;
+}
+
+.brand-hero-img {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  object-fit: cover;
+  object-position: center 35%;
+  display: block;
+  transition: transform 0.6s ease;
+}
+
+.brand-hero-img:hover {
+  transform: scale(1.03);
+}
+
+/* Removed .brand-hero-badge — no floating text on image */
+
+/* Keep old .brand-image for fallback */
 .brand-image {
-  width: min(260px, 72%);
+  width: min(280px, 75%);
   margin-top: auto;
-  padding-top: 32px;
-  filter: drop-shadow(0 24px 40px rgba(0, 0, 0, 0.35));
+  padding-top: 36px;
+  filter: drop-shadow(0 28px 48px rgba(0, 0, 0, 0.4));
   align-self: flex-end;
 }
 
@@ -149,60 +249,97 @@ body {
    Auth Panel (right white column)
    -------------------------------------------------------------------------- */
 .auth-panel {
-  background: var(--nl-surface);
+  background: linear-gradient(180deg, #ffffff 0%, #f9fefb 100%);
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 52px clamp(24px, 7vw, 88px);
+  justify-content: flex-start;
+  align-items: center;
+  padding: 0;
   overflow-y: auto;
+  position: relative;
+  height: 100%;
+}
+
+/* Dot pattern decoration top-right */
+.auth-panel::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 120px;
+  height: 120px;
+  background-image: radial-gradient(circle, rgba(13, 150, 104, 0.07) 1.5px, transparent 1.5px);
+  background-size: 16px 16px;
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 .auth-form-wrapper {
   width: 100%;
-  max-width: 480px;
+  max-width: 600px;
+  padding: 24px 16px;
+  margin: auto 0;
 }
 
 .auth-eyebrow {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--nl-brand-mid);
   margin: 0 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-eyebrow::before {
+  content: '';
+  width: 20px;
+  height: 2px;
+  background: var(--nl-brand-mid);
+  border-radius: 2px;
 }
 
 /* --------------------------------------------------------------------------
    Custom Button — Brand Green
    -------------------------------------------------------------------------- */
 .btn-brand {
-  background-color: var(--nl-brand-mid);
-  border-color: var(--nl-brand-mid);
+  background: linear-gradient(135deg, #0d9668 0%, #059669 100%);
+  border: none;
   color: #ffffff;
   font-weight: 600;
+  font-size: 15px;
   border-radius: var(--nl-radius-sm);
-  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  transition: all 0.22s ease;
+  box-shadow: 0 2px 8px rgba(13, 150, 104, 0.25);
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn-brand:hover,
 .btn-brand:focus-visible {
-  background-color: var(--nl-brand-hover);
-  border-color: var(--nl-brand-hover);
+  background: linear-gradient(135deg, #0b7d57 0%, #047857 100%);
   color: #ffffff;
-  box-shadow: 0 4px 14px rgba(19, 122, 91, 0.35);
+  box-shadow: 0 6px 20px rgba(13, 150, 104, 0.35);
+  transform: translateY(-1px);
 }
 
 .btn-brand:disabled,
 .btn-brand.disabled {
-  background-color: var(--nl-brand-mid);
-  border-color: var(--nl-brand-mid);
+  background: linear-gradient(135deg, #0d9668 0%, #059669 100%);
   color: #ffffff;
-  opacity: 0.68;
+  opacity: 0.6;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-brand:active {
-  background-color: #0d5440 !important;
-  border-color: #0d5440 !important;
+  background: linear-gradient(135deg, #065f46 0%, #064e3b 100%) !important;
+  transform: translateY(0) !important;
+  box-shadow: 0 2px 6px rgba(13, 150, 104, 0.2) !important;
 }
 
 /* --------------------------------------------------------------------------
@@ -216,18 +353,64 @@ body {
 }
 .link-brand:hover { color: var(--nl-brand-hover); }
 
+/* Auth divider (used in register page) */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #d1d5db, transparent);
+}
+.auth-divider span {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
 /* --------------------------------------------------------------------------
    Input Group — brand focus ring
    -------------------------------------------------------------------------- */
 .input-group-text {
-  background-color: #f6f9f7;
+  background-color: #f0fdf4;
   border-right: none;
-  color: #7a9089;
+  color: #0d9668;
+  font-size: 16px;
+  border-color: #d1d5db;
 }
 
 .input-group .form-control,
 .input-group .form-select {
   border-left: none;
+  border-color: #d1d5db;
+  font-size: 14.5px;
+  color: #1a2e28;
+}
+
+.input-group .form-control::placeholder {
+  color: #94a3b8;
+}
+
+.input-group {
+  border-radius: var(--nl-radius-sm);
+  overflow: hidden;
+  transition: box-shadow 0.2s ease;
+}
+
+.input-group:focus-within {
+  box-shadow: 0 0 0 3px rgba(13, 150, 104, 0.12);
+}
+
+.input-group:focus-within .input-group-text {
+  border-color: var(--nl-brand-mid);
+  color: var(--nl-brand-mid);
 }
 
 /* Date input — hiển thị đúng placeholder trên các trình duyệt */
@@ -261,14 +444,15 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .form-control:focus,
 .form-select:focus {
   border-color: var(--nl-brand-mid);
-  box-shadow: 0 0 0 0.2rem rgba(19, 122, 91, 0.18);
+  box-shadow: 0 0 0 3px rgba(13, 150, 104, 0.12);
 }
 
 .form-label {
-  color: #2a3d38;
+  color: #1a2e28;
   font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 6px;
+  font-size: 13.5px;
+  margin-bottom: 7px;
+  letter-spacing: 0.01em;
 }
 
 /* --------------------------------------------------------------------------
@@ -280,8 +464,8 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 }
 
 .step-dot {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -289,69 +473,87 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
-  transition: background-color 0.25s, color 0.25s;
+  transition: all 0.3s ease;
 }
 
-.step-dot--active   { background: var(--nl-brand-mid); color: #fff; }
-.step-dot--done     { background: var(--nl-brand-light); color: var(--nl-brand-mid); }
-.step-dot--inactive { background: #e9ecef; color: #9ca3af; }
+.step-dot--active   {
+  background: linear-gradient(135deg, #0d9668, #059669);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(13, 150, 104, 0.3);
+}
+.step-dot--done     {
+  background: var(--nl-brand-light);
+  color: var(--nl-brand-mid);
+}
+.step-dot--inactive {
+  background: #f1f5f9;
+  color: #94a3b8;
+  border: 1.5px solid #e2e8f0;
+}
 
 .step-line {
   flex: 1;
-  height: 2px;
-  background: #e9ecef;
-  margin: 0 6px;
-  transition: background-color 0.25s;
+  height: 2.5px;
+  background: #e2e8f0;
+  margin: 0 8px;
+  transition: background-color 0.3s;
+  border-radius: 2px;
 }
-.step-line--done { background: var(--nl-brand-mid); }
+.step-line--done {
+  background: linear-gradient(90deg, var(--nl-brand-mid), #10b981);
+}
 
 /* --------------------------------------------------------------------------
    OTP Input Grid
    -------------------------------------------------------------------------- */
 .otp-cell {
-  width: 52px;
-  height: 60px;
+  width: 54px;
+  height: 64px;
   text-align: center;
   font-size: 1.5rem;
   font-weight: 700;
-  border: 1.5px solid var(--nl-border);
-  border-radius: var(--nl-radius-sm);
-  transition: border-color 0.18s, box-shadow 0.18s;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  transition: all 0.22s ease;
   caret-color: var(--nl-brand-mid);
+  background: #f8fafc;
+  color: #0a2a1f;
 }
 
 .otp-cell:focus {
   border-color: var(--nl-brand-mid);
-  box-shadow: 0 0 0 0.2rem rgba(19, 122, 91, 0.18);
+  box-shadow: 0 0 0 3px rgba(13, 150, 104, 0.15);
   outline: none;
+  background: #ffffff;
 }
 
 .otp-cell--filled {
   border-color: var(--nl-brand-mid);
-  background: #f0faf6;
+  background: #f0fdf4;
 }
 
 /* --------------------------------------------------------------------------
    Password Strength Bar
    -------------------------------------------------------------------------- */
 .strength-bar {
-  height: 4px;
-  border-radius: 4px;
-  background: #e9ecef;
+  height: 5px;
+  border-radius: 5px;
+  background: #e2e8f0;
   overflow: hidden;
   margin-top: 8px;
 }
 
 .strength-bar__fill {
   height: 100%;
-  border-radius: 4px;
-  transition: width 0.3s ease, background-color 0.3s ease;
+  border-radius: 5px;
+  transition: width 0.35s ease, background-color 0.35s ease;
 }
 
 .strength-label {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
-  margin-top: 4px;
+  margin-top: 5px;
+  letter-spacing: 0.02em;
 }
 
 /* --------------------------------------------------------------------------
@@ -396,7 +598,7 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   }
 
   .brand-panel {
-    padding: 32px 28px;
+    padding: 36px 28px;
   }
 
   .brand-heading {
@@ -404,7 +606,9 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
   }
 
   .brand-image,
-  .brand-features {
+  .brand-hero-wrap,
+  .brand-features,
+  .brand-trust-badges {
     display: none;
   }
 
@@ -4972,13 +5176,13 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
 
 /* ── Thẻ Tiêu chuẩn An toàn NutriLens (Register) ── */
 .reg-safety-card {
-  background: linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%);
-  border: 1.5px solid #86efac;
-  border-radius: 12px;
-  padding: 13px 15px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1.5px solid #6ee7b7;
+  border-radius: 14px;
+  padding: 14px 16px;
   margin-top: 4px;
   margin-bottom: 14px;
-  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.06);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.08);
 }
 .reg-safety-card__header {
   display: flex;
@@ -5922,7 +6126,7 @@ td.fdm-td-center { text-align: center !important; }
 .fm-ipc-status i { font-size: 13px; }
 .fm-ipc-url {
   margin: 0; font-size: 11px; color: #628173; font-family: 'JetBrains Mono', monospace;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 440px;
 }
 .fm-ipc-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .fm-ipc-btn {
@@ -14206,4 +14410,58 @@ em.metric-theme-green {
 @media (max-width: 520px) {
   .ua-article-login-notice { right: 12px; bottom: 12px; gap: 8px; padding: 11px; font-size: 13px; }
   .ua-article-login-notice > i { flex-basis: 30px; width: 30px; height: 30px; }
+}
+
+
+/* --------------------------------------------------------------------------
+   Dashboard Welcome Panel AI Art Illustration
+   -------------------------------------------------------------------------- */
+.welcome-panel-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+}
+
+.welcome-panel-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.welcome-ai-art-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-ai-art-img {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px -4px rgba(16, 185, 129, 0.2), 0 0 0 1px rgba(16, 185, 129, 0.15);
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+  background: #ffffff;
+}
+
+.welcome-ai-art-img:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 12px 28px -4px rgba(16, 185, 129, 0.28), 0 0 0 1px rgba(16, 185, 129, 0.25);
+}
+
+@media (max-width: 768px) {
+  .welcome-panel-body {
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .welcome-ai-art-img {
+    width: 96px;
+    height: 96px;
+  }
 }

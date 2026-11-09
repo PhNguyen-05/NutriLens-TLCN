@@ -12,10 +12,10 @@ function calcStrength(password) {
   if (/[0-9]/.test(password)) score++
   if (/[^A-Za-z0-9]/.test(password)) score++
 
-  if (score <= 1) return { label: 'Yếu',      color: '#ef4444', width: '20%' }
+  if (score <= 1) return { label: 'Yếu',       color: '#ef4444', width: '20%' }
   if (score === 2) return { label: 'Trung bình', color: '#f97316', width: '45%' }
-  if (score === 3) return { label: 'Tốt',      color: '#eab308', width: '70%' }
-  return              { label: 'Mạnh',     color: '#22c55e', width: '100%' }
+  if (score === 3) return { label: 'Tốt',        color: '#eab308', width: '70%' }
+  return              { label: 'Mạnh',       color: '#22c55e', width: '100%' }
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ export default function PasswordInput({
 
       <div className="input-group">
         <span className="input-group-text">
-          <i className="bi bi-lock" aria-hidden="true" />
+          <i className="bi bi-shield-lock" aria-hidden="true" />
         </span>
 
         <input
@@ -77,6 +77,13 @@ export default function PasswordInput({
         <button
           type="button"
           className="btn btn-outline-secondary"
+          style={{
+            borderLeft: 'none',
+            borderColor: '#d1d5db',
+            background: '#f0fdf4',
+            color: '#0d9668',
+            fontSize: 15,
+          }}
           onClick={() => setVisible((v) => !v)}
           tabIndex={-1}
           aria-label={visible ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}

@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import axiosInstance from '../../api/axiosInstance'
 import UserFooter from '../../components/common/UserFooter'
+import aiDietScan from '../../assets/ai-diet-scan.jpg'
 
 function resolveAvatarUrl(value) {
   const url = String(value || '').trim()
@@ -738,17 +739,29 @@ export default function DashboardPage() {
         {/* INTRO GRID: TỔNG QUAN NĂNG LƯỢNG & SCANNER */}
         <section className="dashboard-intro-grid">
           <article className="welcome-panel smart-ai-panel">
-            <h1>Xin chào {firstName}!</h1>
+            <div className="welcome-panel-body">
+              <div className="welcome-panel-text">
+                <h1>Xin chào {firstName}!</h1>
 
-            <div className="ai-insight-box">
-              <div className="ai-insight-icon">
-                <i className="bi bi-robot" />
-              </div>
-              <div className="ai-insight-content">
-                <div className="ai-insight-title">
-                  <span>Lời khuyên cá nhân hóa cho bạn</span>
+                <div className="ai-insight-box">
+                  <div className="ai-insight-icon">
+                    <i className="bi bi-robot" />
+                  </div>
+                  <div className="ai-insight-content">
+                    <div className="ai-insight-title">
+                      <span>Lời khuyên cá nhân hóa cho bạn</span>
+                    </div>
+                    <p className="ai-insight-text">{getAiWelcomeAdvice()}</p>
+                  </div>
                 </div>
-                <p className="ai-insight-text">{getAiWelcomeAdvice()}</p>
+              </div>
+
+              <div className="welcome-ai-art-wrap">
+                <img
+                  src={aiDietScan}
+                  alt="AI Phân tích dinh dưỡng"
+                  className="welcome-ai-art-img"
+                />
               </div>
             </div>
           </article>

@@ -120,7 +120,7 @@ export default function LoginPage() {
           theme: 'outline',
           size: 'large',
           text: 'continue_with',
-          shape: 'rectangular',
+          shape: 'pill',
           width: 400,
           logo_alignment: 'left',
         })
@@ -162,45 +162,15 @@ export default function LoginPage() {
   return (
     <AuthLayout>
       {/* ── Tiêu đề ── */}
-      <div className="mb-4">
+      <div className="mb-3">
         <p className="auth-eyebrow">Chào mừng trở lại</p>
-        <h2 className="fw-bold mb-0" style={{ fontSize: '1.9rem' }}>Đăng nhập</h2>
-        <p className="text-muted small mb-0 mt-1">
-          Tiếp tục theo dõi hành trình dinh dưỡng của bạn.
-        </p>
+        <h2 className="fw-bold mb-0" style={{ fontSize: '1.75rem', letterSpacing: '-0.02em' }}>Đăng nhập</h2>
       </div>
 
       {/* ── Thông báo ── */}
       <AuthNotice type="success" message={successMsg} onDismiss={() => setSuccessMsg('')} />
       <AuthNotice type="error"   message={error}      onDismiss={() => dispatch(clearError())} />
       <AuthNotice type="error"   message={googleError} onDismiss={() => setGoogleError('')} />
-
-      {/* ════ Nút đăng nhập Google ════ */}
-      <div className="mb-3 position-relative">
-        <div
-          ref={googleBtnRef}
-          className="d-flex justify-content-center"
-          style={{ minHeight: '44px' }}
-        />
-        {googleLoading && (
-          <div
-            className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-white bg-opacity-75"
-            style={{ borderRadius: 8, zIndex: 10 }}
-          >
-            <span className="spinner-border spinner-border-sm me-2 text-primary" role="status" aria-hidden="true" />
-            <span className="small text-muted fw-semibold">Đang xác thực Google...</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Divider ── */}
-      <div className="d-flex align-items-center gap-3 mb-3">
-        <hr className="flex-grow-1 m-0" />
-        <span className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
-          hoặc đăng nhập bằng email
-        </span>
-        <hr className="flex-grow-1 m-0" />
-      </div>
 
       {/* ════ Form Email / Mật khẩu ════ */}
       <form onSubmit={handleEmailSubmit} noValidate>
@@ -238,7 +208,7 @@ export default function LoginPage() {
         />
 
         {/* Quên mật khẩu */}
-        <div className="d-flex justify-content-end mb-4" style={{ marginTop: '-4px' }}>
+        <div className="d-flex justify-content-end mb-3" style={{ marginTop: '-4px' }}>
           <Link to="/forgot-password" className="link-brand small">
             Quên mật khẩu?
           </Link>
@@ -248,14 +218,38 @@ export default function LoginPage() {
           type="submit"
           loading={loading}
           className="btn btn-brand w-100 py-2 fw-semibold"
+          style={{ height: 48 }}
         >
           <i className="bi bi-box-arrow-in-right me-2" aria-hidden="true" />
           Đăng nhập
         </LoadingButton>
       </form>
 
+      {/* ── Divider ── */}
+      <div className="auth-divider mt-2">
+        <span>hoặc tiếp tục với</span>
+      </div>
+
+      {/* ════ Nút đăng nhập Google ════ */}
+      <div className="mb-2 position-relative">
+        <div
+          ref={googleBtnRef}
+          className="d-flex justify-content-center"
+          style={{ minHeight: '44px' }}
+        />
+        {googleLoading && (
+          <div
+            className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-white bg-opacity-75"
+            style={{ borderRadius: 10, zIndex: 10 }}
+          >
+            <span className="spinner-border spinner-border-sm me-2 text-primary" role="status" aria-hidden="true" />
+            <span className="small text-muted fw-semibold">Đang xác thực Google...</span>
+          </div>
+        )}
+      </div>
+
       {/* ── Link đến trang đăng ký ── */}
-      <p className="text-center mt-4 mb-0 small text-muted">
+      <p className="text-center mt-3 mb-0 small text-muted">
         Chưa có tài khoản?{' '}
         <Link to="/register" className="link-brand">Đăng ký miễn phí</Link>
       </p>

@@ -131,11 +131,14 @@ export default function ForgotPasswordPage() {
   return (
     <AuthLayout>
       {/* ── Tiêu đề ── */}
-      <div className="mb-3">
+      <div className="mb-4">
         <p className="auth-eyebrow">Tài khoản</p>
-        <h2 className="fw-bold mb-0" style={{ fontSize: '1.9rem' }}>
+        <h2 className="fw-bold mb-0" style={{ fontSize: '2rem', letterSpacing: '-0.02em' }}>
           Khôi phục mật khẩu
         </h2>
+        <p className="text-muted small mb-0 mt-2" style={{ lineHeight: 1.5 }}>
+          Nhập email để nhận mã xác thực đặt lại mật khẩu.
+        </p>
       </div>
 
       <StepIndicator steps={STEPS} current={step} />
