@@ -26,7 +26,6 @@ const notificationSchema = new Schema(
     },
     type: {
       type: String,
-      enum: ['food_request_approved', 'food_request_rejected', 'system', 'reminder'],
       default: 'system',
       index: true,
     },

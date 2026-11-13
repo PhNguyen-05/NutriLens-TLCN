@@ -20,6 +20,7 @@ const foodRoutes = require('./routes/foodRoutes');
 const exerciseRoutes = require('./routes/exerciseRoutes');
 const mediaRoutes = require('./routes/mediaRoutes');
 const communityRoutes = require('./routes/communityRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.use('/api/food', foodRoutes);
 app.use('/api/exercises', exerciseRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/community', communityRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Không tìm thấy tài nguyên' });

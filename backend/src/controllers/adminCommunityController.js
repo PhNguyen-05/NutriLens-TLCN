@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const { CommunityPost } = require('../models/CommunityPost');
 const { PostReport } = require('../models/PostReport');
+const Notification = require('../models/Notification');
 
 const VISIBLE_STATUSES = ['published', 'hidden'];
 const PAGE_SIZE = 10;
@@ -191,6 +192,24 @@ async function updateCommunityPostModeration(req, res) {
       { postId: post._id, status: 'pending' },
       { $set: { status: action === 'keep' ? 'dismissed' : 'reviewed' } },
     );
+
+    if (action === 'hide' && post.authorId) {
+      await Notification.create({
+        userId: post.authorId,
+        title: 'Bài viết cộng đồng đã bị ẩn',
+        message: 'Bài viết của bạn đã bị ẩn do vi phạm tiêu chuẩn cộng đồng hoặc có báo cáo hợp lệ.',
+        type: 'community',
+        data: { postId: post._id, link: '/community' },
+      }).catch((err) => console.error('[Notification error]:', err.message));
+    } else if (action === 'restore' && post.authorId) {
+      await Notification.create({
+        userId: post.authorId,
+        title: 'Bài viết đã được khôi phục',
+        message: 'Bài viết của bạn đã được kiểm duyệt an toàn và đã hiển thị lại trên Cộng đồng.',
+        type: 'community',
+        data: { postId: post._id, link: '/community' },
+      }).catch((err) => console.error('[Notification error]:', err.message));
+    }
 
     return res.status(200).json({
       data: {

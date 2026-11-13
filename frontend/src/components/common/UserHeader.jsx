@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import FoodNavMenu from './FoodNavMenu'
 import ExerciseNavMenu from './ExerciseNavMenu'
 import UserNavMenu from './UserNavMenu'
+import NotificationBell from './NotificationBell'
 import nutrilensLogo from '../../assets/nutrilens-logo.jpg'
 
 export default function UserHeader() {
@@ -35,9 +36,7 @@ export default function UserHeader() {
         </Link>
       </nav>
       <div className="dashboard-actions">
-        <button className="dashboard-bell" type="button" aria-label="Thông báo" title="Thông báo">
-          <i className="bi bi-bell" />
-        </button>
+        <NotificationBell />
         <UserNavMenu />
       </div>
     </header>

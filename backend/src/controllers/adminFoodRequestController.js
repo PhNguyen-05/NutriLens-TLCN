@@ -338,7 +338,7 @@ async function approveFoodRequest(req, res) {
         title: 'Đề nghị mở lại món ăn đã được duyệt',
         message: `Món ăn "${food.name}" đã được Admin kích hoạt lại và hiện có thể sử dụng.`,
         type: 'food_request_approved',
-        data: { requestId: request._id, requestCode: request.requestCode, foodId: food._id, foodName: food.name },
+        data: { requestId: request._id, requestCode: request.requestCode, foodId: food._id, foodName: food.name, link: '/food-scan' },
       });
 
       await AdminActionLog.create({
@@ -460,6 +460,7 @@ async function approveFoodRequest(req, res) {
         foodId: newFood._id,
         foodName: newFood.name,
         foodCode: newFood.foodCode,
+        link: '/food-scan',
       },
     });
 
@@ -536,6 +537,7 @@ async function rejectFoodRequest(req, res) {
         requestCode: request.requestCode,
         foodName: request.foodName || request.name,
         reason,
+        link: '/food-scan',
       },
     });
 
