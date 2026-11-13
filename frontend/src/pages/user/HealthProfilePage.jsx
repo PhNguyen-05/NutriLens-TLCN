@@ -227,31 +227,70 @@ function getSystemAdvice(bmiInfo) {
 }
 
 /**
- * Đánh giá mức độ rủi ro khi mục tiêu được chọn mâu thuẫn với BMI.
- * @returns {{ level: 'danger'|'warning'|'info', msg: string } | null}
+ * Đánh giá mức độ rủi ro và tính phù hợp khoa học khi mục tiêu được chọn khác với khuyến nghị BMI.
+ * Nội dung dựa trên hướng dẫn lâm sàng: WHO 2004, IDI & WPRO 2000, Bộ Y tế Việt Nam, ADA, ESPEN.
+ * @returns {{ level: 'danger'|'warning'|'info', title: string, msg: string, evidence: string, isUnscientific: boolean } | null}
  */
-function getGoalRisk(goal, bmiLabel) {
-  if (!bmiLabel || !goal) return null
-  if (bmiLabel === 'Thiếu cân' && goal === 'lose_weight')
+/**
+ * Chỉ trả về cảnh báo khi người dùng chọn mục tiêu "nghịch" với phân loại BMI hiện tại.
+ * Các trường hợp này cần hiện popup xác nhận (soft warning).
+ * Trường hợp không nghịch → trả về null, không cần cảnh báo.
+ */
+function getGoalRisk(goal, bmiLabel, age = null, specialConditions = []) {
+  if (!goal) return null
+
+  // Phụ nữ mang thai + giảm cân
+  const isPregnant = Array.isArray(specialConditions) && specialConditions.includes('pregnant')
+  if (isPregnant && goal === 'lose_weight') {
     return {
       level: 'danger',
-      msg: 'BMI của bạn đang ở mức thiếu cân. Tiếp tục giảm cân có thể gây suy dinh dưỡng và ảnh hưởng nghiêm trọng đến sức khỏe. Hệ thống khuyến nghị bạn chọn mục tiêu tăng cân thay thế.',
+      bmiCategory: 'Thai kỳ',
+      goalLabel: 'Giảm cân',
+      note: 'Phụ nữ mang thai không nên hạn chế năng lượng — có thể ảnh hưởng đến sự phát triển của thai nhi. Hãy tham khảo bác sĩ sản khoa trước khi điều chỉnh chế độ ăn.',
     }
-  if (bmiLabel === 'Béo phì' && goal === 'gain_weight')
-    return {
-      level: 'danger',
-      msg: 'BMI của bạn đang ở mức béo phì. Tiếp tục tăng cân có thể làm tăng đáng kể nguy cơ mắc bệnh tim mạch, tiểu đường và các bệnh mạn tính khác.',
-    }
-  if (bmiLabel === 'Thừa cân' && goal === 'gain_weight')
+  }
+
+  // Dưới 18 tuổi + giảm cân
+  const isMinor = age > 0 && age < 18
+  if (isMinor && goal === 'lose_weight') {
     return {
       level: 'warning',
-      msg: 'BMI của bạn đang ở mức thừa cân. Tăng thêm cân có thể đẩy BMI lên mức béo phì. Hãy chắc chắn bạn có lý do phù hợp trước khi tiếp tục.',
+      bmiCategory: 'Đang trong giai đoạn tăng trưởng',
+      goalLabel: 'Giảm cân',
+      note: 'Ở tuổi vị thành niên, cơ thể cần đủ năng lượng để phát triển. Nên tham khảo bác sĩ hoặc chuyên gia dinh dưỡng trước khi thực hiện kế hoạch giảm cân.',
     }
-  if (bmiLabel === 'Bình thường' && goal !== 'maintain_weight')
+  }
+
+  // Thiếu cân + giảm cân (mâu thuẫn trực tiếp)
+  if (bmiLabel === 'Thiếu cân' && goal === 'lose_weight') {
     return {
-      level: 'info',
-      msg: 'BMI của bạn đang ở mức bình thường. Hệ thống gợi ý duy trì cân nặng. Bạn vẫn có thể tiếp tục nếu có mục tiêu cụ thể và phù hợp.',
+      level: 'danger',
+      bmiCategory: 'Thiếu cân',
+      goalLabel: 'Giảm cân',
+      note: 'Khi BMI đã dưới ngưỡng bình thường, tiếp tục giảm calo có thể gây mất cơ, suy giảm miễn dịch và ảnh hưởng nội tiết. Hướng can thiệp phù hợp là tăng cân có kiểm soát.',
     }
+  }
+
+  // Béo phì + tăng cân (mâu thuẫn trực tiếp)
+  if (bmiLabel === 'Béo phì' && goal === 'gain_weight') {
+    return {
+      level: 'danger',
+      bmiCategory: 'Béo phì',
+      goalLabel: 'Tăng cân',
+      note: 'Khi BMI đã vượt ngưỡng an toàn, tăng cân thêm làm tăng nguy cơ kháng insulin, huyết áp cao và rối loạn mỡ máu. Khuyến nghị là giảm 5–10% cân nặng trong 3–6 tháng đầu.',
+    }
+  }
+
+  // Thừa cân + tăng cân (mâu thuẫn trực tiếp)
+  if (bmiLabel === 'Thừa cân' && goal === 'gain_weight') {
+    return {
+      level: 'danger',
+      bmiCategory: 'Thừa cân',
+      goalLabel: 'Tăng cân',
+      note: 'BMI đang ở mức tiền béo phì theo chuẩn châu Á. Tăng cân thêm sẽ đẩy vào vùng Béo phì (≥ 25,0 kg/m²), làm tăng nguy cơ hội chứng chuyển hóa và bệnh tim mạch.',
+    }
+  }
+
   return null
 }
 
@@ -662,24 +701,22 @@ export default function HealthProfilePage() {
 
     switch (form.healthGoal) {
       case 'lose_weight': {
-        // Minimum safe weight = BMI 18.5
         const minBmiSafe = h >= 100 ? Math.ceil(18.5 * (h / 100) ** 2 * 10) / 10 : 20
-        const minSafe = Math.max(20, minBmiSafe)
         return {
-          min: minSafe,
+          min: 20,
           max: Number((current - 0.1).toFixed(1)),
           disabled: false,
-          hint: `Phải nhỏ hơn ${current} kg (tối thiểu ${minSafe} kg để duy trì BMI ≥ 18,5)`,
+          hint: `Phải nhỏ hơn ${current} kg${minBmiSafe < current ? ` (khuyến nghị ≥ ${minBmiSafe} kg để duy trì BMI ≥ 18,5)` : ''}`,
+          safeguardMin: minBmiSafe,
         }
       }
       case 'gain_weight': {
-        // Show safe upper hint = BMI 23 (WHO Châu Á)
         const maxBmiSafe = h >= 100 ? Math.floor(23 * (h / 100) ** 2 * 10) / 10 : null
         return {
           min: Number((current + 0.1).toFixed(1)),
           max: 300,
           disabled: false,
-          hint: `Phải lớn hơn ${current} kg`,
+          hint: `Phải lớn hơn ${current} kg${maxBmiSafe && maxBmiSafe > current ? ` (khuyến nghị ≤ ${maxBmiSafe} kg để giữ BMI < 23)` : ''}`,
           safeguardMax: maxBmiSafe,
         }
       }
@@ -691,18 +728,23 @@ export default function HealthProfilePage() {
     }
   }, [form.healthGoal, form.currentWeightKg, form.heightCm])
 
-  // Warn if gain_weight target pushes BMI >= 23 (Asian WHO threshold for overweight)
+  // Cảnh báo cân nặng mục tiêu vượt ngưỡng BMI an toàn
   const targetWeightBmiWarning = useMemo(() => {
-    if (form.healthGoal !== 'gain_weight') return null
     const h = Number(form.heightCm)
     const targetW = Number(form.targetWeightKg)
     if (!h || !targetW || h < 100) return null
     const targetBmi = targetW / (h / 100) ** 2
-    if (targetBmi >= 23) {
-      return `Cân nặng mục tiêu này tương ứng BMI ${targetBmi.toFixed(1)} — mức thừa cân (ngưỡng WHO Châu Á ≥ 23). Cân nhắc đặt mục tiêu thấp hơn.`
+
+    if (form.healthGoal === 'lose_weight' && targetBmi < 18.5) {
+      return `Cân nặng mục tiêu này tương ứng BMI ${targetBmi.toFixed(1)} — dưới ngưỡng thiếu cân (< 18,5). Giảm cân quá sâu có thể gây suy nhược cơ thể.`
+    }
+    if (form.healthGoal === 'gain_weight' && targetBmi >= 23) {
+      return `Cân nặng mục tiêu này tương ứng BMI ${targetBmi.toFixed(1)} — mức thừa cân (ngưỡng WHO Châu Á ≥ 23,0). Cân nhắc đặt mục tiêu trong giới hạn an toàn.`
     }
     return null
   }, [form.healthGoal, form.heightCm, form.targetWeightKg])
+
+
 
 
   /**
@@ -837,19 +879,13 @@ export default function HealthProfilePage() {
 
 
   /**
-   * Called when user clicks a nutrition goal card.
-   * Opens risk warning dialog if the goal conflicts with system advice.
-   * Also marks prevBmiLabelRef so auto-select won't override the user's manual choice.
+   * Được gọi khi người dùng nhấp chọn thẻ mục tiêu dinh dưỡng.
+   * Mở hộp thoại cảnh báo/nhắc nhở nếu mục tiêu mâu thuẫn hoặc phản khoa học với khuyến nghị hệ thống.
+   * Người dùng vẫn có thể xác nhận để tiếp tục lựa chọn.
    */
   function handleGoalChange(newGoal) {
-    // Chặn giảm cân cho người dưới 18 tuổi
-    if (isMinor && newGoal === 'lose_weight') {
-      setError('Mục tiêu giảm cân không được khuyến nghị cho người dưới 18 tuổi. Vui lòng tham khảo bác sĩ hoặc chuyên gia dinh dưỡng.')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
-    const risk = bmiInfo ? getGoalRisk(newGoal, bmiInfo.label) : null
-    // Record current BMI label — auto-select won't fire again for same category after manual pick
+    const risk = bmiInfo ? getGoalRisk(newGoal, bmiInfo.label, age, form.specialConditions) : null
+    // Ghi nhận category BMI hiện tại — auto-select sẽ không tự động ghi đè lựa chọn thủ công
     prevBmiLabelRef.current = bmiInfo?.label ?? prevBmiLabelRef.current
     if (risk) {
       setGoalWarning({ pendingGoal: newGoal, risk, fromSubmit: false })
@@ -859,18 +895,17 @@ export default function HealthProfilePage() {
     }
   }
 
-
-
-  /** Called when user clicks "Continue anyway" in the goal warning dialog. */
+  /** Được gọi khi người dùng xác nhận tiếp tục trong hộp thoại cảnh báo rủi ro/phản khoa học. */
   function confirmGoalWarning() {
-    const { pendingGoal, risk, fromSubmit } = goalWarning
-    // Record acknowledgment so submit doesn't re-ask for same (goal, BMI) combo
+    if (!goalWarning) return
+    const { pendingGoal, fromSubmit } = goalWarning
+    // Ghi nhận xác nhận của người dùng với tổ hợp (mục tiêu, nhóm BMI) này
     setAcknowledgedRisk({ goal: pendingGoal, bmiLabel: bmiInfo?.label })
 
     if (!fromSubmit) {
       applyGoal(pendingGoal)
     } else {
-      // Triggered during submit — re-trigger form submission after acknowledgment
+      // Được kích hoạt khi submit — kích hoạt lại form submit sau khi đã xác nhận
       setGoalWarning(null)
       setTimeout(() => formRef.current?.requestSubmit(), 0)
     }
@@ -1003,14 +1038,13 @@ export default function HealthProfilePage() {
     // For maintain, we'll force targetWeightKg = currentWeightKg at payload time
     if (form.healthGoal === 'lose_weight' && form.targetWeightKg) {
       const targetW = Number(form.targetWeightKg)
-      const minSafe = Math.ceil(18.5 * (h / 100) ** 2 * 10) / 10
       if (targetW >= currentW) {
         setError('Cân nặng mục tiêu phải nhỏ hơn cân nặng hiện tại khi chọn mục tiêu giảm cân.')
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
-      if (targetW < minSafe) {
-        setError(`Cân nặng mục tiêu không nên thấp hơn ${minSafe} kg (tương ứng BMI 18,5 — giới hạn an toàn).`)
+      if (targetW < 20) {
+        setError('Cân nặng mục tiêu tối thiểu là 20 kg.')
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
@@ -1022,16 +1056,15 @@ export default function HealthProfilePage() {
         window.scrollTo({ top: 0, behavior: 'smooth' })
         return
       }
+      if (targetW > 300) {
+        setError('Cân nặng mục tiêu tối đa là 300 kg.')
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+        return
+      }
     }
 
-    // ── Step 4: Goal risk check — run even if user didn't touch the goal selector ──
-    const risk = bmiInfo ? getGoalRisk(form.healthGoal, bmiInfo.label) : null
-    // Hard block for danger-level risks — no override allowed
-    if (risk?.level === 'danger') {
-      setError('Mục tiêu này không phù hợp với BMI hiện tại và không thể lưu. Vui lòng chọn lại mục tiêu phù hợp.')
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
+    // ── Step 4: Goal risk check — nhắc nhở nếu mục tiêu mâu thuẫn hoặc phản khoa học ──
+    const risk = bmiInfo ? getGoalRisk(form.healthGoal, bmiInfo.label, age, form.specialConditions) : null
     const alreadyAcknowledged =
       acknowledgedRisk?.goal === form.healthGoal && acknowledgedRisk?.bmiLabel === bmiInfo?.label
     if (risk && !alreadyAcknowledged) {
@@ -1107,6 +1140,7 @@ export default function HealthProfilePage() {
         ...form,
         targetWeightKg: finalTargetWeight,
         healthGoal: goal,
+        acknowledgeUnsafeGoal: true,
         nutritionGoal: {
           goal,
           calorieTarget: activeCalorieTarget,
@@ -1115,6 +1149,7 @@ export default function HealthProfilePage() {
           carbsG: typeof activeGrams.carbs === 'number' ? activeGrams.carbs : null,
           fatG: typeof activeGrams.fat === 'number' ? activeGrams.fat : null,
           customized,
+          acknowledgeUnsafeGoal: true,
         },
       }
       const { data } = await axiosInstance.put('/profile', payload)
@@ -1793,11 +1828,13 @@ export default function HealthProfilePage() {
               {NUTRITION_GOAL_OPTIONS.map((opt) => {
                 const isActive = (form.healthGoal || 'maintain_weight') === opt.value
                 const isRecommended = systemAdvice?.recommended === opt.value
+                const optRisk = bmiInfo ? getGoalRisk(opt.value, bmiInfo.label, age, form.specialConditions) : null
+                const isUnscientific = Boolean(optRisk?.isUnscientific)
                 return (
                   <label
-                    className={`hp-goal-card ${isActive ? 'is-active' : ''}`}
+                    className={`hp-goal-card ${isActive ? 'is-active' : ''} ${isUnscientific ? 'is-unscientific' : ''}`}
                     key={opt.value}
-                    style={isActive ? { borderColor: opt.color, backgroundColor: opt.bg } : {}}
+                    style={isActive ? { borderColor: isUnscientific ? '#ef4444' : opt.color, backgroundColor: isUnscientific ? '#fff5f5' : opt.bg } : {}}
                   >
                     <input
                       type="radio" name="healthGoal" value={opt.value}
@@ -1809,12 +1846,14 @@ export default function HealthProfilePage() {
                     </div>
                     <strong className="hp-goal-card__label">{opt.label}</strong>
                     <small className="hp-goal-card__sub">{opt.sub}</small>
-                    {isRecommended && (
-                      <span className="hp-goal-card__recommended" style={{ color: opt.color }}>
-                        <i className="bi bi-patch-check-fill" /> Được gợi ý
-                      </span>
-                    )}
-                    {isActive && <i className="bi bi-check-circle-fill hp-goal-card__check" style={{ color: opt.color }} />}
+                    <div className="hp-goal-card__badges">
+                      {isRecommended && (
+                        <span className="hp-goal-card__recommended" style={{ color: opt.color }}>
+                          <i className="bi bi-patch-check-fill" /> Được gợi ý
+                        </span>
+                      )}
+                    </div>
+                    {isActive && <i className="bi bi-check-circle-fill hp-goal-card__check" style={{ color: isUnscientific ? '#ef4444' : opt.color }} />}
                   </label>
                 )
               })}
@@ -2146,7 +2185,7 @@ export default function HealthProfilePage() {
         </div>
       )}
 
-      {/* ── Dialog cảnh báo xung đột mục tiêu ── */}
+      {/* ── Soft warning dialog — hiện khi chọn mục tiêu "nghịch" với BMI ── */}
       {goalWarning && (
         <div
           className="hp-modal-backdrop" role="presentation"
@@ -2161,35 +2200,31 @@ export default function HealthProfilePage() {
             <div className="hp-goal-warning-modal__icon">
               <i className={`bi ${
                 goalWarning.risk.level === 'danger' ? 'bi-exclamation-triangle-fill' :
-                goalWarning.risk.level === 'warning' ? 'bi-exclamation-circle-fill' :
-                'bi-info-circle-fill'
+                'bi-exclamation-circle-fill'
               }`} />
             </div>
-            <h2 id="goal-warning-title">
-              {goalWarning.risk.level === 'danger' ? 'Cảnh báo sức khỏe' :
-               goalWarning.risk.level === 'warning' ? 'Lưu ý quan trọng' :
-               'Gợi ý từ hệ thống'}
-            </h2>
-            <p>{goalWarning.risk.msg}</p>
-            <p className="hp-goal-warning-modal__disclaimer">
-              Thông tin chỉ mang tính tham khảo, không thay thế tư vấn của bác sĩ hoặc chuyên gia dinh dưỡng.
+            <h2 id="goal-warning-title">Lưu ý về lựa chọn mục tiêu</h2>
+            <p>
+              Chỉ số BMI của bạn hiện đang ở mức{' '}
+              <strong>{goalWarning.risk.bmiCategory}</strong>.
+              Mục tiêu <strong>{goalWarning.risk.goalLabel}</strong> có thể không phù hợp
+              với tình trạng sức khỏe hiện tại của bạn.
             </p>
+            {goalWarning.risk.note && (
+              <p className="hp-goal-warning-modal__disclaimer">{goalWarning.risk.note}</p>
+            )}
             <div className="hp-goal-warning-modal__actions">
               <button type="button" className="hp-weight-modal__cancel" onClick={() => setGoalWarning(null)}>
-                <i className="bi bi-arrow-left" /> Hủy, chọn lại
+                <i className="bi bi-arrow-left" /> Chọn lại
               </button>
-              {goalWarning.risk.level !== 'danger' && (
-                <button
-                  type="button"
-                  className={`hp-goal-warning-modal__confirm hp-goal-warning-modal__confirm--${goalWarning.risk.level}`}
-                  onClick={confirmGoalWarning}
-                >
-                  <i className="bi bi-check2" />
-                  Tiếp tục với lựa chọn này
-                </button>
-              )}
+              <button
+                type="button"
+                className={`hp-goal-warning-modal__confirm hp-goal-warning-modal__confirm--${goalWarning.risk.level}`}
+                onClick={confirmGoalWarning}
+              >
+                <i className="bi bi-check2" /> Vẫn tiếp tục
+              </button>
             </div>
-
           </section>
         </div>
       )}

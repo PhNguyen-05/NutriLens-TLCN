@@ -366,11 +366,22 @@ async function saveProfile(req, res) {
       ? requestedGoal
       : 'maintain_weight';
 
-    // ── Safety gate: chặn tổ hợp nguy hiểm (BMI × goal × specialConditions) ──
+    // ── Safety gate: kiểm tra tổ hợp rủi ro (BMI × goal × specialConditions) ──
+    const isAcknowledged = Boolean(
+      req.body.acknowledgeUnsafeGoal ||
+      req.body.nutritionGoal?.acknowledgeUnsafeGoal ||
+      req.body.confirmRisk
+    );
+    let safetyWarning = null;
     if (healthMetrics.bmiCategory) {
       const ageVal = getAge(user.dateOfBirth);
       const safetyError = checkGoalSafety(healthMetrics.bmiCategory, validGoal, ageVal, req.body.specialConditions);
-      if (safetyError) return res.status(400).json({ code: 'UNSAFE_GOAL', message: safetyError });
+      if (safetyError) {
+        if (!isAcknowledged) {
+          return res.status(400).json({ code: 'UNSAFE_GOAL', message: safetyError, warning: safetyError });
+        }
+        safetyWarning = safetyError;
+      }
     }
 
     let resolvedNutritionGoal = existingProfile?.nutritionGoal || null;
@@ -548,11 +559,22 @@ async function saveNutritionGoal(req, res) {
     }
 
     // Safety gate
+    const isAcknowledged = Boolean(
+      req.body.acknowledgeUnsafeGoal ||
+      req.body.nutritionGoal?.acknowledgeUnsafeGoal ||
+      req.body.confirmRisk
+    );
+    let safetyWarning = null;
     if (metrics.bmiCategory) {
       const user = await User.findById(req.user.id).select('dateOfBirth gender').lean();
       const ageVal = user ? getAge(user.dateOfBirth) : null;
       const safetyError = checkGoalSafety(metrics.bmiCategory, goal, ageVal, profile.specialConditions);
-      if (safetyError) return res.status(400).json({ code: 'UNSAFE_GOAL', message: safetyError });
+      if (safetyError) {
+        if (!isAcknowledged) {
+          return res.status(400).json({ code: 'UNSAFE_GOAL', message: safetyError, warning: safetyError });
+        }
+        safetyWarning = safetyError;
+      }
     }
 
     const user = await User.findById(req.user.id).select('gender').lean();

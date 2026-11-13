@@ -17,7 +17,9 @@
     "migrate:uploads-to-cloudinary": "node ./scripts/migrateUploadsToCloudinary.js",
     "migrate:blog-images-to-mongo": "node ./scripts/migrateCloudinaryBlogImagesToMongo.js",
     "cleanup:legacy-gridfs": "node ./scripts/dropLegacyGridFSCollections.js",
-    "migrate:food-images-to-mongo": "node ./scripts/migrateCloudinaryFoodImagesToMongo.js"
+    "migrate:food-images-to-mongo": "node ./scripts/migrateCloudinaryFoodImagesToMongo.js",
+    "seed:exercises": "node ./scripts/seedExercises.js",
+    "cleanup:legacy-exercises": "node ./scripts/cleanupLegacyExercises.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

@@ -171,7 +171,7 @@ async function listExercises(req, res) {
 
     // Phân loại nguồn bài tập: hệ thống (mặc định) hoặc do người dùng tạo
     if (type === 'system') {
-      query.$or = [{ userId: null }, { userId: { $exists: false } }, { isCustom: false }];
+      query.isCustom = { $ne: true };
     } else if (type === 'custom') {
       query.isCustom = true;
     }
