@@ -14,6 +14,7 @@ const Food    = require('../models/Food');
 const MealLog = require('../models/MealLog');
 const FoodRequest = require('../models/FoodRequest');
 const { uploadFileToCloudinary, isCloudinaryConfigured } = require('../services/cloudinaryStorage');
+const { createNotification } = require('../services/notificationService');
 
 const PENDING_FOOD_REQUEST_STATUSES = ['pending', 'Chờ duyệt'];
 
@@ -150,6 +151,15 @@ async function createFoodRequest(req, res, next) {
         imageUrl: targetFood.imageUrl,
         note,
       });
+
+      createNotification({
+        userId: req.user.id,
+        title: 'Đã gửi đề nghị mở lại món ăn',
+        message: `Đề nghị mở lại món "${targetFood.name}" của bạn đã được gửi đến Ban Quản Trị và đang chờ xét duyệt.`,
+        type: 'food_request_submitted',
+        data: { requestId: reopenRequest._id, link: '/food-scan' },
+      }).catch(() => {});
+
       return res.status(201).json({
         message: 'Đã gửi đề nghị mở lại món ăn',
         request: serializeFoodRequestForUser(reopenRequest),
@@ -203,6 +213,14 @@ async function createFoodRequest(req, res, next) {
       note: trimToNull(req.body.note),
       ...nutrition,
     });
+
+    createNotification({
+      userId: req.user.id,
+      title: 'Đã gửi yêu cầu thêm món ăn',
+      message: `Yêu cầu thêm món "${foodRequest.name}" của bạn đã được ghi nhận và đang chờ Ban Quản Trị thẩm định dinh dưỡng.`,
+      type: 'food_request_submitted',
+      data: { requestId: foodRequest._id, link: '/food-scan' },
+    }).catch(() => {});
 
     return res.status(201).json({
       message: 'Đã gửi yêu cầu bổ sung món ăn',

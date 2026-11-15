@@ -1,59 +1,35 @@
+const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
+const { createWelcomeNotifications } = require('../services/notificationService');
 
 /**
- * Lấy danh sách thông báo của người dùng hiện tại
- * Hỗ trợ phân trang và lọc chưa đọc
+ * Lấy danh sách thông báo của người dùng hiện tại theo phân trang chuẩn thương mại
+ * GET /api/notifications?page=1&limit=20
  */
 async function getNotifications(req, res) {
   try {
     const userId = req.user.id;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
-    const filter = String(req.query.filter || 'all').toLowerCase();
 
-    // Nếu người dùng chưa từng có thông báo nào, tạo thông báo chào mừng & lời nhắc khởi đầu
-    const totalExisting = await Notification.countDocuments({ userId });
-    if (totalExisting === 0) {
-      await Notification.insertMany([
-        {
-          userId,
-          title: 'Chào mừng bạn đến với NutriLens! 🎉',
-          message: 'NutriLens đồng hành cùng bạn trên hành trình chăm sóc sức khỏe, theo dõi dinh dưỡng và cân bằng calo mỗi ngày.',
-          type: 'system',
-          data: { link: '/' },
-          isRead: false,
-        },
-        {
-          userId,
-          title: 'Trải nghiệm AI Lens Quét Món Ăn 📸',
-          message: 'Chụp hoặc tải ảnh bữa ăn để công nghệ AI tự động nhận diện món ăn và tính toán dinh dưỡng tức thì.',
-          type: 'reminder',
-          data: { link: '/food-scan' },
-          isRead: false,
-        },
-        {
-          userId,
-          title: 'Nhắc nhở duy trì lối sống lành mạnh 💧',
-          message: 'Đừng quên uống đủ 2 lít nước và ghi nhận nhật ký bữa ăn hôm nay để hoàn thành mục tiêu nhé!',
-          type: 'reminder',
-          data: { link: '/meal-diary' },
-          isRead: false,
-        },
-      ]);
-    }
+    // Khởi tạo thông báo chào mừng 1 lần duy nhất cho tài khoản chưa từng nhận
+    await createWelcomeNotifications(userId);
 
     const query = { userId };
-    if (filter === 'unread') {
-      query.isRead = false;
-    }
-
     const skip = (page - 1) * limit;
 
     const [notifications, total, unreadCount] = await Promise.all([
-      Notification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Notification.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
       Notification.countDocuments(query),
       Notification.countDocuments({ userId, isRead: false }),
     ]);
+
+    const totalPages = Math.ceil(total / limit) || 1;
+    const hasMore = skip + notifications.length < total;
 
     return res.status(200).json({
       success: true,
@@ -63,7 +39,8 @@ async function getNotifications(req, res) {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit) || 1,
+        totalPages,
+        hasMore,
       },
     });
   } catch (error) {
@@ -76,7 +53,8 @@ async function getNotifications(req, res) {
 }
 
 /**
- * Lấy số lượng thông báo chưa đọc
+ * Lấy số lượng thông báo chưa đọc (endpoint siêu nhẹ cho header polling)
+ * GET /api/notifications/unread-count
  */
 async function getUnreadCount(req, res) {
   try {
@@ -98,11 +76,19 @@ async function getUnreadCount(req, res) {
 
 /**
  * Đánh dấu 1 thông báo là đã đọc
+ * PATCH /api/notifications/:id/read
  */
 async function markAsRead(req, res) {
   try {
     const userId = req.user.id;
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã thông báo không hợp lệ',
+      });
+    }
 
     const notification = await Notification.findOneAndUpdate(
       { _id: id, userId },
@@ -136,6 +122,7 @@ async function markAsRead(req, res) {
 
 /**
  * Đánh dấu tất cả thông báo của người dùng là đã đọc
+ * PATCH /api/notifications/read-all
  */
 async function markAllAsRead(req, res) {
   try {
@@ -158,12 +145,20 @@ async function markAllAsRead(req, res) {
 }
 
 /**
- * Xóa một thông báo
+ * Xóa một thông báo của người dùng
+ * DELETE /api/notifications/:id
  */
 async function deleteNotification(req, res) {
   try {
     const userId = req.user.id;
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Mã thông báo không hợp lệ',
+      });
+    }
 
     const notification = await Notification.findOneAndDelete({ _id: id, userId });
 
@@ -192,6 +187,7 @@ async function deleteNotification(req, res) {
 
 /**
  * Xóa toàn bộ thông báo của người dùng
+ * DELETE /api/notifications/clear-all
  */
 async function deleteAllNotifications(req, res) {
   try {
