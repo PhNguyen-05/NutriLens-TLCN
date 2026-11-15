@@ -16,6 +16,7 @@ import AdminFoodAnalyticsPage from './AdminFoodAnalyticsPage'
 import AdminExerciseAnalyticsPage from './AdminExerciseAnalyticsPage'
 import AdminBlogAnalyticsPage from './AdminBlogAnalyticsPage'
 import AdminCommunityAnalyticsPage from './AdminCommunityAnalyticsPage'
+import nutrilensLogo from '../../assets/nutrilens-logo.jpg'
 import './AdminDashboardPage.css'
 
 const emptyDashboardStats = {
@@ -66,7 +67,7 @@ function getActivityTone(category) {
 }
 
 export default function AdminDashboardPage() {
-  const { user, handleLogout } = useAuth()
+  const { handleLogout } = useAuth()
   const [activeItem, setActiveItem] = useState('Dashboard')
   const [showActionLogs, setShowActionLogs] = useState(false)
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0)
@@ -202,7 +203,26 @@ export default function AdminDashboardPage() {
   return (
     <div className={`admin-shell ${isAnalyticsPage ? 'admin-shell-analytics' : ''} ${isDashboard ? 'admin-dashboard-mode' : ''}`}>
       <aside className="admin-sidebar">
-        <div className="admin-brand"><span><i className="bi bi-heart-pulse-fill" /></span> NutriLens</div>
+        <div
+          className="admin-brand"
+          role="button"
+          tabIndex={0}
+          onClick={() => { setActiveItem('Dashboard'); setShowActionLogs(false) }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setActiveItem('Dashboard')
+              setShowActionLogs(false)
+            }
+          }}
+          style={{ cursor: 'pointer', userSelect: 'none' }}
+        >
+          <img
+            src={nutrilensLogo}
+            alt="NutriLens"
+            style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }}
+          />
+          NutriLens
+        </div>
         <div className="admin-section-label">TỔNG QUAN</div>
         <button className={activeItem === 'Dashboard' ? 'active' : ''} onClick={() => { setActiveItem('Dashboard'); setShowActionLogs(false) }}><i className="bi bi-grid-1x2" /> Dashboard</button>
         <button className={activeItem === 'Lịch sử thao tác' ? 'active' : ''} onClick={() => { setActiveItem('Lịch sử thao tác'); setShowActionLogs(true) }}><i className="bi bi-clock-history" /> Lịch sử thao tác</button>
@@ -267,7 +287,7 @@ export default function AdminDashboardPage() {
 
                   : activeItem === 'Bài tập'
                   ? 'Quản lý danh mục bài tập'
-                  : 'Bảng điều khiển Vận hành NutriLes'}
+                  : 'Bảng điều khiển Vận hành NutriLens'}
               </h1>
               <p>
                 {isDashboard
@@ -300,13 +320,6 @@ export default function AdminDashboardPage() {
                   : 'Giám sát thời gian thực hoạt động các microservices, hàng đợi phê duyệt AI Lens và chỉ số an toàn sức khỏe người dùng trong ngày.'}
               </p>
             </div>
-          </div>
-          <div className="admin-user">
-            <button title="Thông báo" onClick={() => navigateAdmin('Bổ sung món')}>
-              <i className="bi bi-bell" />
-            </button>
-            <strong>{user?.fullName || 'Admin'}</strong>
-            <span>{(user?.fullName || 'A').charAt(0)}</span>
           </div>
         </header>
 

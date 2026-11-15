@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const { CommunityPost, COMMUNITY_TAGS } = require('../models/CommunityPost');
 const { isCloudinaryConfigured, uploadFileToCloudinary } = require('../services/cloudinaryStorage');
+const { createNotification } = require('../services/notificationService');
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/jfif'];
@@ -466,6 +467,17 @@ async function toggleLike(req, res) {
     post.likeCount = post.likes.length;
     await post.save();
 
+    if (isLiked && post.authorId && String(post.authorId) !== String(userId)) {
+      const senderName = req.user.fullName || 'Một thành viên';
+      createNotification({
+        userId: post.authorId,
+        title: 'Lượt thích bài viết mới',
+        message: `${senderName} đã thích bài viết chia sẻ của bạn trên Cộng đồng.`,
+        type: 'community_like',
+        data: { postId: post._id, link: '/community?filter=mine' },
+      }).catch(() => {});
+    }
+
     return res.status(200).json({
       isLiked,
       likeCount: post.likeCount,
@@ -507,6 +519,18 @@ async function addComment(req, res) {
 
     post.commentCount = post.comments.length;
     await post.save();
+
+    if (post.authorId && String(post.authorId) !== String(req.user.id)) {
+      const senderName = req.user.fullName || 'Một thành viên';
+      const snippet = trimmedContent.length > 50 ? `${trimmedContent.slice(0, 50)}...` : trimmedContent;
+      createNotification({
+        userId: post.authorId,
+        title: 'Bình luận mới về bài viết',
+        message: `${senderName} đã bình luận: "${snippet}"`,
+        type: 'community_comment',
+        data: { postId: post._id, link: '/community?filter=mine' },
+      }).catch(() => {});
+    }
 
     const updatedPost = await CommunityPost.findById(id)
       .populate('comments.authorId', 'fullName email avatarUrl role')

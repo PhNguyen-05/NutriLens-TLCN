@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import nutrilensLogo from '../../assets/nutrilens-logo.jpg'
 
 function FooterLink({ to, isGuest, requiresLogin = false, onRequireLogin, children }) {
   if (isGuest && requiresLogin) {
@@ -27,9 +28,11 @@ export default function UserFooter({ isGuest = false, onRequireLogin }) {
           {/* CỘT 1: THƯƠNG HIỆU & GIỚI THIỆU */}
           <div className="modern-footer__brand-col">
             <Link to={isGuest ? '/' : '/dashboard'} className="modern-footer__logo">
-              <span className="modern-footer__logo-icon">
-                <i className="bi bi-leaf-fill" />
-              </span>
+              <img
+                src={nutrilensLogo}
+                alt="NutriLens"
+                style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }}
+              />
               <span className="modern-footer__logo-text">NutriLens</span>
             </Link>
             <p className="modern-footer__desc">

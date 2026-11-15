@@ -7,6 +7,7 @@ const restoreExpiredAdminLock = require('../utils/adminLock');
 const { hashValue, compareValue } = require('../utils/hash');
 const { generateOtp, getOtpExpiry } = require('../utils/otp');
 const { sendOtpEmail, sendSecurityAlertEmail } = require('../utils/mailer');
+const { createNotification, createWelcomeNotifications } = require('../services/notificationService');
 const {
   signAccessToken,
   signRefreshToken,
@@ -137,7 +138,10 @@ async function verifyOtp(req, res) {
     }
 
     if (purpose === 'register') {
-      await User.updateOne({ email: normalizedEmail }, { status: 'active' });
+      const activeUser = await User.findOneAndUpdate({ email: normalizedEmail }, { status: 'active' }, { new: true });
+      if (activeUser) {
+        createWelcomeNotifications(activeUser._id).catch(() => {});
+      }
     }
 
     await OtpToken.deleteOne({ _id: record._id });
@@ -331,6 +335,7 @@ async function googleLogin(req, res) {
         status: 'active',
         healthDisclaimerAccepted: true,
       });
+      createWelcomeNotifications(user._id).catch(() => {});
     } else {
       if (user.status === 'pending') {
         user.status = 'active';
@@ -522,6 +527,14 @@ async function changePassword(req, res) {
       user.email,
       'Mật khẩu tài khoản của bạn vừa được thay đổi. Nếu không phải bạn, hãy liên hệ quản trị viên ngay.'
     ).catch((err) => console.error('[changePassword] Gửi email cảnh báo thất bại:', err.message));
+
+    createNotification({
+      userId: user._id,
+      title: 'Bảo mật: Mật khẩu đã được thay đổi',
+      message: 'Mật khẩu tài khoản NutriLens của bạn vừa được cập nhật thành công. Nếu không phải bạn thực hiện, vui lòng liên hệ ngay với quản trị viên.',
+      type: 'security',
+      data: { link: '/profile' },
+    }).catch(() => {});
 
     return res.status(200).json({ message: 'Đổi mật khẩu thành công' });
   } catch (err) {

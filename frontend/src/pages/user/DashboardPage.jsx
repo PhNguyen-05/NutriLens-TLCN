@@ -532,6 +532,37 @@ export default function DashboardPage() {
   const carbsPct = Math.min(100, realCarbsPct)
   const fatPct = Math.min(100, realFatPct)
 
+  // Tính toán trạng thái và mức chênh lệch (còn lại / vượt mức) của từng chỉ số
+  const roundedProtein = Math.round(eatenProtein)
+  const proteinDiff = roundedProtein - targetProtein
+  const proteinNote = proteinDiff > 0
+    ? `Vượt ${proteinDiff}g`
+    : proteinDiff < 0
+      ? `Thiếu ${Math.abs(proteinDiff)}g`
+      : 'Đã đạt chuẩn'
+
+  const roundedCarbs = Math.round(eatenCarbs)
+  const carbsDiff = roundedCarbs - targetCarbs
+  const carbsNote = carbsDiff > 0
+    ? `Vượt ${carbsDiff}g`
+    : carbsDiff < 0
+      ? `Còn ${Math.abs(carbsDiff)}g`
+      : 'Đã đủ mục tiêu'
+
+  const roundedFat = Math.round(eatenFat)
+  const fatDiff = roundedFat - targetFat
+  const fatNote = fatDiff > 0
+    ? `Vượt ${fatDiff}g`
+    : fatDiff < 0
+      ? `Còn ${Math.abs(fatDiff)}g`
+      : 'Đã đủ mục tiêu'
+
+  const caloNote = remainingCalo > 0
+    ? `Còn ${remainingCalo.toLocaleString('vi-VN')} kcal`
+    : remainingCalo < 0
+      ? `Vượt ${Math.abs(remainingCalo).toLocaleString('vi-VN')} kcal`
+      : 'Đã đủ mục tiêu'
+
   // 4 thẻ chỉ số dinh dưỡng chính được chuẩn hóa theo mã màu nhóm chất
   const dynamicMetrics = [
     {
@@ -542,40 +573,40 @@ export default function DashboardPage() {
       targetStr: `/ ${targetCalo.toLocaleString('vi-VN')} kcal`,
       progress: `${caloPct}%`,
       progressText: `${realCaloPct}% mục tiêu`,
-      note: remainingCalo >= 0 ? `Còn ${remainingCalo.toLocaleString('vi-VN')} kcal` : `Vượt ${Math.abs(remainingCalo).toLocaleString('vi-VN')} kcal`,
+      note: caloNote,
       theme: realCaloPct > 105 ? 'metric-theme-coral' : 'metric-theme-green',
     },
     {
       icon: 'bi-lightning-charge-fill',
       label: 'Đạm (Protein)',
-      numericVal: Math.round(eatenProtein),
+      numericVal: roundedProtein,
       unit: 'g',
       targetStr: `/ ${targetProtein} g`,
       progress: `${proteinPct}%`,
       progressText: `${realProteinPct}% mục tiêu`,
-      note: targetProtein > eatenProtein ? `Thiếu ${Math.round(targetProtein - eatenProtein)}g` : 'Đã đạt chuẩn',
+      note: proteinNote,
       theme: 'metric-theme-coral', // Đỏ san hô (#f43f5e)
     },
     {
       icon: 'bi-pie-chart-fill',
       label: 'Tinh bột (Carbs)',
-      numericVal: Math.round(eatenCarbs),
+      numericVal: roundedCarbs,
       unit: 'g',
       targetStr: `/ ${targetCarbs} g`,
       progress: `${carbsPct}%`,
       progressText: `${realCarbsPct}% mục tiêu`,
-      note: targetCarbs >= eatenCarbs ? (targetCarbs === eatenCarbs ? 'Đã đủ mục tiêu' : `Còn ${Math.round(targetCarbs - eatenCarbs)}g`) : `Vượt ${Math.round(eatenCarbs - targetCarbs)}g`,
+      note: carbsNote,
       theme: 'metric-theme-amber', // Vàng cam năng lượng (#f59e0b)
     },
     {
       icon: 'bi-droplet-fill',
       label: 'Chất béo (Fat)',
-      numericVal: Math.round(eatenFat),
+      numericVal: roundedFat,
       unit: 'g',
       targetStr: `/ ${targetFat} g`,
       progress: `${fatPct}%`,
       progressText: `${realFatPct}% mục tiêu`,
-      note: targetFat >= eatenFat ? (targetFat === eatenFat ? 'Đã đủ mục tiêu' : `Còn ${Math.round(targetFat - eatenFat)}g`) : `Vượt ${Math.round(eatenFat - targetFat)}g`,
+      note: fatNote,
       theme: 'metric-theme-blue', // Xanh dương dịu (#3b82f6)
     },
   ]

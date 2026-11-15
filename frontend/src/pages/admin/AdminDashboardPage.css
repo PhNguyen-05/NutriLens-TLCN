@@ -6,6 +6,20 @@
 }
 
 .admin-dashboard-mode .admin-sidebar { display: flex; }
+.admin-brand {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.admin-brand:hover {
+  opacity: 0.92;
+}
+.admin-brand img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
 .admin-sidebar > button.community-sidebar-item { position: relative; padding-left: 10px; color: #a9cec2; font-size: 12px; }
 .admin-sidebar > button.community-sidebar-item.active,
 .admin-sidebar > button.community-sidebar-item:hover { color: #fff; }

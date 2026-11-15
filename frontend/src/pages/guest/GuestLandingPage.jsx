@@ -4,6 +4,7 @@ import axiosInstance from '../../api/axiosInstance'
 import FoodNavMenu from '../../components/common/FoodNavMenu'
 import ExerciseNavMenu from '../../components/common/ExerciseNavMenu'
 import UserFooter from '../../components/common/UserFooter'
+import nutrilensLogo from '../../assets/nutrilens-logo.jpg'
 import './GuestLandingPage.css'
 
 const topicPreviews = [
@@ -92,8 +93,12 @@ export function GuestHeader({ activePage, onRequireLogin }) {
   return (
     <header className="guest-header">
       <Link className="guest-logo" to="/" aria-label="NutriLens – Trang chủ">
-        <span className="guest-logo-mark"><i className="bi bi-leaf-fill" /></span>
-        <span>Nutri<span>Lens</span></span>
+        <img
+          src={nutrilensLogo}
+          alt="NutriLens"
+          style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }}
+        />
+        NutriLens
       </Link>
 
       <nav className="guest-nav" aria-label="Điều hướng chính">
