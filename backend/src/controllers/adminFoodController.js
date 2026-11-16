@@ -1,9 +1,16 @@
 const mongoose = require('mongoose');
 const Food = require('../models/Food');
-const FoodGroup = require('../models/FoodGroup');
 const FoodRequest = require('../models/FoodRequest');
 const MealLog = require('../models/MealLog');
 const AdminActionLog = require('../models/AdminActionLog');
+const { validateCaloriesAndMacros } = require('../utils/calorieValidator');
+const { deleteFileFromCloudinary } = require('../services/cloudinaryStorage');
+const {
+  listFoodGroups,
+  createFoodGroup,
+  renameFoodGroup,
+  deleteFoodGroup,
+} = require('./adminFoodGroupController');
 
 const MAX_FOOD_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -23,8 +30,10 @@ function parseInlineFoodImage(imageUrl) {
 }
 
 function validateFoodImageInput(imageUrl, currentImageUrl = null) {
-  if (!imageUrl || imageUrl.startsWith('data:') || imageUrl === currentImageUrl) return null;
-  return 'Hãy tải ảnh JPG, PNG hoặc WEBP lên để lưu ảnh món ăn trong MongoDB';
+  if (!imageUrl || imageUrl.startsWith('data:') || imageUrl === currentImageUrl || /^https?:\/\//i.test(imageUrl) || imageUrl.startsWith('/api/food/')) {
+    return null;
+  }
+  return 'Hãy tải ảnh JPG, PNG hoặc WEBP lên để lưu ảnh món ăn';
 }
 
 function getFoodImageUrl(foodId) {
@@ -39,7 +48,7 @@ function serializeFood(food) {
 }
 
 function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function normalizePagination(page, limit) {
@@ -143,7 +152,6 @@ async function listFoods(req, res) {
       return res.status(400).json({ message: 'Trạng thái lọc không hợp lệ' });
     }
     const query = {};
-    // Foods seeded before status field existed have no status — treat them as active
     if (status === 'active') {
       query.$or = [{ status: 'active' }, { status: { $exists: false } }, { status: null }];
     } else if (status === 'hidden') {
@@ -180,7 +188,6 @@ async function listFoods(req, res) {
 
     const totalActive = totalAll - totalHidden;
 
-    // Normalize status for old seeded foods
     const normalizedFoods = foods.map((f) => ({
       ...f,
       status: f.status || 'active',
@@ -200,7 +207,19 @@ async function listFoods(req, res) {
 async function createFood(req, res) {
   try {
     const adminId = req.user.id;
-    const { name, calories, protein, fat, carbs, servingSize, imageUrl, description, foodGroup } = req.body;
+    const {
+      name,
+      calories,
+      protein,
+      fat,
+      carbs,
+      servingSize,
+      imageUrl,
+      description,
+      foodGroup,
+      confirmCalorieDiscrepancy,
+    } = req.body;
+
     const normalizedImageUrl = String(imageUrl || '').trim() || null;
     const parsedImage = parseInlineFoodImage(normalizedImageUrl);
     if (parsedImage.error) return res.status(400).json({ message: parsedImage.error });
@@ -216,6 +235,24 @@ async function createFood(req, res) {
         return res.status(400).json({ message: `Giá trị "${field}" không hợp lệ — phải là số không âm` });
       }
     }
+
+    // Kiểm tra tính tương quan nhiệt lượng Calo vs (4P + 4C + 9F)
+    const macroValidation = validateCaloriesAndMacros({
+      calories,
+      protein,
+      carbs,
+      fat,
+      allowDiscrepancy: Boolean(confirmCalorieDiscrepancy),
+    });
+    if (!macroValidation.valid) {
+      return res.status(400).json({
+        message: macroValidation.message,
+        discrepancyPercent: macroValidation.discrepancyPercent,
+        theoKcal: macroValidation.theoKcal,
+        canConfirmDiscrepancy: true,
+      });
+    }
+
     const svNum = servingSize !== undefined && servingSize !== '' ? Number(servingSize) : 100;
     if (!Number.isFinite(svNum) || svNum <= 0) return res.status(400).json({ message: 'Đơn vị định lượng phải là số dương' });
 
@@ -232,10 +269,14 @@ async function createFood(req, res) {
     const foodCode = await generateFoodCode();
 
     const food = new Food({
-      slug, name: trimmedName, foodCode,
+      slug,
+      name: trimmedName,
+      foodCode,
       foodGroup: String(foodGroup || '').trim() || null,
-      calories: Number(calories), protein: Number(protein),
-      fat: Number(fat), carbs: Number(carbs),
+      calories: Number(calories),
+      protein: Number(protein),
+      fat: Number(fat),
+      carbs: Number(carbs),
       servingSize: svNum,
       imageUrl: parsedImage.image ? null : normalizedImageUrl,
       imageData: parsedImage.image?.buffer || null,
@@ -243,6 +284,7 @@ async function createFood(req, res) {
       description: String(description || '').trim() || null,
       status: 'active',
     });
+
     if (parsedImage.image) food.imageUrl = getFoodImageUrl(food._id);
     await food.save();
 
@@ -297,12 +339,25 @@ async function updateFood(req, res) {
     const food = await Food.findById(id);
     if (!food) return res.status(404).json({ message: 'Món ăn không tồn tại' });
 
-    const { name, calories, protein, fat, carbs, servingSize, imageUrl, description, foodGroup } = req.body;
+    const {
+      name,
+      calories,
+      protein,
+      fat,
+      carbs,
+      servingSize,
+      imageUrl,
+      description,
+      foodGroup,
+      confirmCalorieDiscrepancy,
+    } = req.body;
+
     const normalizedImageUrl = String(imageUrl || '').trim() || null;
     const parsedImage = parseInlineFoodImage(normalizedImageUrl);
     if (parsedImage.error) return res.status(400).json({ message: parsedImage.error });
     const imageInputError = validateFoodImageInput(normalizedImageUrl, food.imageUrl);
     if (imageInputError) return res.status(400).json({ message: imageInputError });
+
     const trimmedName = String(name || '').trim();
     if (!trimmedName) return res.status(400).json({ message: 'Tên món ăn không được để trống' });
 
@@ -312,6 +367,24 @@ async function updateFood(req, res) {
         return res.status(400).json({ message: `Giá trị "${field}" không hợp lệ — phải là số không âm` });
       }
     }
+
+    // Kiểm tra tính tương quan nhiệt lượng Calo vs (4P + 4C + 9F)
+    const macroValidation = validateCaloriesAndMacros({
+      calories,
+      protein,
+      carbs,
+      fat,
+      allowDiscrepancy: Boolean(confirmCalorieDiscrepancy),
+    });
+    if (!macroValidation.valid) {
+      return res.status(400).json({
+        message: macroValidation.message,
+        discrepancyPercent: macroValidation.discrepancyPercent,
+        theoKcal: macroValidation.theoKcal,
+        canConfirmDiscrepancy: true,
+      });
+    }
+
     const svNum = servingSize !== undefined && servingSize !== '' ? Number(servingSize) : food.servingSize;
     if (!Number.isFinite(svNum) || svNum <= 0) return res.status(400).json({ message: 'Đơn vị định lượng phải là số dương' });
 
@@ -321,10 +394,15 @@ async function updateFood(req, res) {
       if (existing) return res.status(409).json({ message: 'Tên món ăn đã tồn tại' });
     }
 
+    const oldImageUrl = food.imageUrl;
+
     food.name = trimmedName;
-    food.calories = Number(calories); food.protein = Number(protein);
-    food.fat = Number(fat); food.carbs = Number(carbs);
+    food.calories = Number(calories);
+    food.protein = Number(protein);
+    food.fat = Number(fat);
+    food.carbs = Number(carbs);
     food.servingSize = svNum;
+
     if (parsedImage.image) {
       food.imageData = parsedImage.image.buffer;
       food.imageContentType = parsedImage.image.contentType;
@@ -341,6 +419,14 @@ async function updateFood(req, res) {
     if (!food.foodCode) food.foodCode = await generateFoodCode();
 
     await food.save();
+
+    // Dọn dẹp ảnh mồ côi trên Cloudinary nếu người dùng đã cập nhật ảnh mới
+    if (oldImageUrl && oldImageUrl !== food.imageUrl && oldImageUrl.includes('res.cloudinary.com')) {
+      deleteFileFromCloudinary(oldImageUrl).catch((err) => {
+        console.warn('[updateFood] Lỗi dọn dẹp ảnh cũ:', err.message);
+      });
+    }
+
     await AdminActionLog.create({
       adminId,
       actionType: 'update_food',
@@ -367,7 +453,6 @@ async function updateFoodStatus(req, res) {
     const food = await Food.findById(id);
     if (!food) return res.status(404).json({ message: 'Món ăn không tồn tại' });
 
-    // Treat missing/null status as active for comparison
     const currentStatus = food.status || 'active';
     if (currentStatus === status) return res.status(409).json({ message: 'Món ăn đã ở trạng thái này' });
 
@@ -409,7 +494,16 @@ async function deleteFood(req, res) {
       });
     }
 
+    const oldImageUrl = food.imageUrl;
     await food.deleteOne();
+
+    // Dọn dẹp ảnh mồ côi trên Cloudinary khi xóa vĩnh viễn món ăn
+    if (oldImageUrl && oldImageUrl.includes('res.cloudinary.com')) {
+      deleteFileFromCloudinary(oldImageUrl).catch((err) => {
+        console.warn('[deleteFood] Lỗi dọn dẹp ảnh Cloudinary:', err.message);
+      });
+    }
+
     await AdminActionLog.create({
       adminId,
       actionType: 'delete_food',
@@ -425,181 +519,6 @@ async function deleteFood(req, res) {
   }
 }
 
-// ─── Food Groups Management ──────────────────────────────────────────────────
-async function listFoodGroups(_req, res) {
-  try {
-    const groups = await FoodGroup.find({}).sort({ displayOrder: 1, name: 1 }).lean();
-
-    // Aggregate dish counts from Food collection
-    const counts = await Food.aggregate([
-      { $group: { _id: '$foodGroup', count: { $sum: 1 }, sampleFoods: { $push: '$name' } } },
-    ]);
-    const countMap = new Map();
-    counts.forEach((c) => {
-      const uniqueNames = Array.from(new Set(c.sampleFoods || []));
-      countMap.set(c._id || 'Khác', {
-        count: c.count,
-        sampleFoods: uniqueNames.slice(0, 5),
-        allFoods: uniqueNames,
-      });
-    });
-
-    const data = groups.map((g) => {
-      const stats = countMap.get(g.name) || { count: 0, sampleFoods: [], allFoods: [] };
-      return {
-        _id: g._id,
-        name: g.name,
-        description: g.description,
-        displayOrder: g.displayOrder,
-        isStandard: g.isStandard,
-        foodCount: stats.count,
-        sampleFoods: stats.sampleFoods,
-        allFoods: stats.allFoods || [],
-      };
-    });
-
-    return res.status(200).json({ success: true, data });
-  } catch (err) {
-    console.error('[listFoodGroups] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Không thể tải danh sách nhóm món ăn' });
-  }
-}
-
-async function createFoodGroup(req, res) {
-  try {
-    const adminId = req.user.id;
-    const { name, description } = req.body;
-    if (!name || !name.trim()) {
-      return res.status(400).json({ message: 'Tên nhóm món ăn không được để trống' });
-    }
-    const cleanName = name.trim();
-    const existing = await FoodGroup.findOne({ name: { $regex: new RegExp(`^${escapeRegex(cleanName)}$`, 'i') } });
-    if (existing) {
-      return res.status(409).json({ message: `Nhóm món ăn "${existing.name}" đã tồn tại` });
-    }
-
-    const maxOrder = await FoodGroup.findOne({}).sort({ displayOrder: -1 }).lean();
-    const nextOrder = (maxOrder?.displayOrder || 0) + 1;
-
-    const newGroup = await FoodGroup.create({
-      name: cleanName,
-      description: description?.trim() || null,
-      displayOrder: nextOrder,
-      isStandard: false,
-    });
-
-    await AdminActionLog.create({
-      adminId,
-      actionType: 'create_food',
-      targetType: 'FoodItem',
-      targetId: newGroup._id,
-      reason: `Tạo nhóm món ăn mới "${cleanName}"`,
-      note: `ID nhóm: ${newGroup._id}`,
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: `Tạo nhóm món ăn "${cleanName}" thành công`,
-      data: newGroup,
-    });
-  } catch (err) {
-    console.error('[createFoodGroup] Lỗi:', err.message);
-    return res.status(500).json({ message: err.message || 'Tạo nhóm món ăn thất bại' });
-  }
-}
-
-async function renameFoodGroup(req, res) {
-  try {
-    const adminId = req.user.id;
-    const { id } = req.params;
-    const { newName, description } = req.body;
-    if (!newName || !newName.trim()) {
-      return res.status(400).json({ message: 'Tên nhóm mới không được để trống' });
-    }
-    const cleanNew = newName.trim();
-
-    const group = await FoodGroup.findById(id);
-    if (!group) return res.status(404).json({ message: 'Nhóm món ăn không tồn tại' });
-
-    const oldName = group.name;
-
-    // Check duplicate name
-    if (cleanNew.toLowerCase() !== oldName.toLowerCase()) {
-      const dup = await FoodGroup.findOne({ name: { $regex: new RegExp(`^${escapeRegex(cleanNew)}$`, 'i') } });
-      if (dup) return res.status(409).json({ message: `Tên nhóm "${cleanNew}" đã tồn tại` });
-    }
-
-    group.name = cleanNew;
-    if (description !== undefined) group.description = description?.trim() || null;
-    await group.save();
-
-    // Cascade update to Food and FoodRequest collections
-    const foodRes = await Food.updateMany({ foodGroup: oldName }, { $set: { foodGroup: cleanNew } });
-    const reqRes = await FoodRequest.updateMany({ foodGroup: oldName }, { $set: { foodGroup: cleanNew } });
-
-    await AdminActionLog.create({
-      adminId,
-      actionType: 'update_food',
-      targetType: 'FoodItem',
-      targetId: group._id,
-      reason: `Đổi tên nhóm món ăn từ "${oldName}" thành "${cleanNew}"`,
-      note: `Cập nhật ${foodRes.modifiedCount} món ăn và ${reqRes.modifiedCount} yêu cầu`,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: `Đổi tên nhóm thành "${cleanNew}" thành công (${foodRes.modifiedCount} món ăn được đồng bộ)`,
-      data: group,
-      modifiedFoods: foodRes.modifiedCount,
-    });
-  } catch (err) {
-    console.error('[renameFoodGroup] Lỗi:', err.message);
-    return res.status(500).json({ message: err.message || 'Đổi tên nhóm thất bại' });
-  }
-}
-
-async function deleteFoodGroup(req, res) {
-  try {
-    const adminId = req.user.id;
-    const { id } = req.params;
-    const { targetGroup = 'Khác' } = req.body;
-
-    const group = await FoodGroup.findById(id);
-    if (!group) return res.status(404).json({ message: 'Nhóm món ăn không tồn tại' });
-
-    const groupName = group.name;
-    const cleanTarget = (targetGroup && targetGroup.trim()) || 'Khác';
-
-    if (groupName.toLowerCase() === cleanTarget.toLowerCase()) {
-      return res.status(400).json({ message: 'Nhóm chuyển đổi phải khác nhóm cần xóa' });
-    }
-
-    // Move all foods belonging to this group to targetGroup
-    const foodRes = await Food.updateMany({ foodGroup: groupName }, { $set: { foodGroup: cleanTarget } });
-    const reqRes = await FoodRequest.updateMany({ foodGroup: groupName }, { $set: { foodGroup: cleanTarget } });
-
-    await group.deleteOne();
-
-    await AdminActionLog.create({
-      adminId,
-      actionType: 'delete_food',
-      targetType: 'FoodItem',
-      targetId: group._id,
-      reason: `Xóa nhóm món ăn "${groupName}" và chuyển ${foodRes.modifiedCount} món sang nhóm "${cleanTarget}"`,
-      note: `Đồng bộ ${foodRes.modifiedCount} món ăn`,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: `Đã xóa nhóm "${groupName}" thành công, chuyển ${foodRes.modifiedCount} món sang "${cleanTarget}"`,
-      modifiedFoods: foodRes.modifiedCount,
-    });
-  } catch (err) {
-    console.error('[deleteFoodGroup] Lỗi:', err.message);
-    return res.status(500).json({ message: err.message || 'Xóa nhóm món ăn thất bại' });
-  }
-}
-
 module.exports = {
   getFoodAnalytics,
   listFoods,
@@ -608,6 +527,7 @@ module.exports = {
   updateFood,
   updateFoodStatus,
   deleteFood,
+  // Food Group CRUD re-exports for backwards compatibility
   listFoodGroups,
   createFoodGroup,
   renameFoodGroup,

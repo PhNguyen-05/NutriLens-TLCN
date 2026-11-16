@@ -4,6 +4,7 @@ const Food = require('../models/Food');
 const Notification = require('../models/Notification');
 const AdminActionLog = require('../models/AdminActionLog');
 const User = require('../models/User');
+const { validateCaloriesAndMacros } = require('../utils/calorieValidator');
 
 const MAX_FOOD_IMAGE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_FOOD_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -368,6 +369,7 @@ async function approveFoodRequest(req, res) {
       imageUrl,
       description,
       adminNote,
+      confirmCalorieDiscrepancy,
     } = req.body;
 
     const finalFoodName = String(foodName || request.foodName || request.name || '').trim();
@@ -399,12 +401,39 @@ async function approveFoodRequest(req, res) {
       return res.status(400).json({ message: 'Các chỉ số dinh dưỡng (Protein, Fat, Carbs) phải là số không âm' });
     }
 
+    // Kiểm tra tính tương quan nhiệt lượng Calo vs (4P + 4C + 9F)
+    const macroValidation = validateCaloriesAndMacros({
+      calories,
+      protein: numProtein,
+      carbs: numCarbs,
+      fat: numFat,
+      allowDiscrepancy: Boolean(confirmCalorieDiscrepancy),
+    });
+    if (!macroValidation.valid) {
+      return res.status(400).json({
+        message: macroValidation.message,
+        discrepancyPercent: macroValidation.discrepancyPercent,
+        theoKcal: macroValidation.theoKcal,
+        canConfirmDiscrepancy: true,
+      });
+    }
+
     const svSize = servingSize !== undefined && servingSize !== '' ? Number(servingSize) : (request.servingSize || 100);
     if (!Number.isFinite(svSize) || svSize <= 0) {
       return res.status(400).json({ message: 'Đơn vị định lượng (khẩu phần) phải là số dương' });
     }
 
-    // 1. Tạo món ăn chính thức trong Food
+    // Ngăn chặn tạo món trùng tên đã tồn tại trong danh mục chính
+    const existingFood = await Food.findOne({
+      name: { $regex: `^${escapeRegex(finalFoodName)}$`, $options: 'i' },
+    });
+    if (existingFood && (existingFood.status || 'active') === 'active') {
+      return res.status(409).json({
+        message: `Món ăn "${existingFood.name}" (${existingFood.foodCode || existingFood.slug}) đã tồn tại trong danh mục chính thức. Vui lòng kiểm tra lại để tránh nhân bản món ăn.`,
+      });
+    }
+
+    // 1. Chuẩn bị ảnh & dữ liệu món mới
     const foodCode = await generateFoodCode();
     const slug = generateSlug(finalFoodName);
     const sourceImageUrl = String(imageUrl || request.imageUrl || '').trim() || null;
@@ -413,74 +442,112 @@ async function approveFoodRequest(req, res) {
       embeddedImage = await downloadCloudinaryFoodImage(sourceImageUrl);
     }
 
-    const newFood = new Food({
-      slug,
-      name: finalFoodName,
-      foodCode,
-      foodGroup: String(foodGroup || request.foodGroup || '').trim() || null,
-      servingSize: svSize,
-      calories: Number(calories),
-      protein: numProtein,
-      fat: numFat,
-      carbs: numCarbs,
-      imageUrl: embeddedImage ? null : sourceImageUrl,
-      imageData: embeddedImage?.buffer || null,
-      imageContentType: embeddedImage?.contentType || null,
-      description: String(description || request.description || '').trim() || null,
-      status: 'active', // Đang sử dụng (Luồng chính 7)
-    });
-    if (embeddedImage) newFood.imageUrl = getFoodImageUrl(newFood._id);
-    await newFood.save();
+    // Bọc quy trình phê duyệt trong Transaction / Session để đảm bảo Atomicity (Tránh nhân bản món)
+    let session = null;
+    let useTransaction = false;
+    try {
+      session = await mongoose.startSession();
+      session.startTransaction();
+      useTransaction = true;
+    } catch {
+      session = null;
+      useTransaction = false;
+    }
 
-    // 2. Cập nhật trạng thái yêu cầu thành "Đã duyệt"
-    request.status = 'approved';
-    request.approvedFoodId = newFood._id;
-    request.reviewedBy = req.user.id || req.user._id;
-    request.reviewedAt = new Date();
-    request.adminNote = String(adminNote || '').trim() || null;
-    request.foodName = finalFoodName;
-    request.calories = Number(calories);
-    request.protein = numProtein;
-    request.fat = numFat;
-    request.carbs = numCarbs;
-    if (foodGroup) request.foodGroup = foodGroup;
-    if (servingLabel) request.servingLabel = servingLabel;
-    if (imageUrl && !String(imageUrl).startsWith('data:')) request.imageUrl = imageUrl;
-    await request.save();
+    let newFood = null;
+    try {
+      const saveOptions = session ? { session } : {};
 
-    // 3. Gửi thông báo cho người dùng đã gửi yêu cầu (Luồng chính 8)
-    await Notification.create({
-      userId: request.userId || request.requestedBy,
-      title: 'Yêu cầu thêm món ăn đã được duyệt',
-      message: `Món ăn "${newFood.name}" mà bạn đề xuất đã được Ban Quản Trị phê duyệt và thêm vào danh mục món ăn chính thức.`,
-      type: 'food_request_approved',
-      data: {
-        requestId: request._id,
-        requestCode: request.requestCode,
-        foodId: newFood._id,
-        foodName: newFood.name,
-        foodCode: newFood.foodCode,
-        link: '/food-scan',
-      },
-    });
+      newFood = new Food({
+        slug,
+        name: finalFoodName,
+        foodCode,
+        foodGroup: String(foodGroup || request.foodGroup || '').trim() || null,
+        servingSize: svSize,
+        calories: Number(calories),
+        protein: numProtein,
+        fat: numFat,
+        carbs: numCarbs,
+        imageUrl: embeddedImage ? null : sourceImageUrl,
+        imageData: embeddedImage?.buffer || null,
+        imageContentType: embeddedImage?.contentType || null,
+        description: String(description || request.description || '').trim() || null,
+        status: 'active', // Đang sử dụng (Luồng chính 7)
+      });
+      if (embeddedImage) newFood.imageUrl = getFoodImageUrl(newFood._id);
+      await newFood.save(saveOptions);
 
-    // 4. Ghi nhật ký thao tác Admin
-    await AdminActionLog.create({
-      adminId: req.user.id || req.user._id,
-      actionType: 'approve_request',
-      targetType: 'Request',
-      targetId: request._id,
-      reason: `Phê duyệt yêu cầu thêm món "${newFood.name}"`,
-      note: `Mã món mới: ${newFood.foodCode} | Mã yêu cầu: ${request.requestCode || request._id}${adminNote ? ' | ' + adminNote : ''}`,
-    });
+      // 2. Cập nhật trạng thái yêu cầu thành "Đã duyệt"
+      request.status = 'approved';
+      request.approvedFoodId = newFood._id;
+      request.reviewedBy = req.user.id || req.user._id;
+      request.reviewedAt = new Date();
+      request.adminNote = String(adminNote || '').trim() || null;
+      request.foodName = finalFoodName;
+      request.calories = Number(calories);
+      request.protein = numProtein;
+      request.fat = numFat;
+      request.carbs = numCarbs;
+      if (foodGroup) request.foodGroup = foodGroup;
+      if (servingLabel) request.servingLabel = servingLabel;
+      if (imageUrl && !String(imageUrl).startsWith('data:')) request.imageUrl = imageUrl;
+      await request.save(saveOptions);
 
-    return res.status(200).json({
-      message: 'Phê duyệt yêu cầu thành công. Món ăn đã được thêm vào danh mục chính thức.',
-      data: {
-        request,
-        food: newFood,
-      },
-    });
+      // 3. Gửi thông báo cho người dùng đã gửi yêu cầu (Luồng chính 8)
+      const notificationData = {
+        userId: request.userId || request.requestedBy,
+        title: 'Yêu cầu thêm món ăn đã được duyệt',
+        message: `Món ăn "${newFood.name}" mà bạn đề xuất đã được Ban Quản Trị phê duyệt và thêm vào danh mục món ăn chính thức.`,
+        type: 'food_request_approved',
+        data: {
+          requestId: request._id,
+          requestCode: request.requestCode,
+          foodId: newFood._id,
+          foodName: newFood.name,
+          foodCode: newFood.foodCode,
+          link: '/food-scan',
+        },
+      };
+
+      // 4. Ghi nhật ký thao tác Admin
+      const actionLogData = {
+        adminId: req.user.id || req.user._id,
+        actionType: 'approve_request',
+        targetType: 'Request',
+        targetId: request._id,
+        reason: `Phê duyệt yêu cầu thêm món "${newFood.name}"`,
+        note: `Mã món mới: ${newFood.foodCode} | Mã yêu cầu: ${request.requestCode || request._id}${adminNote ? ' | ' + adminNote : ''}`,
+      };
+
+      if (session) {
+        await Notification.create([notificationData], { session });
+        await AdminActionLog.create([actionLogData], { session });
+        await session.commitTransaction();
+      } else {
+        await Notification.create(notificationData);
+        await AdminActionLog.create(actionLogData);
+      }
+
+      return res.status(200).json({
+        message: 'Phê duyệt yêu cầu thành công. Món ăn đã được thêm vào danh mục chính thức.',
+        data: {
+          request,
+          food: newFood,
+        },
+      });
+    } catch (innerErr) {
+      if (useTransaction && session) {
+        await session.abortTransaction().catch(() => {});
+      } else if (newFood?._id) {
+        // Compensating rollback: Xóa newFood vừa tạo để tránh rác DB và duplicate khi thử lại
+        await Food.findByIdAndDelete(newFood._id).catch(() => {});
+      }
+      throw innerErr;
+    } finally {
+      if (session) {
+        session.endSession();
+      }
+    }
   } catch (err) {
     console.error('[approveFoodRequest] Lỗi:', err);
     // Luồng ngoại lệ 7d, 8d

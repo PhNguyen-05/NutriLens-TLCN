@@ -4,7 +4,7 @@
  *
  * Base: /api/admin/foods
  *   GET    /             - Danh sách món ăn (tìm kiếm, lọc, phân trang)
- *   POST   /upload-image - Nhận ảnh đại diện món ăn trong bộ nhớ để lưu cùng document Food
+ *   POST   /upload-image - Tải ảnh món ăn lên Cloudinary (fallback: base64)
  *   POST   /             - Thêm mới món ăn
  *   GET    /:id          - Xem chi tiết món ăn (kèm số lượt dùng trong MealLog)
  *   PUT    /:id          - Cập nhật thông tin món ăn
@@ -24,11 +24,17 @@ const {
   updateFood,
   updateFoodStatus,
   deleteFood,
+} = require('../controllers/adminFoodController');
+const {
   listFoodGroups,
   createFoodGroup,
   renameFoodGroup,
   deleteFoodGroup,
-} = require('../controllers/adminFoodController');
+} = require('../controllers/adminFoodGroupController');
+const {
+  uploadFileToCloudinary,
+  isCloudinaryConfigured,
+} = require('../services/cloudinaryStorage');
 
 const router = express.Router();
 
@@ -48,7 +54,7 @@ const foodImageUpload = multer({
 // Tất cả route đều yêu cầu xác thực và quyền admin
 router.use(requireAuth, authorize('admin'));
 
-// Upload ảnh món ăn
+// Upload ảnh món ăn: Ưu tiên lưu Cloudinary để tối ưu dung lượng DB, fallback sang base64 nếu chưa cấu hình
 router.post('/upload-image', (req, res) => {
   foodImageUpload.single('image')(req, res, async (err) => {
     if (err) {
@@ -59,19 +65,30 @@ router.post('/upload-image', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'Vui lòng chọn tệp ảnh để tải lên' });
     }
+
+    if (isCloudinaryConfigured()) {
+      try {
+        const folder = process.env.CLOUDINARY_FOOD_FOLDER || 'nutrilens/foods';
+        const secureUrl = await uploadFileToCloudinary(req.file, folder);
+        return res.status(200).json({ message: 'Tải ảnh lên máy chủ đám mây thành công', imageUrl: secureUrl });
+      } catch (cloudErr) {
+        console.warn('[upload-image] Tải lên Cloudinary thất bại, chuyển sang base64 tạm thời:', cloudErr.message);
+      }
+    }
+
     const imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
     return res.status(200).json({ message: 'Đã nhận ảnh', imageUrl });
   });
 });
 
 router.get('/analytics', getFoodAnalytics);
-router.get('/',             listFoods);
-router.post('/',            createFood);
+router.get('/',          listFoods);
+router.post('/',         createFood);
 
 // Quản lý nhóm món ăn (Food Groups)
-router.get('/groups',       listFoodGroups);
-router.post('/groups',      createFoodGroup);
-router.put('/groups/:id',   renameFoodGroup);
+router.get('/groups',        listFoodGroups);
+router.post('/groups',       createFoodGroup);
+router.put('/groups/:id',    renameFoodGroup);
 router.delete('/groups/:id', deleteFoodGroup);
 
 router.get('/:id',          getFoodDetail);
