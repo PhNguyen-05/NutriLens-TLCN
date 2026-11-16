@@ -1,151 +1,40 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import AuthLayout from '../../components/auth/AuthLayout'
 import AuthNotice from '../../components/auth/AuthNotice'
 import PasswordInput from '../../components/auth/PasswordInput'
 import LoadingButton from '../../components/common/LoadingButton'
-import HealthDisclaimerModal from '../../components/auth/HealthDisclaimerModal'
-import { loginThunk, googleLoginThunk, clearError } from '../../store/slices/authSlice'
+import GoogleAuthButton from '../../components/auth/GoogleAuthButton'
+import { loginThunk, clearError } from '../../store/slices/authSlice'
 import { INITIAL_LOGIN_FORM } from '../../constants/authConstants'
 
 /**
  * Trang đăng nhập (UC02).
  * Hỗ trợ:
  *  - Đăng nhập bằng Email/Mật khẩu
- *  - Đăng nhập bằng Google (UC02 nhánh Google — dùng Google Identity Services)
- *
- * Nhận `location.state.successMsg` khi redirect từ RegisterPage / ForgotPasswordPage.
+ *  - Đăng nhập bằng Google qua component dùng chung GoogleAuthButton
  */
 export default function LoginPage() {
-  const dispatch  = useDispatch()
-  const navigate  = useNavigate()
-  const location  = useLocation()
+  const dispatch = useDispatch()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const { loading, error } = useSelector((state) => state.auth)
 
-  const [form, setForm]                   = useState(INITIAL_LOGIN_FORM)
-  const [googleLoading, setGoogleLoading] = useState(false)
-  const [googleError, setGoogleError]     = useState('')
-  const [successMsg, setSuccessMsg]       = useState(location.state?.successMsg || '')
-
-  // ── State Modal Xác nhận Y tế cho Google Sign-in lần đầu ────────────────
-  const [showGoogleModal, setShowGoogleModal] = useState(false)
-  const [pendingGoogleIdToken, setPendingGoogleIdToken] = useState('')
-  const [googleUserInfo, setGoogleUserInfo] = useState({ fullName: '', email: '' })
-  const [confirmingGoogle, setConfirmingGoogle] = useState(false)
-
-  // Ref container để Google Identity Services render nút chính thức
-  const googleBtnRef = useRef(null)
+  const [form, setForm] = useState(INITIAL_LOGIN_FORM)
+  const [googleError, setGoogleError] = useState('')
+  const [successMsg, setSuccessMsg] = useState(location.state?.successMsg || '')
 
   function getHomeRoute(user) {
     return String(user?.role || '').toLowerCase() === 'admin' ? '/admin' : '/dashboard'
   }
 
-  // ── Handlers xác nhận tiêu chuẩn sức khỏe cho Google ─────────────────────
-  async function handleConfirmGoogleDisclaimer() {
-    setConfirmingGoogle(true)
-    setGoogleError('')
-    const result = await dispatch(
-      googleLoginThunk({
-        idToken: pendingGoogleIdToken,
-        healthDisclaimerAccepted: true,
-      })
-    )
-    setConfirmingGoogle(false)
-    if (googleLoginThunk.fulfilled.match(result)) {
-      setShowGoogleModal(false)
-      setPendingGoogleIdToken('')
-      navigate(getHomeRoute(result.payload?.user), { replace: true })
-    } else {
-      setGoogleError(result.payload || 'Đăng nhập Google thất bại.')
-    }
-  }
-
-  function handleCancelGoogleDisclaimer() {
-    setShowGoogleModal(false)
-    setPendingGoogleIdToken('')
-    setGoogleUserInfo({ fullName: '', email: '' })
-    setGoogleError(
-      'NutriLens rất tiếc vì chưa thể phục vụ bạn do yêu cầu an toàn y tế (dành riêng cho người trưởng thành khỏe mạnh, không mang thai/cho con bú, không có bệnh nền). Tài khoản Google của bạn chưa được lưu vào hệ thống.'
-    )
-  }
-
-  // ── Khởi tạo Google Identity Services ─────────────────────────────────────
-  useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-    if (!clientId) {
-      setGoogleError('Google Client ID chưa được cấu hình. Thêm VITE_GOOGLE_CLIENT_ID vào frontend/.env')
-      return
-    }
-
-    async function handleCredentialResponse(credentialResponse) {
-      setGoogleLoading(true)
-      setGoogleError('')
-      const result = await dispatch(
-        googleLoginThunk({ idToken: credentialResponse.credential })
-      )
-      if (googleLoginThunk.fulfilled.match(result)) {
-        if (result.payload?.requiresHealthDisclaimer) {
-          // Người dùng mới qua Google -> Hiện Modal xác nhận điều kiện sức khỏe
-          setPendingGoogleIdToken(credentialResponse.credential)
-          setGoogleUserInfo({
-            fullName: result.payload.fullName,
-            email: result.payload.email,
-          })
-          setShowGoogleModal(true)
-        } else {
-          navigate(getHomeRoute(result.payload?.user), { replace: true })
-        }
-      } else {
-        setGoogleError(result.payload || 'Đăng nhập Google thất bại.')
-      }
-      setGoogleLoading(false)
-    }
-
-    function initGSI() {
-      if (!window.google?.accounts || !googleBtnRef.current) return
-
-      try {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleCredentialResponse,
-          auto_select: false,
-        })
-
-        // Render nút Google chính thức trực tiếp vào container
-        googleBtnRef.current.innerHTML = ''
-        window.google.accounts.id.renderButton(googleBtnRef.current, {
-          type: 'standard',
-          theme: 'outline',
-          size: 'large',
-          text: 'continue_with',
-          shape: 'pill',
-          width: 400,
-          logo_alignment: 'left',
-        })
-      } catch (err) {
-        console.error('Lỗi khởi tạo Google Identity Services:', err)
-      }
-    }
-
-    if (window.google?.accounts) {
-      initGSI()
-    } else {
-      // GSI script load async — chờ nó sẵn sàng
-      const gsiScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]')
-      if (gsiScript) {
-        gsiScript.addEventListener('load', initGSI, { once: true })
-      }
-    }
-  }, [dispatch, navigate])
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
   function handleChange(e) {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
     if (error) dispatch(clearError())
+    if (googleError) setGoogleError('')
   }
 
   async function handleEmailSubmit(e) {
@@ -157,20 +46,20 @@ export default function LoginPage() {
     }
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <AuthLayout>
       {/* ── Tiêu đề ── */}
       <div className="mb-3">
         <p className="auth-eyebrow">Chào mừng trở lại</p>
-        <h2 className="fw-bold mb-0" style={{ fontSize: '1.75rem', letterSpacing: '-0.02em' }}>Đăng nhập</h2>
+        <h2 className="fw-bold mb-0" style={{ fontSize: '1.75rem', letterSpacing: '-0.02em' }}>
+          Đăng nhập
+        </h2>
       </div>
 
       {/* ── Thông báo ── */}
       <AuthNotice type="success" message={successMsg} onDismiss={() => setSuccessMsg('')} />
-      <AuthNotice type="error"   message={error}      onDismiss={() => dispatch(clearError())} />
-      <AuthNotice type="error"   message={googleError} onDismiss={() => setGoogleError('')} />
+      <AuthNotice type="error" message={error} onDismiss={() => dispatch(clearError())} />
+      <AuthNotice type="error" message={googleError} onDismiss={() => setGoogleError('')} />
 
       {/* ════ Form Email / Mật khẩu ════ */}
       <form onSubmit={handleEmailSubmit} noValidate>
@@ -231,37 +120,16 @@ export default function LoginPage() {
       </div>
 
       {/* ════ Nút đăng nhập Google ════ */}
-      <div className="mb-2 position-relative">
-        <div
-          ref={googleBtnRef}
-          className="d-flex justify-content-center"
-          style={{ minHeight: '44px' }}
-        />
-        {googleLoading && (
-          <div
-            className="position-absolute top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-white bg-opacity-75"
-            style={{ borderRadius: 10, zIndex: 10 }}
-          >
-            <span className="spinner-border spinner-border-sm me-2 text-primary" role="status" aria-hidden="true" />
-            <span className="small text-muted fw-semibold">Đang xác thực Google...</span>
-          </div>
-        )}
-      </div>
+      <GoogleAuthButton
+        buttonText="continue_with"
+        onError={setGoogleError}
+      />
 
       {/* ── Link đến trang đăng ký ── */}
       <p className="text-center mt-3 mb-0 small text-muted">
         Chưa có tài khoản?{' '}
         <Link to="/register" className="link-brand">Đăng ký miễn phí</Link>
       </p>
-
-      {/* ── Modal Tiêu chuẩn Y tế cho Google Sign-in lần đầu ── */}
-      <HealthDisclaimerModal
-        isOpen={showGoogleModal}
-        userInfo={googleUserInfo}
-        loading={confirmingGoogle}
-        onConfirm={handleConfirmGoogleDisclaimer}
-        onCancel={handleCancelGoogleDisclaimer}
-      />
     </AuthLayout>
   )
 }

@@ -9,10 +9,13 @@ const {
   googleLogin,
   refreshAccessToken,
   logout,
+} = require('../controllers/authController');
+
+const {
   changePassword,
   forgotPassword,
   resetPassword,
-} = require('../controllers/authController');
+} = require('../controllers/passwordController');
 
 const { authActionLimiter, otpResendLimiter, loginLimiter } = require('../middleware/rateLimiters');
 const requireAuth = require('../middleware/auth');

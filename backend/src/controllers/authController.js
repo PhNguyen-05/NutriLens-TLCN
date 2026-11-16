@@ -2,19 +2,21 @@ const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 
 const User = require('../models/User');
-const OtpToken = require('../models/OtpToken');
 const restoreExpiredAdminLock = require('../utils/adminLock');
 const { hashValue, compareValue } = require('../utils/hash');
-const { generateOtp, getOtpExpiry } = require('../utils/otp');
-const { sendOtpEmail, sendSecurityAlertEmail } = require('../utils/mailer');
-const { createNotification, createWelcomeNotifications } = require('../services/notificationService');
+const { createWelcomeNotifications } = require('../services/notificationService');
 const {
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
   signResetPasswordToken,
-  verifyResetPasswordToken,
 } = require('../utils/jwt');
+const { issueOrUpdateOtp, verifyOtpCode, issueOtp } = require('../services/otpService');
+const {
+  changePassword,
+  forgotPassword,
+  resetPassword,
+} = require('./passwordController');
 
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -28,46 +30,40 @@ const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
 
 // ===================== ĐĂNG KÝ (UC01) =====================
 
-async function issueOtp(email, purpose) {
-  await OtpToken.deleteMany({ email, purpose });
-
-  const otp = generateOtp();
-  const otpHash = await hashValue(otp);
-
-  await OtpToken.create({
-    email,
-    otpHash,
-    purpose,
-    expiresAt: getOtpExpiry(),
-  });
-
-  await sendOtpEmail(email, otp, purpose);
-}
-
 // POST /api/auth/register
 async function register(req, res) {
   try {
     const { fullName, email, password, confirmPassword, dateOfBirth, gender, healthDisclaimerAccepted } = req.body;
 
-    if (!fullName || !email || !password) {
+    if (!fullName || typeof fullName !== 'string' || !fullName.trim() || !email || !password) {
       return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin bắt buộc' });
     }
+
+    // Giới hạn độ dài fullName chống tràn database và vỡ giao diện
+    if (fullName.trim().length > 70) {
+      return res.status(400).json({ message: 'Họ và tên không được vượt quá 70 ký tự' });
+    }
+
     if (healthDisclaimerAccepted === false) {
       return res.status(400).json({
         message: 'Bạn phải xác nhận đủ điều kiện sức khỏe (không mang thai, không cho con bú, không có bệnh nền) để đăng ký dịch vụ.',
       });
     }
+
     if (confirmPassword && password !== confirmPassword) {
-      return res.status(400).json({ message: 'Mat khau xac nhan khong khop' });
+      return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp' });
     }
+
     if (!EMAIL_REGEX.test(email)) {
       return res.status(400).json({ message: 'Email không đúng định dạng' });
     }
+
     if (!PASSWORD_REGEX.test(password)) {
       return res.status(400).json({
         message: 'Mật khẩu phải có tối thiểu 8 ký tự gồm chữ, số và ký tự đặc biệt',
       });
     }
+
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await User.findOne({ email: normalizedEmail });
 
@@ -90,7 +86,15 @@ async function register(req, res) {
       healthDisclaimerAccepted: Boolean(healthDisclaimerAccepted),
     });
 
-    await issueOtp(normalizedEmail, 'register');
+    const otpResult = await issueOrUpdateOtp({
+      email: normalizedEmail,
+      purpose: 'register',
+      isResend: false,
+    });
+
+    if (!otpResult.success) {
+      return res.status(otpResult.status || 429).json({ message: otpResult.message });
+    }
 
     return res.status(201).json({
       message: 'Đăng ký thành công, vui lòng kiểm tra email để nhập mã OTP',
@@ -112,29 +116,10 @@ async function verifyOtp(req, res) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const record = await OtpToken.findOne({ email: normalizedEmail, purpose }).sort({
-      createdAt: -1,
-    });
+    const verifyResult = await verifyOtpCode({ email: normalizedEmail, purpose, otp });
 
-    if (!record) {
-      return res
-        .status(400)
-        .json({ message: 'Mã OTP không tồn tại hoặc đã hết hạn, vui lòng gửi lại mã' });
-    }
-
-    if (record.expiresAt < new Date() || record.attempts >= 5) {
-      await OtpToken.deleteOne({ _id: record._id });
-      return res.status(400).json({
-        message: 'Mã OTP đã hết hạn hoặc nhập sai quá số lần cho phép, vui lòng gửi lại mã mới',
-      });
-    }
-
-    const isMatch = await compareValue(otp, record.otpHash);
-
-    if (!isMatch) {
-      record.attempts += 1;
-      await record.save();
-      return res.status(400).json({ message: 'Mã OTP không chính xác' });
+    if (!verifyResult.success) {
+      return res.status(verifyResult.status || 400).json({ message: verifyResult.message });
     }
 
     if (purpose === 'register') {
@@ -144,10 +129,7 @@ async function verifyOtp(req, res) {
       }
     }
 
-    await OtpToken.deleteOne({ _id: record._id });
-
-    // UC03: cấp resetToken tạm (10 phút) để FE dùng ở bước đặt mật khẩu mới,
-    // tránh phải gửi lại OTP khi submit form mật khẩu mới
+    // UC03: Cấp resetToken tạm (10 phút) để FE dùng ở bước đặt mật khẩu mới
     if (purpose === 'reset') {
       const resetToken = signResetPasswordToken({ email: normalizedEmail });
       return res.status(200).json({ message: 'Xác thực OTP thành công', resetToken });
@@ -169,20 +151,15 @@ async function resendOtp(req, res) {
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    const existing = await OtpToken.findOne({ email: normalizedEmail, purpose }).sort({
-      createdAt: -1,
+    const otpResult = await issueOrUpdateOtp({
+      email: normalizedEmail,
+      purpose,
+      isResend: true,
     });
 
-    if (existing && existing.resendCount >= 3) {
-      return res.status(429).json({
-        message: 'Bạn đã yêu cầu gửi lại mã quá số lần cho phép, vui lòng thử lại sau 15 phút',
-      });
+    if (!otpResult.success) {
+      return res.status(otpResult.status || 429).json({ message: otpResult.message });
     }
-
-    const nextResendCount = existing ? existing.resendCount + 1 : 0;
-
-    await issueOtp(normalizedEmail, purpose);
-    await OtpToken.updateOne({ email: normalizedEmail, purpose }, { resendCount: nextResendCount });
 
     return res.status(200).json({ message: 'Đã gửi lại mã OTP' });
   } catch (err) {
@@ -411,6 +388,7 @@ async function refreshAccessToken(req, res) {
       return res.status(401).json({ message: 'Refresh token không hợp lệ hoặc đã hết hạn' });
     }
 
+    // Refresh Token Rotation: Xóa token cũ và cấp phát cặp token mới
     user.refreshTokens = user.refreshTokens.filter((t) => t.tokenHash !== tokenHash);
     const { accessToken, refreshToken: newRefreshToken } = await issueTokens(user);
     await user.save();
@@ -424,8 +402,7 @@ async function refreshAccessToken(req, res) {
 
 // ===================== ĐĂNG XUẤT (UC04) =====================
 
-// POST /api/auth/logout  (cần requireAuth ở route)
-// Body: { refreshToken } - refresh token của phiên hiện tại cần vô hiệu hóa
+// POST /api/auth/logout (cần requireAuth ở route)
 async function logout(req, res) {
   const userId = req.user && req.user.id;
   const { refreshToken } = req.body;
@@ -438,204 +415,8 @@ async function logout(req, res) {
 
     return res.status(200).json({ message: 'Đăng xuất thành công' });
   } catch (err) {
-    // UC04 - 6b/7b: lỗi kết nối khi gọi API đăng xuất phía server ->
-    // vẫn trả 200 để FE luôn xóa token phía client, đảm bảo an toàn cho phiên làm việc
     console.error('[logout] Lỗi:', err.message);
     return res.status(200).json({ message: 'Đăng xuất thành công' });
-  }
-}
-
-// ===================== ĐỔI MẬT KHẨU (UC05) =====================
-
-// POST /api/auth/change-password  (cần requireAuth ở route)
-// Body: { currentPassword, newPassword, confirmNewPassword, refreshToken? }
-// refreshToken (tùy chọn): refresh token của phiên hiện tại, để giữ lại phiên này
-// khi vô hiệu hóa các phiên khác theo UC05 - bước 9.
-async function changePassword(req, res) {
-  try {
-    const userId = req.user.id;
-    const { currentPassword, newPassword, confirmNewPassword, refreshToken } = req.body;
-
-    if (!currentPassword || !newPassword || !confirmNewPassword) {
-      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
-    }
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
-    }
-
-    if (user.authProvider !== 'local') {
-      return res
-        .status(400)
-        .json({ message: 'Tài khoản đăng nhập bằng Google không thể đổi mật khẩu tại đây' });
-    }
-
-    // UC05 - đồng bộ chính sách khóa tạm với UC02: 5 lần sai -> khóa 15 phút
-    if (user.lockUntil && user.lockUntil > new Date()) {
-      const minutesLeft = Math.ceil((user.lockUntil - new Date()) / 60000);
-      return res.status(423).json({
-        message: `Chức năng đổi mật khẩu tạm khóa do nhập sai quá nhiều lần, vui lòng thử lại sau ${minutesLeft} phút`,
-      });
-    }
-
-    const isMatch = await compareValue(currentPassword, user.password);
-
-    if (!isMatch) {
-      // UC05 - 6b/7b: sai mật khẩu hiện tại
-      user.loginAttempts += 1;
-      if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
-        user.lockUntil = new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000);
-        user.loginAttempts = 0;
-      }
-      await user.save();
-      return res.status(401).json({ message: 'Mật khẩu hiện tại không đúng' });
-    }
-
-    if (!PASSWORD_REGEX.test(newPassword)) {
-      // UC05 - 7c/8c
-      return res.status(400).json({
-        message: 'Mật khẩu mới phải có tối thiểu 8 ký tự gồm chữ, số và ký tự đặc biệt',
-      });
-    }
-    if (newPassword !== confirmNewPassword) {
-      return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp' });
-    }
-
-    const isSameAsOld = await compareValue(newPassword, user.password);
-    if (isSameAsOld) {
-      // UC05 - 7d/8d
-      return res.status(400).json({ message: 'Mật khẩu mới phải khác mật khẩu hiện tại' });
-    }
-
-    user.password = await hashValue(newPassword);
-    user.loginAttempts = 0;
-    user.lockUntil = null;
-
-    // UC05 - bước 9: vô hiệu hóa các phiên khác, chỉ giữ phiên hiện tại (nếu FE gửi refreshToken)
-    if (refreshToken) {
-      const currentHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
-      user.refreshTokens = user.refreshTokens.filter((t) => t.tokenHash === currentHash);
-    } else {
-      user.refreshTokens = [];
-    }
-
-    await user.save();
-
-    // UC05 - bước 10: gửi email cảnh báo bảo mật (không chặn response nếu gửi email lỗi)
-    sendSecurityAlertEmail(
-      user.email,
-      'Mật khẩu tài khoản của bạn vừa được thay đổi. Nếu không phải bạn, hãy liên hệ quản trị viên ngay.'
-    ).catch((err) => console.error('[changePassword] Gửi email cảnh báo thất bại:', err.message));
-
-    createNotification({
-      userId: user._id,
-      title: 'Bảo mật: Mật khẩu đã được thay đổi',
-      message: 'Mật khẩu tài khoản NutriLens của bạn vừa được cập nhật thành công. Nếu không phải bạn thực hiện, vui lòng liên hệ ngay với quản trị viên.',
-      type: 'security',
-      data: { link: '/profile' },
-    }).catch(() => {});
-
-    return res.status(200).json({ message: 'Đổi mật khẩu thành công' });
-  } catch (err) {
-    console.error('[changePassword] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Đổi mật khẩu thất bại, vui lòng thử lại' });
-  }
-}
-
-// ===================== QUÊN MẬT KHẨU (UC03) =====================
-
-// POST /api/auth/forgot-password
-// Body: { email } -> gửi OTP (purpose 'reset') nếu email tồn tại
-async function forgotPassword(req, res) {
-  try {
-    const { email } = req.body;
-    if (!email) {
-      return res.status(400).json({ message: 'Vui lòng nhập email' });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: normalizedEmail });
-
-    // UC03 - 4b/5b: đặc tả yêu cầu báo rõ email không tồn tại (khác UC02
-    // vốn không tiết lộ, vì đây là bước khôi phục tài khoản của chính mình)
-    if (!user) {
-      return res.status(404).json({ message: 'Email không tồn tại trong hệ thống' });
-    }
-
-    if (user.authProvider !== 'local') {
-      return res.status(400).json({
-        message: 'Tài khoản này đăng nhập bằng Google, không thể đặt lại mật khẩu qua email',
-      });
-    }
-
-    await issueOtp(normalizedEmail, 'reset');
-
-    return res.status(200).json({
-      message: 'Đã gửi mã OTP đến email của bạn',
-      email: normalizedEmail,
-    });
-  } catch (err) {
-    console.error('[forgotPassword] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Gửi mã xác nhận thất bại, vui lòng thử lại sau' });
-  }
-}
-
-// POST /api/auth/reset-password
-// Body: { email, resetToken, newPassword, confirmNewPassword }
-// resetToken lấy từ response của /verify-otp (purpose 'reset')
-async function resetPassword(req, res) {
-  try {
-    const { email, resetToken, newPassword, confirmNewPassword } = req.body;
-
-    if (!email || !resetToken || !newPassword || !confirmNewPassword) {
-      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin' });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    let payload;
-    try {
-      payload = verifyResetPasswordToken(resetToken);
-    } catch (err) {
-      // Hết hạn 10 phút hoặc token sai -> UC03 tương tự nhánh OTP hết hạn
-      return res
-        .status(401)
-        .json({ message: 'Yêu cầu đặt lại mật khẩu đã hết hạn, vui lòng thực hiện lại từ đầu' });
-    }
-
-    if (payload.email !== normalizedEmail) {
-      return res.status(401).json({ message: 'Yêu cầu đặt lại mật khẩu không hợp lệ' });
-    }
-
-    if (!PASSWORD_REGEX.test(newPassword)) {
-      // UC03 - 10e/11e
-      return res.status(400).json({
-        message: 'Mật khẩu mới phải có tối thiểu 8 ký tự gồm chữ, số và ký tự đặc biệt',
-      });
-    }
-    if (newPassword !== confirmNewPassword) {
-      return res.status(400).json({ message: 'Mật khẩu xác nhận không khớp' });
-    }
-
-    const user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
-    }
-
-    user.password = await hashValue(newPassword);
-    user.loginAttempts = 0;
-    user.lockUntil = null;
-    // Đặt lại mật khẩu -> vô hiệu hóa toàn bộ phiên đang đăng nhập (bảo mật)
-    user.refreshTokens = [];
-
-    await user.save();
-
-    // UC03 - bước 12: đặt lại mật khẩu thành công
-    return res.status(200).json({ message: 'Đặt lại mật khẩu thành công' });
-  } catch (err) {
-    console.error('[resetPassword] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Đặt lại mật khẩu thất bại, vui lòng thử lại' });
   }
 }
 
@@ -647,6 +428,7 @@ module.exports = {
   googleLogin,
   refreshAccessToken,
   logout,
+  // Re-export để tương thích backward
   changePassword,
   forgotPassword,
   resetPassword,

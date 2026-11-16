@@ -1,6 +1,6 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { logout } from '../store/slices/authSlice'
+import { logoutThunk } from '../store/slices/authSlice'
 
 /**
  * Hook tiện ích cho auth state.
@@ -15,7 +15,7 @@ export function useAuth() {
   const { user, accessToken, loading, error } = useSelector((state) => state.auth)
 
   function handleLogout() {
-    dispatch(logout())
+    dispatch(logoutThunk())
     navigate('/', { replace: true })
   }
 

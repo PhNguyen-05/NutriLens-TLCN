@@ -150,6 +150,10 @@ const authSlice = createSlice({
     tokenRefreshed(state, action) {
       state.accessToken = action.payload.accessToken
       localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, action.payload.accessToken)
+      if (action.payload.refreshToken) {
+        state.refreshToken = action.payload.refreshToken
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, action.payload.refreshToken)
+      }
     },
     /** Đăng xuất (local + clear storage) */
     logout(state) {
@@ -216,4 +220,26 @@ const authSlice = createSlice({
 })
 
 export const { tokenRefreshed, logout, clearError, userUpdated } = authSlice.actions
+
+/** UC04: Thu hồi session trên server và dọn sạch client state */
+export const logoutThunk = createAsyncThunk(
+  'auth/logoutThunk',
+  async (_, { getState, dispatch }) => {
+    const { accessToken, refreshToken } = getState().auth
+    try {
+      if (accessToken && refreshToken) {
+        await axios.post(
+          `${BASE_URL}/auth/logout`,
+          { refreshToken },
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        )
+      }
+    } catch (err) {
+      console.warn('[logoutThunk] Thu hồi token trên server thất bại hoặc mạng offline:', err?.message)
+    } finally {
+      dispatch(logout())
+    }
+  }
+)
+
 export default authSlice.reducer

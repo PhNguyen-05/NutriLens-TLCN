@@ -75,7 +75,12 @@ axiosInstance.interceptors.response.use(
     try {
       // Gọi thẳng axios để tránh vòng lặp interceptor
       const { data } = await axios.post(`${BASE_URL}/auth/refresh-token`, { refreshToken })
-      store.dispatch(tokenRefreshed({ accessToken: data.accessToken }))
+      store.dispatch(
+        tokenRefreshed({
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+        })
+      )
       axiosInstance.defaults.headers.common.Authorization = `Bearer ${data.accessToken}`
       resolveQueue(data.accessToken)
       originalRequest.headers.Authorization = `Bearer ${data.accessToken}`

@@ -213,7 +213,7 @@ export default function ForgotPasswordPage() {
             <strong className="text-dark">{email}</strong>
           </p>
           <p className="text-muted small mb-0">
-            Mã có hiệu lực trong <strong>10 phút</strong>.
+            Mã có hiệu lực trong <strong>5 phút</strong>.
           </p>
 
           <OtpInput value={otp} onChange={setOtp} />

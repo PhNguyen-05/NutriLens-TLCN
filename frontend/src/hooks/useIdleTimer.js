@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { logout } from '../store/slices/authSlice'
+import { logoutThunk } from '../store/slices/authSlice'
 
 /** Thời gian idle mặc định: 30 phút (ms) */
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000
@@ -14,14 +14,10 @@ const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scr
  *
  * - Chỉ kích hoạt khi user đang đăng nhập (có accessToken).
  * - Reset timer mỗi khi user có tương tác với trang.
- * - Khi hết thời gian idle → dispatch logout() và trở về giao diện guest.
+ * - Khi hết thời gian idle → gọi logoutThunk để thu hồi token trên server và xóa state client.
  *
  * @param {number} [timeoutMs] - Thời gian idle tối đa tính bằng milliseconds.
  *                               Mặc định 30 phút.
- *
- * @example
- * // Dùng trong App.jsx với timeout 15 phút
- * useIdleTimer(15 * 60 * 1000)
  */
 export function useIdleTimer(timeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
   const dispatch = useDispatch()
@@ -31,7 +27,7 @@ export function useIdleTimer(timeoutMs = DEFAULT_IDLE_TIMEOUT_MS) {
   const timerRef = useRef(null)
 
   const handleLogout = useCallback(() => {
-    dispatch(logout())
+    dispatch(logoutThunk())
     navigate('/', { replace: true })
   }, [dispatch, navigate])
 

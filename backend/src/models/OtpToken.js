@@ -32,16 +32,22 @@ const otpTokenSchema = new Schema({
   },
   expiresAt: {
     type: Date,
-    required: true, // = createdAt + 5 phút, set khi tạo OTP
+    required: true, // = createdAt + 5 phút, thời điểm mã OTP hết hạn
+  },
+  windowExpiresAt: {
+    type: Date,
+    default: () => new Date(Date.now() + 15 * 60 * 1000), // cửa sổ rate limit 15 phút
+  },
+  cleanUpAt: {
+    type: Date,
+    default: () => new Date(Date.now() + 15 * 60 * 1000), // thời điểm MongoDB tự động dọn dẹp document (sau 15 phút)
   },
 });
 
-// TTL index: MongoDB tự động xóa document khi thời điểm hiện tại
-// vượt qua giá trị của trường expiresAt (expireAfterSeconds: 0 nghĩa là
-// "hết hạn đúng tại giá trị của field", không cộng thêm giây nào).
-otpTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// TTL index: MongoDB tự động xóa document khi vượt qua cleanUpAt (duy trì biến đếm đủ 15 phút)
+otpTokenSchema.index({ cleanUpAt: 1 }, { expireAfterSeconds: 0 });
 
-// Tăng tốc truy vấn "lấy OTP còn hiệu lực gần nhất của 1 email + mục đích"
+// Tăng tốc truy vấn theo email + purpose
 otpTokenSchema.index({ email: 1, purpose: 1 });
 
 module.exports = mongoose.model('OtpToken', otpTokenSchema);
