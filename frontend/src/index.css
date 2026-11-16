@@ -3359,13 +3359,6 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-page-heading > div { min-width: 0; }
 .fs-page-heading h1 { margin: 0; color: #172c42; font-size: 1.7rem; line-height: 1.2; font-weight: 750; }
 .fs-page-heading p { margin: 4px 0 0; color: #758994; font-size: 0.92rem; line-height: 1.45; }
-.fs-system-status { display: flex; align-items: center; gap: 9px; margin-left: auto; padding: 7px 11px; border: 1px solid #bdebd8; border-radius: 8px; background: #f0fbf6; color: #087e5c; white-space: nowrap; }
-button.fs-system-status { cursor: pointer; transition: all 0.15s ease; outline: none; }
-button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(5,150,105,0.12); }
-.fs-system-status > i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 7px; background: #009d70; color: #fff; }
-.fs-system-status span, .fs-system-status strong, .fs-system-status small { display: block; }
-.fs-system-status strong { font-size: 0.95rem; font-weight: 800; }
-.fs-system-status small { margin-top: 2px; color: #628f7e; font-size: 0.8rem; }
 .fs-alert { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid; border-radius: 7px; font-size: 0.97rem; }
 .fs-alert.error { border-color: #f3c7c3; background: #fff5f3; color: #a63e38; }
 .fs-alert.success { border-color: #bdebd8; background: #f0fbf6; color: #087e5c; }
@@ -3526,6 +3519,8 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
 .fs-upload-tabs button { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border: 0; border-radius: 6px; background: #f1f4f8; color: #5f707a; font-size: 0.96rem; font-weight: 600; cursor: pointer; }
 .fs-upload-tabs button.active { background: #07966c; color: #fff; }
 .fs-upload-tabs button.fs-reset-button { margin-left: auto; padding: 0 9px; background: #fff1ef; color: #c75147; }
+.fs-image-notice { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; padding: 9px 11px; border: 1px solid #f4d9a2; border-radius: 6px; background: #fff9eb; color: #8a5a12; font-size: 0.88rem; line-height: 1.45; }
+.fs-image-notice i { flex: 0 0 auto; margin-top: 2px; }
 .fs-upload-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 .fs-dropzone { min-width: 0; min-height: 174px; border-radius: 8px; }
 .fs-upload-frame { position: relative; width: 100%; min-height: 320px; aspect-ratio: 16 / 9; max-height: 520px; }
@@ -3765,7 +3760,6 @@ button.fs-system-status:hover { background: #e1f7ed; border-color: #059669; tran
   .fs-page-icon { width: 34px; height: 34px; flex-basis: 34px; }
   .fs-page-heading h1 { font-size: 17px; }
   .fs-page-heading p { font-size: 10px; }
-  .fs-system-status { width: 100%; margin-left: 46px; }
   .fs-request-hero { align-items: flex-start; flex-direction: column; }
   .fs-request-back-button { width: 100%; }
   .fs-request-side { grid-template-columns: 1fr; }
