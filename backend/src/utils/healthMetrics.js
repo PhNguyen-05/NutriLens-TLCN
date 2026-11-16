@@ -13,9 +13,11 @@ const ACTIVITY_MULTIPLIERS = {
 const CALORIE_FLOOR = { male: 1500, female: 1200 };
 
 function getBmiCategory(bmi) {
-  if (bmi < 18.5) return 'Thiếu cân';
-  if (bmi < 23) return 'Bình thường';
-  if (bmi < 25) return 'Thừa cân';
+  const val = Number(bmi);
+  if (!Number.isFinite(val) || val <= 0) return null;
+  if (val < 18.5) return 'Thiếu cân';
+  if (val < 23) return 'Bình thường';
+  if (val < 25) return 'Thừa cân';
   return 'Béo phì';
 }
 
@@ -60,10 +62,15 @@ function calculateHealthMetrics({ heightCm, weightKg, dateOfBirth, gender, activ
  * @param {{ bmr: number, tdee: number }} metrics
  * @param {'lose_weight'|'maintain_weight'|'gain_weight'} goal
  * @param {'male'|'female'|string} gender
- * @returns {number}
+ * @returns {number|null}
  */
 function calcSafeCalorieTarget(metrics, goal, gender) {
+  if (!metrics || typeof metrics !== 'object') return null;
   const { bmr, tdee } = metrics;
+  if (!Number.isFinite(bmr) || !Number.isFinite(tdee) || bmr <= 0 || tdee <= 0) {
+    return null;
+  }
+
   const floor = CALORIE_FLOOR[gender] ?? 1200;
 
   if (goal === 'lose_weight') {
@@ -71,9 +78,44 @@ function calcSafeCalorieTarget(metrics, goal, gender) {
     return Math.max(bmr, tdee - deficit, floor);
   }
   if (goal === 'gain_weight') {
-    return tdee + 350;
+    return Math.round(tdee + 350);
   }
-  return tdee; // maintain_weight
+  return Math.round(tdee); // maintain_weight
 }
 
-module.exports = { calculateHealthMetrics, getBmiCategory, calcSafeCalorieTarget, CALORIE_FLOOR, getAge };
+function getGoalRisk(bmi, targetWeightKg, currentWeightKg, heightCm, specialConditions = []) {
+  if (specialConditions && specialConditions.length > 0 && targetWeightKg !== currentWeightKg) {
+    return 'danger';
+  }
+  if (!targetWeightKg || !currentWeightKg || !heightCm) return 'safe';
+  const targetBmi = Number((targetWeightKg / ((heightCm / 100) ** 2)).toFixed(1));
+  if (targetBmi < 18.5 && targetWeightKg < currentWeightKg) return 'danger';
+  if (targetBmi >= 25 && targetWeightKg > currentWeightKg) return 'danger';
+  if (bmi && bmi < 18.5 && targetWeightKg < currentWeightKg) return 'danger';
+  if (bmi && bmi >= 25 && targetWeightKg > currentWeightKg) return 'danger';
+  return 'safe';
+}
+
+function getSystemAdvice(bmi, specialConditions = []) {
+  if (bmi < 18.5) {
+    return 'Chỉ số BMI cho thấy bạn đang thiếu cân. Chúng tôi khuyến nghị mục tiêu Tăng cân hoặc Duy trì để đảm bảo sức khỏe tối ưu.';
+  }
+  if (bmi >= 25) {
+    return 'Chỉ số BMI cho thấy bạn đang ở mức thừa cân/béo phì. Mục tiêu Giảm cân từ từ (thâm hụt tối đa 500 kcal/ngày) là phương án khoa học nhất.';
+  }
+  if (specialConditions && specialConditions.length > 0) {
+    return 'Với tình trạng sức khỏe đặc biệt đã khai báo, mục tiêu thay đổi cân nặng cần có sự tư vấn của bác sĩ hoặc chuyên gia dinh dưỡng.';
+  }
+  return null;
+}
+
+module.exports = {
+  calculateHealthMetrics,
+  getBmiCategory,
+  calcSafeCalorieTarget,
+  CALORIE_FLOOR,
+  getAge,
+  getGoalRisk,
+  getSystemAdvice,
+};
+

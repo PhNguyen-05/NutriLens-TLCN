@@ -1,42 +1,67 @@
+const fs = require('fs');
+const path = require('path');
 const UserProfile = require('../models/UserProfile');
 const User = require('../models/User');
 const WeightLog = require('../models/WeightLog');
-const MealLog = require('../models/MealLog');
-const ExerciseLog = require('../models/ExerciseLog');
-const { calculateHealthMetrics, calcSafeCalorieTarget, CALORIE_FLOOR, getAge } = require('../utils/healthMetrics');
-const fs = require('fs');
-const path = require('path');
+const {
+  calculateHealthMetrics,
+  getBmiCategory,
+  CALORIE_FLOOR,
+  getAge,
+  getGoalRisk,
+  getSystemAdvice,
+} = require('../utils/healthMetrics');
 const { uploadFileToCloudinary, isCloudinaryConfigured } = require('../services/cloudinaryStorage');
+const {
+  isNumberInRange,
+  getTodayDate,
+  toUtcDateOnly,
+  computeBaselineLockStatus,
+} = require('../utils/weightBaselineUtils');
+const { buildUserResponse } = require('../utils/userUtils');
+const {
+  MACRO_RATIOS,
+  buildNutritionGoal,
+  calculateNutritionProposal,
+} = require('../utils/nutritionGoalUtils');
+
+// Re-export controllers for full backward compatibility
+const {
+  getWeightLogs,
+  saveWeightLog,
+  deleteWeightLog,
+  applyMilestoneWeight,
+} = require('./weightController');
+
+const {
+  getDashboardStats,
+  getUserAnalytics,
+} = require('./dashboardAnalyticsController');
 
 const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
 const HEALTH_GOALS = ['lose_weight', 'maintain_weight', 'gain_weight', 'eat_healthier'];
 const NUTRITION_GOALS = ['lose_weight', 'gain_weight', 'maintain_weight'];
-const MACRO_RATIOS = {
-  lose_weight: { protein: 30, carbs: 40, fat: 30 },
-  gain_weight: { protein: 25, carbs: 50, fat: 25 },
-  maintain_weight: { protein: 20, carbs: 50, fat: 30 },
-};
-const BASELINE_LOCK_DAYS = 14;
-const BASELINE_GRACE_PERIOD_HOURS = 24;
-
-function isNumberInRange(value, min, max) {
-  return Number.isFinite(value) && value >= min && value <= max;
-}
 
 function validateProfile(payload) {
-  const heightCm = Number(payload.heightCm);
-  const currentWeightKg = Number(payload.currentWeightKg);
-  const targetWeightKg = payload.targetWeightKg === '' || payload.targetWeightKg == null
-    ? null
-    : Number(payload.targetWeightKg);
-
-  if (!isNumberInRange(heightCm, 100, 250)) return 'Chiều cao phải nằm trong khoảng 100 đến 250 cm';
-  if (!isNumberInRange(currentWeightKg, 20, 300)) return 'Cân nặng hiện tại phải nằm trong khoảng 20 đến 300 kg';
-  if (targetWeightKg !== null && !isNumberInRange(targetWeightKg, 20, 300)) {
+  if (!isNumberInRange(Number(payload.heightCm), 100, 250)) {
+    return 'Chiều cao phải nằm trong khoảng 100 đến 250 cm';
+  }
+  if (!isNumberInRange(Number(payload.currentWeightKg), 20, 300)) {
+    return 'Cân nặng hiện tại phải nằm trong khoảng 20 đến 300 kg';
+  }
+  if (
+    payload.targetWeightKg !== '' &&
+    payload.targetWeightKg != null &&
+    !isNumberInRange(Number(payload.targetWeightKg), 20, 300)
+  ) {
     return 'Cân nặng mục tiêu phải nằm trong khoảng 20 đến 300 kg';
   }
-  if (!ACTIVITY_LEVELS.includes(payload.activityLevel)) return 'Mức độ vận động không hợp lệ';
-  if (payload.healthGoal && !HEALTH_GOALS.includes(payload.healthGoal)) return 'Mục tiêu sức khỏe không hợp lệ';
+  if (!ACTIVITY_LEVELS.includes(payload.activityLevel)) {
+    return 'Mức độ vận động không hợp lệ';
+  }
+  if (payload.healthGoal && !HEALTH_GOALS.includes(payload.healthGoal)) {
+    return 'Mục tiêu sức khỏe không hợp lệ';
+  }
   if (payload.dietaryPreferences != null && !Array.isArray(payload.dietaryPreferences)) {
     return 'Chế độ ăn cần được gửi dưới dạng danh sách';
   }
@@ -51,24 +76,11 @@ function validatePersonalInfo(payload) {
   if (!fullName) return 'Họ và tên không được để trống';
   if (phone && !/^\d{10}$/.test(phone)) return 'Số điện thoại phải gồm đúng 10 chữ số';
   if (payload.gender && !['male', 'female'].includes(payload.gender)) return 'Giới tính không hợp lệ';
-  if (!dateOfBirth || Number.isNaN(dateOfBirth.getTime())) return 'Ngày sinh không hợp lệ';
+  if (!dateOfBirth || Number.isNaN(dateOfBirth.getTime()) || dateOfBirth > new Date()) return 'Ngày sinh không hợp lệ';
 
-  const age = (Date.now() - dateOfBirth.getTime()) / 31557600000;
-  if (age < 10 || age > 120) return 'Tuổi phải nằm trong khoảng 10 đến 120';
+  const age = getAge(dateOfBirth);
+  if (age === null || age < 10 || age > 120) return 'Tuổi phải nằm trong khoảng 10 đến 120';
   return null;
-}
-
-function buildUserResponse(user) {
-  return {
-    id: user._id,
-    fullName: user.fullName,
-    email: user.email,
-    phone: user.phone || '',
-    dateOfBirth: user.dateOfBirth,
-    gender: user.gender,
-    avatarUrl: user.avatarUrl || null,
-    role: user.role,
-  };
 }
 
 function normalizeProfile(payload) {
@@ -90,176 +102,6 @@ function normalizeProfile(payload) {
     allergies: typeof payload.allergies === 'string' ? payload.allergies.trim() : '',
     medicalConditions: typeof payload.medicalConditions === 'string' ? payload.medicalConditions.trim() : '',
   };
-}
-
-function parseRecordedDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-  return date;
-}
-
-function getTodayDate() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-}
-
-const MAX_DAILY_UPDATES = 5;
-
-function toUtcDateOnly(value) {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return null;
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
-function addUtcDays(date, days) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
-}
-
-function computeBaselineLockStatus(profile, latestWeightLog = null) {
-  if (!profile || profile.currentWeightKg == null) {
-    return {
-      isSet: false,
-      isLocked: false,
-      inGracePeriod: false,
-      hoursRemainingInGrace: 0,
-      daysElapsed: 0,
-      daysRemaining: 0,
-      canReviewMilestone: false,
-      unlockDate: null,
-      baselineWeightKg: null,
-      baselineDate: null,
-      latestWeightLog: null,
-    };
-  }
-
-  const now = new Date();
-  const baselineUpdatedTime = profile.baselineWeightUpdatedAt || profile.currentWeightRecordedDate || profile.createdAt || now;
-  const msSinceUpdate = Math.max(0, now.getTime() - new Date(baselineUpdatedTime).getTime());
-  const hoursSinceUpdate = msSinceUpdate / (1000 * 60 * 60);
-
-  const baselineDate = toUtcDateOnly(profile.currentWeightRecordedDate)
-    || toUtcDateOnly(profile.createdAt)
-    || getTodayDate();
-  const todayDate = getTodayDate();
-  const msElapsedDays = Math.max(0, todayDate.getTime() - baselineDate.getTime());
-  const daysElapsed = Math.floor(msElapsedDays / (1000 * 60 * 60 * 24));
-
-  const inGracePeriod = hoursSinceUpdate <= BASELINE_GRACE_PERIOD_HOURS;
-  const hoursRemainingInGrace = inGracePeriod ? Math.max(0, Math.ceil(BASELINE_GRACE_PERIOD_HOURS - hoursSinceUpdate)) : 0;
-
-  const daysRemaining = Math.max(0, BASELINE_LOCK_DAYS - daysElapsed);
-  const canReviewMilestone = daysElapsed >= BASELINE_LOCK_DAYS;
-  const isLocked = !inGracePeriod && !canReviewMilestone;
-
-  const unlockDate = addUtcDays(baselineDate, BASELINE_LOCK_DAYS).toISOString().slice(0, 10);
-
-  return {
-    isSet: true,
-    isLocked,
-    inGracePeriod,
-    hoursRemainingInGrace,
-    daysElapsed,
-    daysRemaining,
-    canReviewMilestone,
-    unlockDate,
-    baselineWeightKg: profile.currentWeightKg,
-    baselineDate: baselineDate.toISOString().slice(0, 10),
-    latestWeightLog: latestWeightLog ? serializeWeightLog(latestWeightLog) : null,
-  };
-}
-
-/**
- * Kiểm tra xem biến động cân nặng có bất khả thi về mặt sinh học không (Chặn cứng).
- * - Trong vòng <= 1 ngày: biến động > 5 kg => Chặn
- * - Trong vòng <= 3 ngày: biến động > 8 kg => Chặn
- * - Trong vòng <= 7 ngày: biến động > 12 kg => Chặn
- * @param {number} newWeight
- * @param {Date} targetDate
- * @param {Object} neighborLog
- * @returns {string|null} Lỗi chặn cứng hoặc null nếu hợp lệ
- */
-function checkUnrealisticWeightJump(newWeight, targetDate, neighborLog) {
-  if (!neighborLog || !neighborLog.recordedDate || neighborLog.weightKg == null) return null;
-  const targetTime = targetDate.getTime();
-  const neighborTime = new Date(neighborLog.recordedDate).getTime();
-  const daysDiff = Math.abs((targetTime - neighborTime) / (1000 * 60 * 60 * 24));
-  const weightDiff = Math.abs(newWeight - Number(neighborLog.weightKg));
-
-  if (daysDiff <= 1.05 && weightDiff > 5) {
-    return `Chênh lệch cân nặng không hợp lý (biến động ${weightDiff.toFixed(1)} kg trong vòng 1 ngày, vượt quá giới hạn an toàn 5 kg). Hệ thống từ chối ghi nhận để bảo vệ tính chính xác của dữ liệu. Vui lòng kiểm tra lại số cân.`;
-  }
-  if (daysDiff <= 3.05 && weightDiff > 8) {
-    return `Chênh lệch cân nặng không hợp lý (biến động ${weightDiff.toFixed(1)} kg trong vòng 3 ngày, vượt quá giới hạn 8 kg). Vui lòng kiểm tra lại số cân.`;
-  }
-  if (daysDiff <= 7.05 && weightDiff > 12) {
-    return `Chênh lệch cân nặng không hợp lý (biến động ${weightDiff.toFixed(1)} kg trong vòng 7 ngày, vượt quá giới hạn 12 kg). Vui lòng kiểm tra lại số cân.`;
-  }
-  return null;
-}
-
-function serializeWeightLog(log) {
-  const rawDate = log.loggedAt || log.updatedAt || log.createdAt || log.recordedDate;
-  const d = new Date(rawDate);
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  const timeStr = `${hours}:${minutes}:${seconds}`;
-
-  let editHistory = [];
-  if (Array.isArray(log.editHistory) && log.editHistory.length > 0) {
-    editHistory = log.editHistory.map((item, idx) => {
-      const itemDate = new Date(item.loggedAt);
-      const itemH = String(itemDate.getHours()).padStart(2, '0');
-      const itemM = String(itemDate.getMinutes()).padStart(2, '0');
-      const itemS = String(itemDate.getSeconds()).padStart(2, '0');
-      return {
-        version: idx + 1,
-        weightKg: item.weightKg,
-        loggedAt: itemDate.toISOString(),
-        timeStr: `${itemH}:${itemM}:${itemS}`,
-      };
-    });
-  } else {
-    editHistory = [
-      {
-        version: 1,
-        weightKg: log.weightKg,
-        loggedAt: d.toISOString(),
-        timeStr,
-      },
-    ];
-  }
-
-  return {
-    id: log._id,
-    weightKg: log.weightKg,
-    recordedDate: log.recordedDate.toISOString().slice(0, 10),
-    loggedAt: d.toISOString(),
-    timeStr,
-    updateCount: log.updateCount || 0,
-    editHistory,
-    createdAt: log.createdAt,
-    updatedAt: log.updatedAt,
-  };
-}
-
-function buildNutritionGoal(goal, calorieTarget, macroPercentages, customized = false) {
-  return {
-    goal,
-    calorieTarget: Math.round(calorieTarget),
-    macroPercentages,
-    proteinG: Math.round((calorieTarget * macroPercentages.protein) / 400),
-    carbsG: Math.round((calorieTarget * macroPercentages.carbs) / 400),
-    fatG: Math.round((calorieTarget * macroPercentages.fat) / 900),
-    customized,
-  };
-}
-
-function calculateNutritionProposal(metrics, goal, gender) {
-  const calorieTarget = calcSafeCalorieTarget(metrics, goal, gender);
-  return buildNutritionGoal(goal, calorieTarget, MACRO_RATIOS[goal]);
 }
 
 /**
@@ -287,7 +129,10 @@ function checkGoalSafety(bmiCategory, goal, age, specialConditions = []) {
   return null;
 }
 
-
+/**
+ * GET /api/profile
+ * Lấy thông tin hồ sơ người dùng và trạng thái bảo lưu cân nặng mốc 14 ngày
+ */
 async function getProfile(req, res) {
   try {
     const [user, profile, latestLog] = await Promise.all([
@@ -332,6 +177,10 @@ async function getProfile(req, res) {
   }
 }
 
+/**
+ * PUT /api/profile
+ * Cập nhật thông tin cá nhân và chỉ số sức khỏe
+ */
 async function saveProfile(req, res) {
   try {
     const validationError = validatePersonalInfo(req.body) || validateProfile(req.body);
@@ -345,9 +194,9 @@ async function saveProfile(req, res) {
       {
         $set: {
           fullName: req.body.fullName.trim(),
-          phone: typeof req.body.phone === 'string' ? req.body.phone.trim() : '',
+          phone: req.body.phone ? req.body.phone.trim() : '',
           dateOfBirth: new Date(req.body.dateOfBirth),
-          gender: req.body.gender,
+          gender: req.body.gender || undefined,
         },
       },
       { new: true, runValidators: true }
@@ -514,51 +363,56 @@ async function saveProfile(req, res) {
   }
 }
 
-async function getWeightLogs(req, res) {
-  try {
-    const [logs, profile] = await Promise.all([
-      WeightLog.find({ user: req.user.id }).sort({ recordedDate: 1 }).lean(),
-      UserProfile.findOne({ user: req.user.id }).lean(),
-    ]);
-    const latestLog = logs.length ? logs[logs.length - 1] : null;
-    const baselineStatus = computeBaselineLockStatus(profile, latestLog);
-    return res.status(200).json({
-      weightLogs: logs.map(serializeWeightLog),
-      baselineStatus,
-    });
-  } catch (err) {
-    console.error('[getWeightLogs] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Không thể tải lịch sử cân nặng' });
-  }
-}
-
+/**
+ * GET /api/profile/nutrition-goal/proposal
+ * Lấy đề xuất mục tiêu dinh dưỡng dựa trên BMR/TDEE hiện tại
+ */
 async function getNutritionProposal(req, res) {
   try {
     const goal = req.query.goal;
     if (!NUTRITION_GOALS.includes(goal)) return res.status(400).json({ message: 'Mục tiêu dinh dưỡng không hợp lệ' });
-    const profile = await UserProfile.findOne({ user: req.user.id }).lean();
+    const [user, profile] = await Promise.all([
+      User.findById(req.user.id).select('gender').lean(),
+      UserProfile.findOne({ user: req.user.id }).lean(),
+    ]);
     const metrics = profile?.healthMetrics;
     if (!metrics?.bmr || !metrics?.tdee) {
       return res.status(422).json({ code: 'MISSING_TDEE', message: 'Vui lòng hoàn tất hồ sơ sức khỏe để xem chỉ số BMI/BMR/TDEE' });
     }
-    return res.status(200).json({ nutritionGoal: calculateNutritionProposal(metrics, goal), bmr: metrics.bmr, tdee: metrics.tdee });
+    const calorieFloor = CALORIE_FLOOR[user?.gender] || 1200;
+    const bmiCategory = metrics.bmiCategory || getBmiCategory(metrics.bmi);
+    const riskLevel = getGoalRisk(metrics.bmi, profile?.targetWeightKg, profile?.currentWeightKg, profile?.heightCm, profile?.specialConditions);
+    const advice = getSystemAdvice(metrics.bmi, profile?.specialConditions);
+
+    return res.status(200).json({
+      nutritionGoal: calculateNutritionProposal(metrics, goal, user?.gender),
+      bmr: metrics.bmr,
+      tdee: metrics.tdee,
+      calorieFloor,
+      bmiCategory,
+      riskLevel,
+      advice,
+    });
   } catch (err) {
     console.error('[getNutritionProposal] Lỗi:', err.message);
     return res.status(500).json({ message: 'Không thể tạo đề xuất mục tiêu dinh dưỡng' });
   }
 }
 
+/**
+ * PUT /api/profile/nutrition-goal
+ * Cập nhật hoặc tùy chỉnh mục tiêu calo & tỉ lệ macro (Protein, Carbs, Fat)
+ */
 async function saveNutritionGoal(req, res) {
   try {
     const { goal, customized = false } = req.body;
     if (!NUTRITION_GOALS.includes(goal)) return res.status(400).json({ message: 'Mục tiêu dinh dưỡng không hợp lệ' });
     const profile = await UserProfile.findOne({ user: req.user.id });
     const metrics = profile?.healthMetrics;
-    if (!profile || !metrics?.bmr || !metrics?.tdee) {
+    if (!metrics?.bmr || !metrics?.tdee) {
       return res.status(422).json({ code: 'MISSING_TDEE', message: 'Vui lòng hoàn tất hồ sơ sức khỏe để xem chỉ số BMI/BMR/TDEE' });
     }
 
-    // Safety gate
     const isAcknowledged = Boolean(
       req.body.acknowledgeUnsafeGoal ||
       req.body.nutritionGoal?.acknowledgeUnsafeGoal ||
@@ -566,7 +420,7 @@ async function saveNutritionGoal(req, res) {
     );
     let safetyWarning = null;
     if (metrics.bmiCategory) {
-      const user = await User.findById(req.user.id).select('dateOfBirth gender').lean();
+      const user = await User.findById(req.user.id).select('dateOfBirth').lean();
       const ageVal = user ? getAge(user.dateOfBirth) : null;
       const safetyError = checkGoalSafety(metrics.bmiCategory, goal, ageVal, profile.specialConditions);
       if (safetyError) {
@@ -593,14 +447,22 @@ async function saveNutritionGoal(req, res) {
       }
       nutritionGoal = buildNutritionGoal(goal, calorieTarget, macroPercentages, true);
     }
+
     const updatedProfile = await UserProfile.findByIdAndUpdate(
       profile._id,
-      { $set: { nutritionGoal, healthGoal: goal } },
+      {
+        $set: {
+          nutritionGoal,
+          healthGoal: goal,
+        },
+      },
       { new: true, runValidators: true }
     ).lean();
+
     return res.status(200).json({
-      message: 'Đã lưu mục tiêu dinh dưỡng',
-      nutritionGoal: updatedProfile.nutritionGoal,
+      message: customized ? 'Đã lưu mục tiêu dinh dưỡng tùy chỉnh' : 'Đã cập nhật mục tiêu dinh dưỡng',
+      warning: safetyWarning,
+      nutritionGoal,
       profile: updatedProfile,
     });
   } catch (err) {
@@ -609,279 +471,10 @@ async function saveNutritionGoal(req, res) {
   }
 }
 
-
-async function saveWeightLog(req, res) {
-  try {
-    const weightKg = Number(req.body.weightKg);
-    if (!isNumberInRange(weightKg, 20, 300)) {
-      return res.status(400).json({ code: 'INVALID_WEIGHT', message: 'Vui lòng nhập cân nặng hợp lệ (20–300 kg)' });
-    }
-
-    const recordedDate = parseRecordedDate(req.body.recordedDate);
-    if (!recordedDate) return res.status(400).json({ message: 'Ngày ghi nhận không hợp lệ' });
-    if (recordedDate > getTodayDate()) {
-      return res.status(400).json({ code: 'FUTURE_DATE', message: 'Không thể ghi nhận cân nặng cho ngày trong tương lai' });
-    }
-
-    const profile = await UserProfile.findOne({ user: req.user.id });
-    if (!profile) return res.status(404).json({ message: 'Vui lòng hoàn tất hồ sơ sức khỏe trước khi ghi nhận cân nặng' });
-
-    const existingLog = await WeightLog.findOne({ user: req.user.id, recordedDate });
-    if (existingLog) {
-      const curCount = existingLog.updateCount || 0;
-      if (curCount >= MAX_DAILY_UPDATES) {
-        return res.status(429).json({
-          code: 'DAILY_UPDATE_LIMIT_EXCEEDED',
-          message: `Bạn đã đạt giới hạn tối đa ${MAX_DAILY_UPDATES} lần cập nhật cân nặng trong ngày này. Vui lòng quay lại vào ngày mai để ghi nhận tiếp.`,
-          maxUpdates: MAX_DAILY_UPDATES,
-          currentUpdateCount: curCount,
-        });
-      }
-      if (!req.body.overwrite) {
-        return res.status(409).json({
-          code: 'WEIGHT_LOG_EXISTS',
-          message: `Bạn đã ghi nhận cân nặng cho ngày này (đã cập nhật ${curCount}/${MAX_DAILY_UPDATES} lần). Bạn có muốn cập nhật lại giá trị này?`,
-          currentUpdateCount: curCount,
-          remainingUpdates: Math.max(0, MAX_DAILY_UPDATES - curCount),
-          maxUpdates: MAX_DAILY_UPDATES,
-        });
-      }
-    }
-
-    // Chặn cứng: Kiểm tra biến động cân nặng so với các bản ghi lân cận
-    const prevLog = await WeightLog.findOne({
-      user: req.user.id,
-      recordedDate: { $lt: recordedDate },
-    }).sort({ recordedDate: -1 }).lean();
-
-    const nextLog = await WeightLog.findOne({
-      user: req.user.id,
-      recordedDate: { $gt: recordedDate },
-    }).sort({ recordedDate: 1 }).lean();
-
-    const jumpErrorPrev = checkUnrealisticWeightJump(weightKg, recordedDate, prevLog);
-    if (jumpErrorPrev) {
-      return res.status(400).json({ code: 'UNREALISTIC_WEIGHT_CHANGE', message: jumpErrorPrev });
-    }
-
-    const jumpErrorNext = checkUnrealisticWeightJump(weightKg, recordedDate, nextLog);
-    if (jumpErrorNext) {
-      return res.status(400).json({ code: 'UNREALISTIC_WEIGHT_CHANGE', message: jumpErrorNext });
-    }
-
-    // Nếu chưa có nhật ký nào trước/sau, kiểm tra so với mốc ban đầu trong hồ sơ
-    if (!prevLog && !nextLog && profile.currentWeightKg != null) {
-      const baselineDate = toUtcDateOnly(profile.currentWeightRecordedDate)
-        || toUtcDateOnly(profile.createdAt)
-        || getTodayDate();
-      const jumpErrorBaseline = checkUnrealisticWeightJump(weightKg, recordedDate, {
-        recordedDate: baselineDate,
-        weightKg: profile.currentWeightKg,
-      });
-      if (jumpErrorBaseline) {
-        return res.status(400).json({ code: 'UNREALISTIC_WEIGHT_CHANGE', message: jumpErrorBaseline });
-      }
-    }
-
-    const now = new Date();
-    let log;
-    if (existingLog) {
-      const history = Array.isArray(existingLog.editHistory) && existingLog.editHistory.length > 0
-        ? [...existingLog.editHistory]
-        : [{ weightKg: existingLog.weightKg, loggedAt: existingLog.loggedAt || existingLog.createdAt || now }];
-      history.push({ weightKg, loggedAt: now });
-
-      log = await WeightLog.findByIdAndUpdate(
-        existingLog._id,
-        {
-          $set: {
-            weightKg,
-            loggedAt: now,
-            updateCount: (existingLog.updateCount || 0) + 1,
-            editHistory: history,
-          },
-        },
-        { new: true, runValidators: true }
-      );
-    } else {
-      log = await WeightLog.create({
-        user: req.user.id,
-        weightKg,
-        recordedDate,
-        loggedAt: now,
-        updateCount: 0,
-        editHistory: [{ weightKg, loggedAt: now }],
-      });
-    }
-
-    const baselineStatus = computeBaselineLockStatus(profile, log);
-
-    return res.status(existingLog ? 200 : 201).json({
-      message: existingLog ? 'Cập nhật bản ghi cân nặng thành công' : 'Đã ghi nhận cân nặng thành công',
-      weightLog: serializeWeightLog(log),
-      profile: profile.toObject ? profile.toObject() : profile,
-      weightProfileUpdated: false,
-      canReviewMilestone: baselineStatus.canReviewMilestone,
-      baselineStatus,
-      remainingUpdates: Math.max(0, MAX_DAILY_UPDATES - (log.updateCount || 0)),
-      maxUpdates: MAX_DAILY_UPDATES,
-    });
-  } catch (err) {
-    if (err?.code === 11000) {
-      if (req.body.overwrite) {
-        try {
-          const recordedDate = parseRecordedDate(req.body.recordedDate);
-          const weightKg = Number(req.body.weightKg);
-          const existing = await WeightLog.findOne({ user: req.user.id, recordedDate });
-          if (existing) {
-            const now = new Date();
-            const history = Array.isArray(existing.editHistory) && existing.editHistory.length > 0
-              ? [...existing.editHistory]
-              : [{ weightKg: existing.weightKg, loggedAt: existing.loggedAt || existing.createdAt || now }];
-            history.push({ weightKg, loggedAt: now });
-            const updated = await WeightLog.findByIdAndUpdate(
-              existing._id,
-              { $set: { weightKg, loggedAt: now, updateCount: (existing.updateCount || 0) + 1, editHistory: history } },
-              { new: true, runValidators: true }
-            );
-            const baselineStatus = computeBaselineLockStatus(profile, updated);
-            return res.status(200).json({
-              message: 'Cập nhật bản ghi cân nặng thành công',
-              weightLog: serializeWeightLog(updated),
-              profile: profile.toObject ? profile.toObject() : profile,
-              weightProfileUpdated: false,
-              canReviewMilestone: baselineStatus.canReviewMilestone,
-              baselineStatus,
-              remainingUpdates: Math.max(0, MAX_DAILY_UPDATES - (updated.updateCount || 0)),
-              maxUpdates: MAX_DAILY_UPDATES,
-            });
-          }
-        } catch (retryErr) {
-          console.error('[saveWeightLog retry] Lỗi:', retryErr.message);
-        }
-      }
-      return res.status(409).json({ code: 'WEIGHT_LOG_EXISTS', message: 'Bạn đã ghi nhận cân nặng cho ngày này, bạn có muốn cập nhật lại giá trị này?' });
-    }
-    console.error('[saveWeightLog] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Ghi nhận cân nặng thất bại, vui lòng thử lại' });
-  }
-}
-
 /**
- * Áp dụng mốc cân nặng mới sau chu kỳ 14 ngày (Tùy chọn 2 - Xác nhận thủ công)
- * Cho phép người dùng xác nhận số cân đo gần nhất (hoặc điều chỉnh) để bắt đầu chu kỳ 14 ngày mới.
+ * POST /api/profile/avatar
+ * Tải lên và cập nhật ảnh đại diện người dùng
  */
-async function applyMilestoneWeight(req, res) {
-  try {
-    const profile = await UserProfile.findOne({ user: req.user.id });
-    if (!profile) {
-      return res.status(404).json({ message: 'Không tìm thấy hồ sơ sức khỏe' });
-    }
-
-    const latestLog = await WeightLog.findOne({ user: req.user.id }).sort({ recordedDate: -1, loggedAt: -1 }).lean();
-    const lockStatus = computeBaselineLockStatus(profile, latestLog);
-
-    if (!lockStatus.canReviewMilestone) {
-      return res.status(400).json({
-        code: 'MILESTONE_NOT_REACHED',
-        message: `Chu kỳ 14 ngày chưa kết thúc (còn ${lockStatus.daysRemaining} ngày nữa). Chưa thể cập nhật mốc cân nặng mới.`,
-        daysRemaining: lockStatus.daysRemaining,
-      });
-    }
-
-    let targetWeight = req.body.weightKg != null && req.body.weightKg !== ''
-      ? Number(req.body.weightKg)
-      : (latestLog?.weightKg || profile.currentWeightKg);
-
-    if (!isNumberInRange(targetWeight, 20, 300)) {
-      return res.status(400).json({ message: 'Cân nặng phải nằm trong khoảng 20 đến 300 kg' });
-    }
-
-    const user = await User.findById(req.user.id).select('dateOfBirth gender').lean();
-    const healthMetrics = {
-      ...calculateHealthMetrics({
-        heightCm: profile.heightCm,
-        weightKg: targetWeight,
-        dateOfBirth: user?.dateOfBirth,
-        gender: user?.gender,
-        activityLevel: profile.activityLevel,
-      }),
-      calculatedAt: new Date(),
-    };
-
-    const currentGoal = profile.nutritionGoal?.goal || profile.healthGoal || 'maintain_weight';
-    let newNutritionGoal = profile.nutritionGoal;
-    if (healthMetrics.bmr && healthMetrics.tdee) {
-      if (profile.nutritionGoal?.customized && profile.nutritionGoal.macroPercentages) {
-        const cal = calcSafeCalorieTarget(healthMetrics, currentGoal, user?.gender);
-        newNutritionGoal = buildNutritionGoal(currentGoal, cal, profile.nutritionGoal.macroPercentages, true);
-      } else {
-        newNutritionGoal = calculateNutritionProposal(healthMetrics, currentGoal, user?.gender);
-      }
-    }
-
-    const today = getTodayDate();
-    const now = new Date();
-
-    const updatedProfile = await UserProfile.findByIdAndUpdate(
-      profile._id,
-      {
-        $set: {
-          currentWeightKg: targetWeight,
-          currentWeightRecordedDate: today,
-          baselineWeightUpdatedAt: now,
-          healthMetrics,
-          nutritionGoal: newNutritionGoal,
-        },
-      },
-      { new: true, runValidators: true }
-    ).lean();
-
-    // Đồng bộ hoặc tạo bản ghi WeightLog cho ngày hôm nay
-    const existingLogToday = await WeightLog.findOne({ user: req.user.id, recordedDate: today });
-    if (!existingLogToday) {
-      await WeightLog.create({
-        user: req.user.id,
-        weightKg: targetWeight,
-        recordedDate: today,
-        loggedAt: now,
-        updateCount: 0,
-        editHistory: [{ weightKg: targetWeight, loggedAt: now }],
-      });
-    } else if (existingLogToday.weightKg !== targetWeight) {
-      const history = Array.isArray(existingLogToday.editHistory) && existingLogToday.editHistory.length > 0
-        ? [...existingLogToday.editHistory]
-        : [{ weightKg: existingLogToday.weightKg, loggedAt: existingLogToday.loggedAt || existingLogToday.createdAt || now }];
-      history.push({ weightKg: targetWeight, loggedAt: now });
-
-      await WeightLog.findByIdAndUpdate(
-        existingLogToday._id,
-        {
-          $set: {
-            weightKg: targetWeight,
-            loggedAt: now,
-            updateCount: (existingLogToday.updateCount || 0) + 1,
-            editHistory: history,
-          },
-        },
-        { new: true, runValidators: true }
-      );
-    }
-
-    const updatedLatestLog = await WeightLog.findOne({ user: req.user.id }).sort({ recordedDate: -1, loggedAt: -1 }).lean();
-    const newLockStatus = computeBaselineLockStatus(updatedProfile, updatedLatestLog);
-
-    return res.status(200).json({
-      message: 'Cập nhật mốc cân nặng và thiết lập chu kỳ 14 ngày mới thành công',
-      profile: updatedProfile,
-      baselineStatus: newLockStatus,
-    });
-  } catch (err) {
-    console.error('[applyMilestoneWeight] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Không thể cập nhật mốc cân nặng chu kỳ mới' });
-  }
-}
-
 async function updateAvatar(req, res) {
   try {
     if (!req.file) {
@@ -936,765 +529,17 @@ async function updateAvatar(req, res) {
   }
 }
 
-async function deleteWeightLog(req, res) {
-  try {
-    const log = await WeightLog.findOneAndDelete({ _id: req.params.id, user: req.user.id });
-    if (!log) {
-      return res.status(404).json({ message: 'Không tìm thấy bản ghi cân nặng cần xóa' });
-    }
-
-    const profile = await UserProfile.findOne({ user: req.user.id });
-    const latestLog = await WeightLog.findOne({ user: req.user.id }).sort({ recordedDate: -1, loggedAt: -1 }).lean();
-    const baselineStatus = computeBaselineLockStatus(profile, latestLog);
-    let updatedProfile = profile ? (profile.toObject ? profile.toObject() : profile) : null;
-
-    return res.status(200).json({
-      message: 'Đã xóa bản ghi cân nặng thành công',
-      deletedId: req.params.id,
-      profile: updatedProfile,
-      baselineStatus,
-    });
-  } catch (err) {
-    console.error('[deleteWeightLog] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Không thể xóa bản ghi cân nặng' });
-  }
-}
-
-/**
- * GET /api/profile/dashboard-stats
- * Lấy toàn bộ số liệu thống kê dinh dưỡng & tập luyện của người dùng tại trang Dashboard
- * Query: ?date=YYYY-MM-DD
- */
-async function getDashboardStats(req, res) {
-  try {
-    const userId = req.user.id;
-    const now = new Date();
-    const todayVietnam = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-    const selectedDate = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date))
-      ? req.query.date
-      : todayVietnam;
-
-    // 1. Lấy thông tin User, Hồ sơ UserProfile và WeightLog gần nhất
-    const [user, profile, latestWeightLog] = await Promise.all([
-      User.findById(userId).select('fullName email avatarUrl gender dateOfBirth').lean(),
-      UserProfile.findOne({ user: userId }).lean(),
-      WeightLog.findOne({ user: userId }).sort({ recordedDate: -1, loggedAt: -1 }).lean(),
-    ]);
-
-    const baselineStatus = computeBaselineLockStatus(profile, latestWeightLog);
-
-    // 2. Mục tiêu calo & macro
-    const calorieTarget = profile?.nutritionGoal?.calorieTarget || profile?.healthMetrics?.tdee || 2000;
-    const proteinTarget = profile?.nutritionGoal?.proteinG || Math.round((calorieTarget * 0.25) / 4) || 125;
-    const carbsTarget = profile?.nutritionGoal?.carbsG || Math.round((calorieTarget * 0.50) / 4) || 250;
-    const fatTarget = profile?.nutritionGoal?.fatG || Math.round((calorieTarget * 0.25) / 9) || 55;
-    const currentWeight = latestWeightLog?.weightKg || profile?.currentWeightKg || 60;
-    const waterTargetMl = Math.max(2000, Math.round(currentWeight * 35));
-
-    // 3. Lấy MealLogs của ngày đã chọn và 5 món mới nhất trong toàn bộ lịch sử nhật ký
-    const [mealLogs, latestMealDocs] = await Promise.all([
-      MealLog.find({ userId, date: selectedDate }).sort({ createdAt: -1 }).lean(),
-      MealLog.find({ userId }).sort({ createdAt: -1, date: -1 }).limit(5).lean(),
-    ]);
-
-    let eatenCalories = 0;
-    let eatenProtein = 0;
-    let eatenCarbs = 0;
-    let eatenFat = 0;
-    let eatenFiber = 0;
-    let eatenSodium = 0;
-
-    function formatMealItem(log) {
-      const s = log.servings || 1;
-      const cal = Math.round((log.nutrition?.calories || 0) * s);
-      const pro = Math.round((log.nutrition?.protein || 0) * s * 10) / 10;
-      const carb = Math.round((log.nutrition?.carbs || 0) * s * 10) / 10;
-      const fat = Math.round((log.nutrition?.fat || 0) * s * 10) / 10;
-      const fiber = Math.round((log.nutrition?.fiber || 0) * s * 10) / 10;
-      const sodium = Math.round((log.nutrition?.sodium || 0) * s * 10) / 10;
-
-      return {
-        _id: log._id,
-        foodSlug: log.foodSlug,
-        foodName: log.foodName,
-        date: log.date,
-        mealType: log.mealType || 'lunch',
-        servings: s,
-        imageUrl: log.imageUrl,
-        confidence: log.confidence,
-        calories: cal,
-        protein: pro,
-        carbs: carb,
-        fat,
-        fiber,
-        sodium,
-        createdAt: log.createdAt,
-      };
-    }
-
-    const meals = mealLogs.map((log) => {
-      const item = formatMealItem(log);
-      eatenCalories += item.calories;
-      eatenProtein += item.protein;
-      eatenCarbs += item.carbs;
-      eatenFat += item.fat;
-      eatenFiber += item.fiber;
-      eatenSodium += item.sodium;
-      return item;
-    });
-
-    const latestMeals = latestMealDocs.map(formatMealItem);
-
-    // 4. Lấy ExerciseLogs của ngày đã chọn
-    const exerciseLogs = await ExerciseLog.find({ userId, date: selectedDate }).sort({ createdAt: 1 }).lean();
-
-    let burnedCalories = 0;
-    let exerciseMinutes = 0;
-
-    const exercises = exerciseLogs.map((ex) => {
-      burnedCalories += (ex.caloriesBurned || 0);
-      exerciseMinutes += (ex.durationMinutes || 0);
-      return {
-        _id: ex._id,
-        exerciseId: ex.exerciseId,
-        exerciseName: ex.exerciseName,
-        category: ex.category,
-        met: ex.met,
-        durationMinutes: ex.durationMinutes,
-        caloriesBurned: ex.caloriesBurned,
-        time: ex.time,
-        notes: ex.notes,
-      };
-    });
-
-    // 5. Thống kê 7 ngày (7 ngày tính đến selectedDate)
-    const [selY, selM, selD] = selectedDate.split('-').map(Number);
-    const dateList = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(selY, selM - 1, selD - i);
-      const yStr = d.getFullYear();
-      const mStr = String(d.getMonth() + 1).padStart(2, '0');
-      const dStr = String(d.getDate()).padStart(2, '0');
-      dateList.push(`${yStr}-${mStr}-${dStr}`);
-    }
-
-    const [weeklyMealLogs, weeklyExerciseLogs] = await Promise.all([
-      MealLog.find({ userId, date: { $in: dateList } }).lean(),
-      ExerciseLog.find({ userId, date: { $in: dateList } }).lean(),
-    ]);
-
-    const dayLabelsMap = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-
-    const weeklyDays = dateList.map((dStr) => {
-      const [y, m, d] = dStr.split('-').map(Number);
-      const dObj = new Date(y, m - 1, d);
-      const dayLabel = dayLabelsMap[dObj.getDay()];
-
-      const dayMeals = weeklyMealLogs.filter((item) => item.date === dStr);
-      const dayExercises = weeklyExerciseLogs.filter((item) => item.date === dStr);
-
-      const caloriesIn = dayMeals.reduce((sum, item) => sum + Math.round((item.nutrition?.calories || 0) * (item.servings || 1)), 0);
-      const caloriesOut = dayExercises.reduce((sum, item) => sum + (item.caloriesBurned || 0), 0);
-
-      return {
-        date: dStr,
-        dayLabel,
-        caloriesIn,
-        caloriesOut,
-        net: caloriesIn - caloriesOut,
-        isToday: dStr === todayVietnam,
-        isSelected: dStr === selectedDate,
-      };
-    });
-
-    // 6. Tính chuỗi ngày liên tiếp ghi nhận (Streak) trong 30 ngày gần đây
-    const thirtyDaysAgoDate = new Date(selY, selM - 1, selD - 30);
-    const y30 = thirtyDaysAgoDate.getFullYear();
-    const m30 = String(thirtyDaysAgoDate.getMonth() + 1).padStart(2, '0');
-    const d30 = String(thirtyDaysAgoDate.getDate()).padStart(2, '0');
-    const thirtyDaysAgoStr = `${y30}-${m30}-${d30}`;
-
-    const [streakMeals, streakExercises] = await Promise.all([
-      MealLog.find({ userId, date: { $gte: thirtyDaysAgoStr } }).select("date").lean(),
-      ExerciseLog.find({ userId, date: { $gte: thirtyDaysAgoStr } }).select("date").lean(),
-    ]);
-
-    const loggedDates = new Set([
-      ...streakMeals.map((item) => item.date),
-      ...streakExercises.map((item) => item.date),
-    ]);
-
-    let streak = 0;
-    const offset = loggedDates.has(todayVietnam) ? 0 : 1;
-    for (let i = offset; i < 30; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-      if (loggedDates.has(dStr)) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-
-    const netCalories = eatenCalories - burnedCalories;
-    const remainingCalories = calorieTarget - eatenCalories + burnedCalories;
-
-    // Tính thâm hụt trung bình 7 ngày
-    const daysWithData = weeklyDays.filter((d) => d.caloriesIn > 0 || d.caloriesOut > 0);
-    const avgDeficit = daysWithData.length
-      ? Math.round(daysWithData.reduce((sum, d) => sum + (d.net - calorieTarget), 0) / daysWithData.length)
-      : -(calorieTarget - netCalories);
-
-    return res.status(200).json({
-      selectedDate,
-      todayDate: todayVietnam,
-      isToday: selectedDate === todayVietnam,
-      user: user ? buildUserResponse(user) : null,
-      profile,
-      baselineStatus,
-      targets: {
-        calorieTarget,
-        proteinTarget,
-        carbsTarget,
-        fatTarget,
-        waterTargetMl,
-      },
-      todayNutrition: {
-        calories: eatenCalories,
-        protein: Math.round(eatenProtein * 10) / 10,
-        carbs: Math.round(eatenCarbs * 10) / 10,
-        fat: Math.round(eatenFat * 10) / 10,
-        fiber: Math.round(eatenFiber * 10) / 10,
-        sodium: Math.round(eatenSodium * 10) / 10,
-        mealCount: meals.length,
-      },
-      todayExercise: {
-        caloriesBurned: burnedCalories,
-        durationMinutes: exerciseMinutes,
-        workoutCount: exercises.length,
-      },
-      netCalories,
-      remainingCalories,
-      meals,
-      latestMeals,
-      exercises,
-      weeklyDays,
-      streak: Math.max(streak, 0),
-      avgDeficit,
-    });
-  } catch (err) {
-    console.error('[getDashboardStats] Lỗi:', err.message);
-    return res.status(500).json({ message: 'Không thể tải thống kê bảng điều khiển' });
-  }
-}
-
-/**
- * Lấy toàn bộ số liệu chỉ số & xu hướng thống kê cá nhân hóa của người dùng (UC Analytics & Trends)
- * Hỗ trợ các chu kỳ: 7d, 14d, 30d, 90d
- */
-async function getUserAnalytics(req, res) {
-  try {
-    const userId = req.user.id;
-    const now = new Date();
-    const todayVietnam = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-
-    const period = (req.query.period || '7d').toLowerCase();
-    let numDays = 7;
-    if (period === '14d') numDays = 14;
-    else if (period === '30d') numDays = 30;
-    else if (period === '90d') numDays = 90;
-
-    let endStr = (req.query.endDate && /^\d{4}-\d{2}-\d{2}$/.test(req.query.endDate))
-      ? req.query.endDate
-      : todayVietnam;
-
-    // Tính danh sách ngày từ (endStr - numDays + 1) đến endStr
-    const [ey, em, ed] = endStr.split('-').map(Number);
-    const dateList = [];
-    for (let i = numDays - 1; i >= 0; i--) {
-      const d = new Date(ey, em - 1, ed - i);
-      const yStr = d.getFullYear();
-      const mStr = String(d.getMonth() + 1).padStart(2, '0');
-      const dStr = String(d.getDate()).padStart(2, '0');
-      dateList.push(`${yStr}-${mStr}-${dStr}`);
-    }
-    const startStr = dateList[0];
-
-    // Lấy song song dữ liệu user, profile, mealLogs, exerciseLogs và weightLogs
-    const [user, profile, mealLogs, exerciseLogs, allWeightLogs] = await Promise.all([
-      User.findById(userId).select('fullName email avatarUrl gender dateOfBirth').lean(),
-      UserProfile.findOne({ user: userId }).lean(),
-      MealLog.find({ userId, date: { $in: dateList } }).lean(),
-      ExerciseLog.find({ userId, date: { $in: dateList } }).lean(),
-      WeightLog.find({ user: userId }).sort({ recordedDate: 1 }).lean(),
-    ]);
-
-    // Mục tiêu calo & macro
-    const calorieTarget = profile?.nutritionGoal?.calorieTarget || profile?.healthMetrics?.tdee || 2000;
-    const bmr = profile?.healthMetrics?.bmr || 1500;
-    const tdee = profile?.healthMetrics?.tdee || 2000;
-    const proteinTarget = profile?.nutritionGoal?.proteinG || Math.round((calorieTarget * 0.25) / 4) || 125;
-    const carbsTarget = profile?.nutritionGoal?.carbsG || Math.round((calorieTarget * 0.50) / 4) || 250;
-    const fatTarget = profile?.nutritionGoal?.fatG || Math.round((calorieTarget * 0.25) / 9) || 55;
-    const targetWeightKg = profile?.targetWeightKg || null;
-    const initialWeightKg = profile?.currentWeightKg || (allWeightLogs[0]?.weightKg ?? 60);
-
-    // Map weight logs theo 'YYYY-MM-DD'
-    const weightMap = new Map();
-    allWeightLogs.forEach((log) => {
-      if (log.recordedDate) {
-        const dStr = new Date(log.recordedDate).toISOString().slice(0, 10);
-        weightMap.set(dStr, log.weightKg);
-      }
-    });
-
-    const dayLabelsMap = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-
-    let totalCaloriesIn = 0;
-    let totalCaloriesBurned = 0;
-    let totalExerciseMinutes = 0;
-    let totalWorkouts = 0;
-    let totalProtein = 0;
-    let totalCarbs = 0;
-    let totalFat = 0;
-    let totalFiber = 0;
-    let totalSodium = 0;
-
-    const mealCategoryCount = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
-    const mealCategoryCalories = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
-    const workoutCategoryMap = {};
-    const exerciseStatsMap = {};
-    const foodFrequencyMap = {};
-
-    let daysWithMeals = 0;
-    let daysWithExercises = 0;
-    let daysLogged = 0;
-    let daysMeetingCalorieGoal = 0;
-
-    const dailyData = dateList.map((dStr) => {
-      const [y, m, d] = dStr.split('-').map(Number);
-      const dObj = new Date(y, m - 1, d);
-      const dayOfWeekIdx = dObj.getDay();
-      const dayLabel = dayLabelsMap[dayOfWeekIdx];
-
-      const dayMeals = mealLogs.filter((item) => item.date === dStr);
-      const dayExercises = exerciseLogs.filter((item) => item.date === dStr);
-
-      let dayCalIn = 0;
-      let dayProtein = 0;
-      let dayCarbs = 0;
-      let dayFat = 0;
-      let dayFiber = 0;
-      let daySodium = 0;
-      const dayMealTypes = { breakfast: 0, lunch: 0, dinner: 0, snack: 0 };
-
-      dayMeals.forEach((item) => {
-        const s = item.servings || 1;
-        const cal = Math.round((item.nutrition?.calories || 0) * s);
-        const pro = (item.nutrition?.protein || 0) * s;
-        const carb = (item.nutrition?.carbs || 0) * s;
-        const fat = (item.nutrition?.fat || 0) * s;
-        const fib = (item.nutrition?.fiber || 0) * s;
-        const sod = (item.nutrition?.sodium || 0) * s;
-
-        dayCalIn += cal;
-        dayProtein += pro;
-        dayCarbs += carb;
-        dayFat += fat;
-        dayFiber += fib;
-        daySodium += sod;
-
-        const mType = (item.mealType && mealCategoryCalories[item.mealType] !== undefined)
-          ? item.mealType
-          : 'lunch';
-        dayMealTypes[mType] += cal;
-        mealCategoryCalories[mType] += cal;
-        mealCategoryCount[mType] += 1;
-
-        const fKey = item.foodName || 'Món ăn';
-        if (!foodFrequencyMap[fKey]) {
-          foodFrequencyMap[fKey] = { name: fKey, count: 0, calories: 0, imageUrl: item.imageUrl };
-        }
-        foodFrequencyMap[fKey].count += 1;
-        foodFrequencyMap[fKey].calories += cal;
-      });
-
-      let dayCalBurned = 0;
-      let dayMinutes = 0;
-
-      dayExercises.forEach((ex) => {
-        const burned = ex.caloriesBurned || 0;
-        const mins = ex.durationMinutes || 0;
-        dayCalBurned += burned;
-        dayMinutes += mins;
-
-        const cat = ex.category || 'other';
-        if (!workoutCategoryMap[cat]) {
-          workoutCategoryMap[cat] = { category: cat, minutes: 0, calories: 0, count: 0 };
-        }
-        workoutCategoryMap[cat].minutes += mins;
-        workoutCategoryMap[cat].calories += burned;
-        workoutCategoryMap[cat].count += 1;
-
-        const exName = ex.exerciseName || 'Bài tập';
-        if (!exerciseStatsMap[exName]) {
-          exerciseStatsMap[exName] = { name: exName, count: 0, minutes: 0, calories: 0, category: cat };
-        }
-        exerciseStatsMap[exName].count += 1;
-        exerciseStatsMap[exName].minutes += mins;
-        exerciseStatsMap[exName].calories += burned;
-      });
-
-      const hasDayMeal = dayMeals.length > 0;
-      const hasDayEx = dayExercises.length > 0;
-      const dayWeight = weightMap.has(dStr) ? weightMap.get(dStr) : null;
-      const hasAnyData = hasDayMeal || hasDayEx || dayWeight !== null;
-
-      if (hasDayMeal) daysWithMeals++;
-      if (hasDayEx) daysWithExercises++;
-      if (hasAnyData) daysLogged++;
-
-      totalCaloriesIn += dayCalIn;
-      totalCaloriesBurned += dayCalBurned;
-      totalExerciseMinutes += dayMinutes;
-      totalWorkouts += dayExercises.length;
-      totalProtein += dayProtein;
-      totalCarbs += dayCarbs;
-      totalFat += dayFat;
-      totalFiber += dayFiber;
-      totalSodium += daySodium;
-
-      const netCalories = dayCalIn - dayCalBurned;
-      const deficit = netCalories - calorieTarget;
-
-      if (hasDayMeal && Math.abs(deficit) <= 250) {
-        daysMeetingCalorieGoal++;
-      }
-
-      return {
-        date: dStr,
-        dayLabel,
-        dayOfWeek: dayOfWeekIdx,
-        formattedDate: `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`,
-        caloriesIn: dayCalIn,
-        caloriesBurned: dayCalBurned,
-        netCalories,
-        calorieTarget,
-        deficit,
-        exerciseMinutes: dayMinutes,
-        mealCount: dayMeals.length,
-        workoutCount: dayExercises.length,
-        protein: Math.round(dayProtein * 10) / 10,
-        carbs: Math.round(dayCarbs * 10) / 10,
-        fat: Math.round(dayFat * 10) / 10,
-        fiber: Math.round(dayFiber * 10) / 10,
-        sodium: Math.round(daySodium * 10) / 10,
-        mealBreakdown: dayMealTypes,
-        weightKg: dayWeight,
-        hasData: hasAnyData,
-        isToday: dStr === todayVietnam,
-      };
-    });
-
-    // Tính streak hiện tại
-    const streakMeals = await MealLog.find({ userId }).select('date').lean();
-    const streakExercises = await ExerciseLog.find({ userId }).select('date').lean();
-    const allLoggedDates = new Set([
-      ...streakMeals.map((item) => item.date),
-      ...streakExercises.map((item) => item.date),
-      ...Array.from(weightMap.keys()),
-    ]);
-
-    let streak = 0;
-    const offset = allLoggedDates.has(todayVietnam) ? 0 : 1;
-    for (let i = offset; i < 365; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-      if (allLoggedDates.has(dStr)) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-
-    const activeLoggingDays = Math.max(1, daysLogged);
-    const avgCaloriesIn = Math.round(totalCaloriesIn / activeLoggingDays);
-    const avgCaloriesBurned = Math.round(totalCaloriesBurned / activeLoggingDays);
-    const avgNetCalories = avgCaloriesIn - avgCaloriesBurned;
-    const avgDeficit = avgNetCalories - calorieTarget;
-
-    const avgProtein = Math.round((totalProtein / activeLoggingDays) * 10) / 10;
-    const avgCarbs = Math.round((totalCarbs / activeLoggingDays) * 10) / 10;
-    const avgFat = Math.round((totalFat / activeLoggingDays) * 10) / 10;
-    const avgFiber = Math.round((totalFiber / activeLoggingDays) * 10) / 10;
-    const avgSodium = Math.round(totalSodium / activeLoggingDays);
-
-    const macroProCal = avgProtein * 4;
-    const macroCarbCal = avgCarbs * 4;
-    const macroFatCal = avgFat * 9;
-    const totalMacroCal = (macroProCal + macroCarbCal + macroFatCal) || 1;
-    const actualProteinPct = Math.round((macroProCal / totalMacroCal) * 100);
-    const actualCarbsPct = Math.round((macroCarbCal / totalMacroCal) * 100);
-    const actualFatPct = Math.max(0, 100 - actualProteinPct - actualCarbsPct);
-
-    const targetProteinPct = profile?.nutritionGoal?.macroPercentages?.protein || 25;
-    const targetCarbsPct = profile?.nutritionGoal?.macroPercentages?.carbs || 50;
-    const targetFatPct = profile?.nutritionGoal?.macroPercentages?.fat || 25;
-
-    const totalDeficitKcal = (calorieTarget * activeLoggingDays) - (totalCaloriesIn - totalCaloriesBurned);
-    const projectedWeightChangeKg = Number((-totalDeficitKcal / 7700).toFixed(2));
-
-    const validWeightsInPeriod = dailyData.filter((d) => d.weightKg !== null).map((d) => d.weightKg);
-    const latestWeight = allWeightLogs.length ? allWeightLogs[allWeightLogs.length - 1].weightKg : (profile?.currentWeightKg || 60);
-    const firstWeightOfPeriod = validWeightsInPeriod.length > 0 ? validWeightsInPeriod[0] : (allWeightLogs[0]?.weightKg || latestWeight);
-    const actualWeightChangeInPeriod = Number((latestWeight - firstWeightOfPeriod).toFixed(1));
-
-    const heightM = (profile?.heightCm || 170) / 100;
-    const currentBmi = Number((latestWeight / (heightM * heightM)).toFixed(1));
-    let bmiCategory = 'Bình thường';
-    if (currentBmi < 18.5) bmiCategory = 'Thiếu cân';
-    else if (currentBmi >= 25) bmiCategory = 'Béo phì';
-    else if (currentBmi >= 23) bmiCategory = 'Thừa cân';
-
-    const minHealthyWeight = Number((18.5 * heightM * heightM).toFixed(1));
-    const maxHealthyWeight = Number((22.9 * heightM * heightM).toFixed(1));
-
-    // Thống kê theo thứ trong tuần
-    const dowStats = dayLabelsMap.map((label, idx) => {
-      const daysOfThisDow = dailyData.filter((d) => d.dayOfWeek === idx);
-      const withMeals = daysOfThisDow.filter((d) => d.caloriesIn > 0);
-      const withEx = daysOfThisDow.filter((d) => d.caloriesBurned > 0);
-      const avgIn = withMeals.length ? Math.round(withMeals.reduce((s, d) => s + d.caloriesIn, 0) / withMeals.length) : 0;
-      const avgOut = withEx.length ? Math.round(withEx.reduce((s, d) => s + d.caloriesBurned, 0) / withEx.length) : 0;
-      return {
-        dayLabel: label,
-        dayOfWeek: idx,
-        avgCaloriesIn: avgIn,
-        avgCaloriesBurned: avgOut,
-        count: daysOfThisDow.length,
-      };
-    });
-
-    const sortedDowStats = [
-      dowStats[1], dowStats[2], dowStats[3], dowStats[4], dowStats[5], dowStats[6], dowStats[0],
-    ];
-
-    const topFoods = Object.values(foodFrequencyMap)
-      .sort((a, b) => b.calories - a.calories)
-      .slice(0, 5);
-
-    const topExercises = Object.values(exerciseStatsMap)
-      .sort((a, b) => b.calories - a.calories)
-      .slice(0, 5);
-
-    const workoutCategories = Object.values(workoutCategoryMap).map((cat) => ({
-      ...cat,
-      percent: totalCaloriesBurned > 0 ? Math.round((cat.calories / totalCaloriesBurned) * 100) : 0,
-    }));
-
-    const totalMealCal = (mealCategoryCalories.breakfast + mealCategoryCalories.lunch + mealCategoryCalories.dinner + mealCategoryCalories.snack) || 1;
-    const mealBreakdownSummary = {
-      breakfast: { calories: mealCategoryCalories.breakfast, count: mealCategoryCount.breakfast, percent: Math.round((mealCategoryCalories.breakfast / totalMealCal) * 100) },
-      lunch: { calories: mealCategoryCalories.lunch, count: mealCategoryCount.lunch, percent: Math.round((mealCategoryCalories.lunch / totalMealCal) * 100) },
-      dinner: { calories: mealCategoryCalories.dinner, count: mealCategoryCount.dinner, percent: Math.round((mealCategoryCalories.dinner / totalMealCal) * 100) },
-      snack: { calories: mealCategoryCalories.snack, count: mealCategoryCount.snack, percent: Math.round((mealCategoryCalories.snack / totalMealCal) * 100) },
-    };
-
-    const smartInsights = [];
-
-    if (daysLogged === 0) {
-      smartInsights.push({
-        type: 'info',
-        icon: 'bi-info-circle',
-        title: 'Chưa có dữ liệu ghi nhận trong kỳ',
-        message: 'Hãy bắt đầu quét món ăn bằng AI và ghi lại các bài tập mỗi ngày để NutriLens tự động phân tích biểu đồ xu hướng cho bạn!',
-      });
-    } else {
-      if (avgDeficit < -600) {
-        smartInsights.push({
-          type: 'warning',
-          icon: 'bi-exclamation-triangle-fill',
-          title: 'Thâm hụt calo khá sâu',
-          message: `Mức thâm hụt trung bình của bạn là ${Math.abs(avgDeficit)} kcal/ngày. Thâm hụt quá sâu có thể làm giảm cơ và chậm trao đổi chất. Hãy bổ sung thêm các bữa phụ lành mạnh.`,
-        });
-      } else if (avgDeficit >= -600 && avgDeficit <= -200) {
-        smartInsights.push({
-          type: 'success',
-          icon: 'bi-check-circle-fill',
-          title: 'Tỷ lệ thâm hụt calo lý tưởng',
-          message: `Bạn đang duy trì mức thâm hụt ${Math.abs(avgDeficit)} kcal/ngày. Đây là khoảng tối ưu vàng để giảm mỡ an toàn (dự kiến thâm hụt tương đương ~${Math.abs(projectedWeightChangeKg)} kg mỡ trong kỳ).`,
-        });
-      } else if (avgDeficit > -200 && avgDeficit <= 150) {
-        smartInsights.push({
-          type: 'info',
-          icon: 'bi-shield-check',
-          title: 'Cân bằng năng lượng ổn định',
-          message: `Lượng calo nạp vào xấp xỉ mức tiêu hao (chênh lệch ${avgDeficit > 0 ? '+' : ''}${avgDeficit} kcal). Rất tuyệt vời để duy trì vóc dáng và sức khỏe hiện tại!`,
-        });
-      } else {
-        smartInsights.push({
-          type: 'tip',
-          icon: 'bi-lightning-charge-fill',
-          title: 'Thặng dư calo nhẹ',
-          message: `Calo nạp vào trung bình cao hơn tiêu hao +${avgDeficit} kcal/ngày. Nếu mục tiêu là tăng cân/tăng cơ nạc thì đây là xu hướng tốt, nếu muốn giảm cân hãy giảm bớt khẩu phần tinh bột hoặc ăn vặt.`,
-        });
-      }
-
-      if (avgProtein >= proteinTarget * 0.9) {
-        smartInsights.push({
-          type: 'success',
-          icon: 'bi-trophy-fill',
-          title: 'Nạp đạm (Protein) xuất sắc',
-          message: `Lượng đạm trung bình đạt ${avgProtein}g/ngày (~${Math.round((avgProtein / proteinTarget) * 100)}% mục tiêu). Điều này giúp bảo vệ cơ bắp tối đa và tăng cảm giác no lâu.`,
-        });
-      } else {
-        smartInsights.push({
-          type: 'tip',
-          icon: 'bi-egg-fried',
-          title: 'Cần tăng thêm Protein',
-          message: `Lượng đạm hiện tại (${avgProtein}g/ngày) mới đạt ${Math.round((avgProtein / proteinTarget) * 100)}% mục tiêu (${proteinTarget}g). Hãy thêm ức gà, cá, trứng, sữa hạt hoặc đậu phụ vào khẩu phần nhé.`,
-        });
-      }
-
-      if (totalWorkouts >= Math.max(1, Math.round(numDays * 0.35))) {
-        smartInsights.push({
-          type: 'success',
-          icon: 'bi-fire',
-          title: 'Tinh thần thể thao tuyệt vời',
-          message: `Bạn đã hoàn thành ${totalWorkouts} buổi tập, đốt cháy tổng cộng ${totalCaloriesBurned.toLocaleString()} kcal (${totalExerciseMinutes} phút). Tiếp tục duy trì phong độ!`,
-        });
-      } else if (totalWorkouts > 0) {
-        smartInsights.push({
-          type: 'info',
-          icon: 'bi-activity',
-          title: 'Duy trì tần suất vận động',
-          message: `Bạn có ${totalWorkouts} buổi tập trong ${numDays} ngày qua. Cố gắng đạt 3-4 buổi/tuần để tối ưu sức bền tim mạch và chỉ số trao đổi chất BMR.`,
-        });
-      }
-
-      const weekendDays = dailyData.filter((d) => d.dayOfWeek === 0 || d.dayOfWeek === 6);
-      const weekdayDays = dailyData.filter((d) => d.dayOfWeek >= 1 && d.dayOfWeek <= 5);
-      const avgWeekendIn = weekendDays.filter(d => d.caloriesIn > 0).length ? Math.round(weekendDays.reduce((s, d) => s + d.caloriesIn, 0) / weekendDays.filter(d => d.caloriesIn > 0).length) : 0;
-      const avgWeekdayIn = weekdayDays.filter(d => d.caloriesIn > 0).length ? Math.round(weekdayDays.reduce((s, d) => s + d.caloriesIn, 0) / weekdayDays.filter(d => d.caloriesIn > 0).length) : 0;
-      if (avgWeekendIn > avgWeekdayIn * 1.15 && avgWeekdayIn > 0) {
-        const diffPercent = Math.round(((avgWeekendIn - avgWeekdayIn) / avgWeekdayIn) * 100);
-        smartInsights.push({
-          type: 'warning',
-          icon: 'bi-calendar-event',
-          title: 'Calo cuối tuần có xu hướng tăng cao',
-          message: `Vào Thứ 7 & Chủ Nhật, bạn nạp calo trung bình cao hơn ngày thường ${diffPercent}%. Hãy chú ý kiểm soát các bữa tiệc ngoài hoặc đồ uống ngọt!`,
-        });
-      }
-    }
-
-    return res.status(200).json({
-      period,
-      numDays,
-      startDate: startStr,
-      endDate: endStr,
-      todayDate: todayVietnam,
-      user: {
-        id: user?._id,
-        fullName: user?.fullName || 'Người dùng',
-        avatarUrl: user?.avatarUrl,
-        gender: user?.gender,
-      },
-      profile: {
-        heightCm: profile?.heightCm || 170,
-        currentWeightKg: latestWeight,
-        targetWeightKg,
-        initialWeightKg,
-        activityLevel: profile?.activityLevel || 'moderate',
-        healthGoal: profile?.healthGoal || 'maintain_weight',
-        bmr,
-        tdee,
-        calorieTarget,
-        proteinTarget,
-        carbsTarget,
-        fatTarget,
-      },
-      kpiSummary: {
-        calorieTarget,
-        totalCaloriesIn,
-        avgCaloriesIn,
-        totalCaloriesBurned,
-        avgCaloriesBurned,
-        totalExerciseMinutes,
-        totalWorkouts,
-        avgNetCalories,
-        avgDeficit,
-        projectedWeightChangeKg,
-        daysLogged,
-        totalDays: numDays,
-        consistencyPercent: Math.round((daysLogged / numDays) * 100),
-        daysMeetingCalorieGoal,
-        streak: Math.max(0, streak),
-      },
-      macroAnalysis: {
-        avgProtein,
-        avgCarbs,
-        avgFat,
-        avgFiber,
-        avgSodium,
-        actualPercentages: {
-          protein: actualProteinPct,
-          carbs: actualCarbsPct,
-          fat: actualFatPct,
-        },
-        targetPercentages: {
-          protein: targetProteinPct,
-          carbs: targetCarbsPct,
-          fat: targetFatPct,
-        },
-        targets: {
-          proteinG: proteinTarget,
-          carbsG: carbsTarget,
-          fatG: fatTarget,
-          fiberG: 28,
-          sodiumMg: 2000,
-        },
-      },
-      weightAnalysis: {
-        currentWeight: latestWeight,
-        initialWeight: firstWeightOfPeriod,
-        targetWeight: targetWeightKg,
-        weightChange: actualWeightChangeInPeriod,
-        bmi: currentBmi,
-        bmiCategory,
-        minHealthyWeight,
-        maxHealthyWeight,
-      },
-      exerciseAnalysis: {
-        categories: workoutCategories,
-        topExercises,
-      },
-      mealAnalysis: {
-        mealBreakdown: mealBreakdownSummary,
-        topFoods,
-      },
-      dayOfWeekAnalysis: sortedDowStats,
-      dailyData,
-      smartInsights,
-    });
-  } catch (err) {
-    console.error('[getUserAnalytics] Lỗi:', err);
-    return res.status(500).json({ message: 'Không thể tải dữ liệu chỉ số & xu hướng thống kê' });
-  }
-}
-
 module.exports = {
-getProfile,
+  getProfile,
   saveProfile,
   updateAvatar,
+  getNutritionProposal,
+  saveNutritionGoal,
+  // Re-exported for backward compatibility
   getWeightLogs,
   saveWeightLog,
   deleteWeightLog,
-  getNutritionProposal,
-  saveNutritionGoal,
   applyMilestoneWeight,
   getDashboardStats,
   getUserAnalytics,
 };
-

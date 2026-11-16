@@ -6,15 +6,19 @@ const {
   getProfile,
   saveProfile,
   updateAvatar,
+  getNutritionProposal,
+  saveNutritionGoal,
+} = require('../controllers/profileController');
+const {
   getWeightLogs,
   saveWeightLog,
   deleteWeightLog,
-  getNutritionProposal,
-  saveNutritionGoal,
   applyMilestoneWeight,
+} = require('../controllers/weightController');
+const {
   getDashboardStats,
   getUserAnalytics,
-} = require('../controllers/profileController');
+} = require('../controllers/dashboardAnalyticsController');
 
 const router = express.Router();
 
