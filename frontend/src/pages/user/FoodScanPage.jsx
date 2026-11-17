@@ -1279,7 +1279,6 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
             <h1>Nhận Diện &amp; Phân Tích Món Ăn</h1>
             <p>Tải lên hoặc chụp ảnh món ăn, hệ thống AI sẽ tự động nhận diện tên món và cung cấp thông tin dinh dưỡng chi tiết.</p>
           </div>
-          <span className="fs-system-status"><i className="bi bi-cpu-fill" /><span><strong>CÔNG NGHỆ AI (CNN)</strong><small>Nhận diện chính xác · Nhanh chóng · Đáng tin cậy</small></span></span>
         </section>
 
         {scanError && <div className="fs-alert error" role="alert"><i className="bi bi-exclamation-triangle-fill" />{scanError}</div>}
@@ -1291,6 +1290,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
               <button type="button" className={cameraOpen ? 'active' : ''} onClick={openCamera}><i className="bi bi-camera-video" />Mở camera</button>
               {preview && <button type="button" className="fs-reset-button" onClick={reset} aria-label="Xóa ảnh"><i className="bi bi-trash3" /></button>}
             </div>
+            <p className="fs-image-notice" role="note"><i className="bi bi-info-circle-fill" aria-hidden="true" />Lưu ý: Chỉ tải ảnh có món ăn rõ nét. Ảnh người, phong cảnh hoặc vật thể khác sẽ không được nhận diện chính xác.</p>
             <div className="fs-upload-grid">
               <div
                 className={`fs-dropzone fs-upload-frame ${preview ? 'has-file' : ''}`}
