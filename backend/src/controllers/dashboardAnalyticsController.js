@@ -116,14 +116,14 @@ async function getDashboardStats(req, res) {
       };
     });
 
-    // 4. Thống kê 7 ngày tính đến selectedDate bằng MongoDB Aggregation Pipeline
+    // 4. Thống kê 7 ngày tính đến selectedDate bằng MongoDB Aggregation Pipeline (sử dụng UTC calendar arithmetic để tránh lệch múi giờ)
     const [selY, selM, selD] = selectedDate.split('-').map(Number);
     const dateList = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(selY, selM - 1, selD - i);
-      const yStr = d.getFullYear();
-      const mStr = String(d.getMonth() + 1).padStart(2, '0');
-      const dStr = String(d.getDate()).padStart(2, '0');
+      const d = new Date(Date.UTC(selY, selM - 1, selD - i));
+      const yStr = d.getUTCFullYear();
+      const mStr = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dStr = String(d.getUTCDate()).padStart(2, '0');
       dateList.push(`${yStr}-${mStr}-${dStr}`);
     }
 
@@ -161,8 +161,8 @@ async function getDashboardStats(req, res) {
 
     const weeklyDays = dateList.map((dStr) => {
       const [y, m, d] = dStr.split('-').map(Number);
-      const dObj = new Date(y, m - 1, d);
-      const dayLabel = dayLabelsMap[dObj.getDay()];
+      const dObj = new Date(Date.UTC(y, m - 1, d));
+      const dayLabel = dayLabelsMap[dObj.getUTCDay()];
 
       const caloriesIn = mealCalMap.get(dStr) || 0;
       const caloriesOut = exCalMap.get(dStr) || 0;
@@ -179,10 +179,10 @@ async function getDashboardStats(req, res) {
     });
 
     // 5. Tính chuỗi ngày liên tiếp ghi nhận (Streak) trong 30 ngày gần đây bằng distinct query
-    const thirtyDaysAgoDate = new Date(selY, selM - 1, selD - 30);
-    const y30 = thirtyDaysAgoDate.getFullYear();
-    const m30 = String(thirtyDaysAgoDate.getMonth() + 1).padStart(2, '0');
-    const d30 = String(thirtyDaysAgoDate.getDate()).padStart(2, '0');
+    const thirtyDaysAgoDate = new Date(Date.UTC(selY, selM - 1, selD - 30));
+    const y30 = thirtyDaysAgoDate.getUTCFullYear();
+    const m30 = String(thirtyDaysAgoDate.getUTCMonth() + 1).padStart(2, '0');
+    const d30 = String(thirtyDaysAgoDate.getUTCDate()).padStart(2, '0');
     const thirtyDaysAgoStr = `${y30}-${m30}-${d30}`;
 
     const [streakMeals, streakExercises] = await Promise.all([
@@ -197,11 +197,14 @@ async function getDashboardStats(req, res) {
 
     let streak = 0;
     const offset = loggedDates.has(todayVietnam) ? 0 : 1;
+    const [ty, tm, td] = todayVietnam.split('-').map(Number);
     for (let i = offset; i < 30; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dStr = d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-      if (loggedDates.has(dStr)) {
+      const d = new Date(Date.UTC(ty, tm - 1, td - i));
+      const yStr = d.getUTCFullYear();
+      const mStr = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dStr = String(d.getUTCDate()).padStart(2, '0');
+      const targetStr = `${yStr}-${mStr}-${dStr}`;
+      if (loggedDates.has(targetStr)) {
         streak++;
       } else {
         break;
@@ -281,14 +284,14 @@ async function getUserAnalytics(req, res) {
       ? req.query.endDate
       : todayVietnam;
 
-    // Tính danh sách ngày từ (endStr - numDays + 1) đến endStr
+    // Tính danh sách ngày từ (endStr - numDays + 1) đến endStr (dùng UTC calendar arithmetic tránh lệch múi giờ)
     const [ey, em, ed] = endStr.split('-').map(Number);
     const dateList = [];
     for (let i = numDays - 1; i >= 0; i--) {
-      const d = new Date(ey, em - 1, ed - i);
-      const yStr = d.getFullYear();
-      const mStr = String(d.getMonth() + 1).padStart(2, '0');
-      const dStr = String(d.getDate()).padStart(2, '0');
+      const d = new Date(Date.UTC(ey, em - 1, ed - i));
+      const yStr = d.getUTCFullYear();
+      const mStr = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const dStr = String(d.getUTCDate()).padStart(2, '0');
       dateList.push(`${yStr}-${mStr}-${dStr}`);
     }
     const startStr = dateList[0];
@@ -497,8 +500,8 @@ async function getUserAnalytics(req, res) {
 
     const dailyData = dateList.map((dStr) => {
       const [y, m, d] = dStr.split('-').map(Number);
-      const dObj = new Date(y, m - 1, d);
-      const dayOfWeekIdx = dObj.getDay();
+      const dObj = new Date(Date.UTC(y, m - 1, d));
+      const dayOfWeekIdx = dObj.getUTCDay();
       const dayLabel = dayLabelsMap[dayOfWeekIdx];
 
       const mealEntry = dailyMealMap.get(dStr);

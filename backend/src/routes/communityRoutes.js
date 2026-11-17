@@ -6,6 +6,7 @@ const { optionalAuth } = require('../middleware/auth');
 const {
   createPost,
   getPosts,
+  getSidebarStats,
   getMentionSuggestions,
   toggleLike,
   addComment,
@@ -51,6 +52,9 @@ function handleUploadError(err, req, res, next) {
 // Routes
 // 1. Lấy danh sách bài viết cộng đồng (xem bảng tin)
 router.get('/posts', optionalAuth, getPosts);
+
+// 1.0 Lấy thống kê bảng xếp hạng Sidebar (Top Contributors & Trending Recipe) có cache
+router.get('/sidebar-stats', optionalAuth, getSidebarStats);
 
 // 1.1 Gợi ý thành viên và thẻ tag khi gõ @
 router.get('/mention-suggestions', optionalAuth, getMentionSuggestions);

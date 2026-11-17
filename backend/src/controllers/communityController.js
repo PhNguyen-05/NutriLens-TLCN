@@ -178,6 +178,121 @@ async function createPost(req, res) {
   }
 }
 
+let cachedSidebarStats = null;
+let lastSidebarStatsFetch = 0;
+const SIDEBAR_STATS_CACHE_TTL = 10 * 60 * 1000; // 10 phút
+
+/**
+ * Tính toán Top 3 Contributor và Trending Recipe có áp dụng Cache in-memory
+ */
+async function calculateSidebarStats(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && cachedSidebarStats && now - lastSidebarStatsFetch < SIDEBAR_STATS_CACHE_TTL) {
+    return cachedSidebarStats;
+  }
+
+  // 1. Top 3 thành viên tích cực nhất (Top Contributors)
+  let topContributors = [];
+  try {
+    const topContributorsAgg = await CommunityPost.aggregate([
+      { $match: { status: 'published' } },
+      {
+        $group: {
+          _id: '$authorId',
+          postsCount: { $sum: 1 },
+          totalLikes: { $sum: '$likeCount' },
+        },
+      },
+      { $sort: { postsCount: -1, totalLikes: -1 } },
+      { $limit: 3 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: 1,
+          postsCount: 1,
+          totalLikes: 1,
+          fullName: '$user.fullName',
+          avatarUrl: '$user.avatarUrl',
+          role: '$user.role',
+        },
+      },
+    ]);
+
+    topContributors = topContributorsAgg.map((item) => ({
+      _id: item._id,
+      id: item._id,
+      fullName: item.fullName,
+      avatarUrl: item.avatarUrl,
+      role: item.role,
+      postsCount: item.postsCount,
+      totalLikes: item.totalLikes,
+    }));
+  } catch (aggErr) {
+    console.warn('[calculateSidebarStats] Lỗi tính topContributors:', aggErr.message);
+  }
+
+  // 2. Món ăn / Bài viết được yêu thích nhất tuần (Trending Recipe of the Week)
+  let trendingRecipe = null;
+  try {
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    trendingRecipe = await CommunityPost.findOne({
+      status: 'published',
+      tag: 'Công thức món ăn',
+      createdAt: { $gte: oneWeekAgo },
+    })
+      .sort({ likeCount: -1, createdAt: -1 })
+      .populate('authorId', 'fullName avatarUrl role')
+      .lean();
+
+    if (!trendingRecipe) {
+      trendingRecipe = await CommunityPost.findOne({
+        status: 'published',
+        tag: 'Công thức món ăn',
+      })
+        .sort({ likeCount: -1, createdAt: -1 })
+        .populate('authorId', 'fullName avatarUrl role')
+        .lean();
+    }
+
+    if (!trendingRecipe) {
+      trendingRecipe = await CommunityPost.findOne({
+        status: 'published',
+      })
+        .sort({ likeCount: -1, createdAt: -1 })
+        .populate('authorId', 'fullName avatarUrl role')
+        .lean();
+    }
+  } catch (recipeErr) {
+    console.warn('[calculateSidebarStats] Lỗi lấy trendingRecipe:', recipeErr.message);
+  }
+
+  cachedSidebarStats = { topContributors, trendingRecipe };
+  lastSidebarStatsFetch = now;
+  return cachedSidebarStats;
+}
+
+/**
+ * GET /api/community/sidebar-stats
+ * Endpoint riêng biệt cho thanh sidebar, tận dụng bộ nhớ đệm 10 phút
+ */
+async function getSidebarStats(req, res) {
+  try {
+    const stats = await calculateSidebarStats();
+    return res.status(200).json(stats);
+  } catch (error) {
+    console.error('[getSidebarStats] Lỗi:', error);
+    return res.status(500).json({ message: 'Không thể tải bảng xếp hạng cộng đồng' });
+  }
+}
+
 /**
  * Lấy danh sách bài viết cộng đồng
  * GET /api/community/posts
@@ -331,88 +446,10 @@ async function getPosts(req, res) {
       myStats = { postsCount, totalLikes };
     }
 
-    // 1. Top 3 thành viên tích cực nhất (Top Contributors)
-    let topContributors = [];
-    try {
-      const topContributorsAgg = await CommunityPost.aggregate([
-        { $match: { status: 'published' } },
-        {
-          $group: {
-            _id: '$authorId',
-            postsCount: { $sum: 1 },
-            totalLikes: { $sum: '$likeCount' },
-          },
-        },
-        { $sort: { postsCount: -1, totalLikes: -1 } },
-        { $limit: 3 },
-        {
-          $lookup: {
-            from: 'users',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'user',
-          },
-        },
-        { $unwind: '$user' },
-        {
-          $project: {
-            _id: 1,
-            postsCount: 1,
-            totalLikes: 1,
-            fullName: '$user.fullName',
-            avatarUrl: '$user.avatarUrl',
-            role: '$user.role',
-          },
-        },
-      ]);
-
-      topContributors = topContributorsAgg.map((item) => ({
-        _id: item._id,
-        id: item._id,
-        fullName: item.fullName,
-        avatarUrl: item.avatarUrl,
-        role: item.role,
-        postsCount: item.postsCount,
-        totalLikes: item.totalLikes,
-      }));
-    } catch (aggErr) {
-      console.warn('[getPosts] Lỗi tính topContributors:', aggErr.message);
-    }
-
-    // 2. Món ăn / Bài viết được yêu thích nhất tuần (Trending Recipe of the Week)
-    let trendingRecipe = null;
-    try {
-      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      trendingRecipe = await CommunityPost.findOne({
-        status: 'published',
-        tag: 'Công thức món ăn',
-        createdAt: { $gte: oneWeekAgo },
-      })
-        .sort({ likeCount: -1, createdAt: -1 })
-        .populate('authorId', 'fullName avatarUrl role')
-        .lean();
-
-      if (!trendingRecipe) {
-        trendingRecipe = await CommunityPost.findOne({
-          status: 'published',
-          tag: 'Công thức món ăn',
-        })
-          .sort({ likeCount: -1, createdAt: -1 })
-          .populate('authorId', 'fullName avatarUrl role')
-          .lean();
-      }
-
-      if (!trendingRecipe) {
-        trendingRecipe = await CommunityPost.findOne({
-          status: 'published',
-        })
-          .sort({ likeCount: -1, createdAt: -1 })
-          .populate('authorId', 'fullName avatarUrl role')
-          .lean();
-      }
-    } catch (recipeErr) {
-      console.warn('[getPosts] Lỗi lấy trendingRecipe:', recipeErr.message);
-    }
+    // Tối ưu hóa CPU & DB: Lấy Top Contributors & Trending Recipe từ cache 10 phút, tránh aggregate quét toàn bộ DB mỗi khi phân trang / filter
+    const sidebarStats = await calculateSidebarStats();
+    const topContributors = sidebarStats.topContributors || [];
+    const trendingRecipe = sidebarStats.trendingRecipe || null;
 
     return res.status(200).json({
       posts: enrichedPosts,
@@ -439,35 +476,58 @@ async function getPosts(req, res) {
 /**
  * UC28: Thích/Bỏ thích bài đăng
  * POST /api/community/posts/:id/like
+ * Sử dụng toán tử nguyên tử ($addToSet/$inc, $pull/$inc) để chống Race Condition khi bấm nhanh liên tiếp
  */
 async function toggleLike(req, res) {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    const post = await CommunityPost.findById(id);
+    const existingPost = await CommunityPost.findOne({ _id: id, status: 'published' })
+      .select('_id authorId likes likeCount')
+      .lean();
     // UC28 Ngoại lệ 2a / 3a: Bài đăng không còn tồn tại
-    if (!post || post.status !== 'published') {
+    if (!existingPost) {
       return res.status(404).json({ message: 'Bài đăng không còn tồn tại' });
     }
 
-    const userLikedIndex = post.likes.findIndex((uid) => String(uid) === String(userId));
+    const hasLiked = (existingPost.likes || []).some((uid) => String(uid) === String(userId));
+    let post;
     let isLiked = false;
 
-    if (userLikedIndex > -1) {
-      // UC28 Luồng thay thế 1a - 4a: Bỏ thích bài đăng
-      post.likes.splice(userLikedIndex, 1);
+    if (hasLiked) {
+      // UC28 Luồng thay thế 1a - 4a: Bỏ thích bài đăng (Toán tử nguyên tử atomic pull & inc)
+      post = await CommunityPost.findOneAndUpdate(
+        { _id: id, status: 'published', likes: userId },
+        {
+          $pull: { likes: userId },
+          $inc: { likeCount: -1 },
+        },
+        { new: true }
+      ).lean();
       isLiked = false;
     } else {
-      // UC28 Luồng chính 3 - 5: Ghi nhận lượt thích
-      post.likes.push(userId);
+      // UC28 Luồng chính 3 - 5: Ghi nhận lượt thích (Toán tử nguyên tử atomic addToSet & inc)
+      post = await CommunityPost.findOneAndUpdate(
+        { _id: id, status: 'published', likes: { $ne: userId } },
+        {
+          $addToSet: { likes: userId },
+          $inc: { likeCount: 1 },
+        },
+        { new: true }
+      ).lean();
       isLiked = true;
     }
 
-    post.likeCount = post.likes.length;
-    await post.save();
+    // Dự phòng trường hợp request cạnh tranh cao (concurrency)
+    if (!post) {
+      post = await CommunityPost.findById(id).lean();
+      isLiked = (post?.likes || []).some((uid) => String(uid) === String(userId));
+    }
 
-    if (isLiked && post.authorId && String(post.authorId) !== String(userId)) {
+    const finalLikeCount = Math.max(0, post?.likeCount ?? (post?.likes?.length || 0));
+
+    if (isLiked && post?.authorId && String(post.authorId) !== String(userId)) {
       const senderName = req.user.fullName || 'Một thành viên';
       createNotification({
         userId: post.authorId,
@@ -480,7 +540,7 @@ async function toggleLike(req, res) {
 
     return res.status(200).json({
       isLiked,
-      likeCount: post.likeCount,
+      likeCount: finalLikeCount,
       message: isLiked ? 'Đã thích bài đăng' : 'Đã bỏ thích bài đăng',
     });
   } catch (error) {
@@ -493,6 +553,7 @@ async function toggleLike(req, res) {
 /**
  * UC27: Thêm bình luận vào bài viết (Luồng chính 1 - 8)
  * POST /api/community/posts/:id/comments
+ * Sử dụng toán tử nguyên tử $push & $inc để chống Race Condition khi nhiều bình luận gửi cùng lúc
  */
 async function addComment(req, res) {
   try {
@@ -505,42 +566,47 @@ async function addComment(req, res) {
       return res.status(400).json({ message: 'Nội dung bình luận không được để trống' });
     }
 
-    const post = await CommunityPost.findById(id);
-    // Ngoại lệ 3b / 4b: Bài đăng đã bị xóa hoặc không cho phép bình luận
-    if (!post || post.status !== 'published') {
-      return res.status(404).json({ message: 'Bài đăng không còn tồn tại hoặc không cho phép bình luận' });
-    }
-
-    post.comments.push({
+    const newComment = {
+      _id: new mongoose.Types.ObjectId(),
       authorId: req.user.id,
       content: trimmedContent,
       createdAt: new Date(),
-    });
+    };
 
-    post.commentCount = post.comments.length;
-    await post.save();
+    // Atomic push comment và tăng commentCount
+    const updatedPost = await CommunityPost.findOneAndUpdate(
+      { _id: id, status: 'published' },
+      {
+        $push: { comments: newComment },
+        $inc: { commentCount: 1 },
+      },
+      { new: true }
+    )
+      .populate('comments.authorId', 'fullName email avatarUrl role')
+      .lean();
 
-    if (post.authorId && String(post.authorId) !== String(req.user.id)) {
+    // Ngoại lệ 3b / 4b: Bài đăng đã bị xóa hoặc không cho phép bình luận
+    if (!updatedPost) {
+      return res.status(404).json({ message: 'Bài đăng không còn tồn tại hoặc không cho phép bình luận' });
+    }
+
+    if (updatedPost.authorId && String(updatedPost.authorId) !== String(req.user.id)) {
       const senderName = req.user.fullName || 'Một thành viên';
       const snippet = trimmedContent.length > 50 ? `${trimmedContent.slice(0, 50)}...` : trimmedContent;
       createNotification({
-        userId: post.authorId,
+        userId: updatedPost.authorId,
         title: 'Bình luận mới về bài viết',
         message: `${senderName} đã bình luận: "${snippet}"`,
         type: 'community_comment',
-        data: { postId: post._id, link: '/community?filter=mine' },
+        data: { postId: updatedPost._id, link: '/community?filter=mine' },
       }).catch(() => {});
     }
-
-    const updatedPost = await CommunityPost.findById(id)
-      .populate('comments.authorId', 'fullName email avatarUrl role')
-      .lean();
 
     // Bước 7 & 8: Trả về danh sách bình luận đã cập nhật
     return res.status(201).json({
       message: 'Bình luận thành công',
-      comments: updatedPost.comments,
-      commentCount: updatedPost.commentCount,
+      comments: updatedPost.comments || [],
+      commentCount: Math.max(0, updatedPost.commentCount ?? (updatedPost.comments?.length || 0)),
     });
   } catch (error) {
     console.error('[addComment] Lỗi:', error);
@@ -609,13 +675,12 @@ async function updateComment(req, res) {
 async function deleteComment(req, res) {
   try {
     const { postId, commentId } = req.params;
-    const post = await CommunityPost.findById(postId);
-
+    const post = await CommunityPost.findById(postId).select('authorId comments').lean();
     if (!post) {
       return res.status(404).json({ message: 'Bài đăng không còn tồn tại hoặc không cho phép bình luận' });
     }
 
-    const comment = post.comments.id(commentId);
+    const comment = (post.comments || []).find((c) => String(c._id) === String(commentId));
     if (!comment) {
       return res.status(404).json({ message: 'Bình luận không tồn tại hoặc đã bị xóa' });
     }
@@ -628,19 +693,23 @@ async function deleteComment(req, res) {
       return res.status(403).json({ message: 'Bạn không có quyền xóa bình luận này' });
     }
 
-    comment.deleteOne();
-    post.commentCount = Math.max(0, post.comments.length);
-    await post.save();
-
-    const updatedPost = await CommunityPost.findById(postId)
+    // Atomic pull comment và giảm commentCount
+    const updatedPost = await CommunityPost.findByIdAndUpdate(
+      postId,
+      {
+        $pull: { comments: { _id: commentId } },
+        $inc: { commentCount: -1 },
+      },
+      { new: true }
+    )
       .populate('comments.authorId', 'fullName email avatarUrl role')
       .lean();
 
     // Luồng thay thế 7b: "Xóa bình luận thành công"
     return res.status(200).json({
       message: 'Xóa bình luận thành công',
-      comments: updatedPost.comments,
-      commentCount: updatedPost.commentCount,
+      comments: updatedPost?.comments || [],
+      commentCount: Math.max(0, updatedPost?.commentCount ?? (updatedPost?.comments?.length || 0)),
     });
   } catch (error) {
     console.error('[deleteComment] Lỗi:', error);
@@ -909,6 +978,8 @@ async function reportPost(req, res) {
 module.exports = {
   createPost,
   getPosts,
+  getSidebarStats,
+  calculateSidebarStats,
   getMentionSuggestions,
   toggleLike,
   addComment,

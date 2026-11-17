@@ -6,6 +6,11 @@ import axiosInstance from '../../api/axiosInstance'
 import UserFooter from '../../components/common/UserFooter'
 import aiDietScan from '../../assets/ai-diet-scan.jpg'
 
+// Modularized Dashboard Components
+import DashboardArticleCard from '../../components/dashboard/DashboardArticleCard'
+import CalorieGaugeCard from '../../components/dashboard/CalorieGaugeCard'
+import MacroProgressCard from '../../components/dashboard/MacroProgressCard'
+
 function resolveAvatarUrl(value) {
   const url = String(value || '').trim()
   if (/^(https?:|data:)/i.test(url)) return url
@@ -56,176 +61,7 @@ function mealTypeInfo(type) {
   }
 }
 
-function formatArticleCategory(article) {
-  const cat = article?.category || article?.categoryTags?.[0] || 'Dinh dưỡng'
-  return cat.charAt(0).toUpperCase() + cat.slice(1)
-}
 
-function formatArticleDate(dateStr) {
-  if (!dateStr) return 'Gần đây'
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return 'Gần đây'
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date)
-}
-
-const ARTICLE_CATEGORY_FALLBACKS = {
-  vitamin: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=80',
-  'tiểu đường': 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=500&auto=format&fit=crop&q=80',
-  'sức khỏe': 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=500&auto=format&fit=crop&q=80',
-  'sức khoẻ': 'https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=500&auto=format&fit=crop&q=80',
-  'dinh dưỡng': 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=500&auto=format&fit=crop&q=80',
-  'mẹo ăn uống': 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=500&auto=format&fit=crop&q=80',
-  'vận động': 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=80',
-  'tập luyện': 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=500&auto=format&fit=crop&q=80',
-}
-
-const DEFAULT_ARTICLE_COVER = 'https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=500&auto=format&fit=crop&q=80'
-
-function getArticleFallbackImage(category = '') {
-  const normalized = String(category).trim().toLowerCase()
-  for (const [key, url] of Object.entries(ARTICLE_CATEGORY_FALLBACKS)) {
-    if (normalized.includes(key)) return url
-  }
-  return DEFAULT_ARTICLE_COVER
-}
-
-function getArticleExcerpt(content, maxLength = 80) {
-  if (!content) return ''
-  const clean = String(content)
-    .replace(/<[^>]+>/g, '')
-    .replace(/[#*`_~>[\]()]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return clean.length > maxLength ? clean.slice(0, maxLength) + '...' : clean
-}
-
-function DashboardArticleCard({ article }) {
-  const navigate = useNavigate()
-  const category = formatArticleCategory(article)
-  const publishDate = formatArticleDate(article.publishedAt || article.createdAt)
-  const resolvedUrl = resolveMediaUrl(article?.imageUrl)
-  const fallbackUrl = getArticleFallbackImage(category)
-  const [currentImg, setCurrentImg] = useState(resolvedUrl || fallbackUrl)
-  const [imageError, setImageError] = useState(false)
-
-  useEffect(() => {
-    const nextUrl = resolveMediaUrl(article?.imageUrl) || getArticleFallbackImage(category)
-    setCurrentImg(nextUrl)
-    setImageError(false)
-  }, [article?.imageUrl, category])
-
-  const handleImageError = () => {
-    if (currentImg !== fallbackUrl) {
-      setCurrentImg(fallbackUrl)
-    } else {
-      setImageError(true)
-    }
-  }
-
-  const excerpt = getArticleExcerpt(article.content, 75)
-
-  const handleCardClick = (e) => {
-    if (!e.target.closest('a') && !e.target.closest('button')) {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
-      navigate(`/articles/${article._id}`)
-    }
-  }
-
-  const handleLinkClick = (e) => {
-    e.stopPropagation()
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
-  }
-
-  return (
-    <article className="dashboard-article-card" onClick={handleCardClick} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') handleCardClick(e) }}>
-      <div className="article-card-cover-wrap" aria-label={article.title} onClick={handleCardClick}>
-        {!imageError ? (
-          <img
-            src={currentImg}
-            alt={article.title}
-            className="article-card-img"
-            loading="lazy"
-            onError={handleImageError}
-          />
-        ) : (
-          <div className="article-card-fallback-cover">
-            <i className="bi bi-journal-richtext" />
-          </div>
-        )}
-        <span className="article-card-badge">{category}</span>
-      </div>
-
-      <div className="article-card-content">
-        <div className="article-card-meta">
-          <span><i className="bi bi-calendar3" /> {publishDate}</span>
-          {Boolean(article.viewCount) && (
-            <span><i className="bi bi-eye" /> {article.viewCount}</span>
-          )}
-        </div>
-
-        <h3 className="article-card-title" title={article.title}>
-          <Link to={`/articles/${article._id}`} onClick={handleLinkClick}>
-            {article.title}
-          </Link>
-        </h3>
-
-        {excerpt && (
-          <p className="article-card-snippet" title={excerpt}>
-            {excerpt}
-          </p>
-        )}
-
-        <div className="article-card-action">
-          <Link to={`/articles/${article._id}`} className="article-card-read-more" onClick={handleLinkClick}>
-            Đọc tiếp <i className="bi bi-arrow-right" />
-          </Link>
-        </div>
-      </div>
-    </article>
-  )
-}
-
-
-function AnimatedNumber({ value, duration = 600 }) {
-  const [displayValue, setDisplayValue] = useState(0)
-  const target = typeof value === 'number' ? value : parseInt(String(value).replace(/\D/g, ''), 10) || 0
-
-  useEffect(() => {
-    if (target === 0) {
-      setDisplayValue(0)
-      return
-    }
-    const startTime = performance.now()
-    let frameId
-
-    const step = (now) => {
-      const progress = Math.min((now - startTime) / duration, 1)
-      const easeOut = 1 - Math.pow(1 - progress, 3)
-      setDisplayValue(Math.floor(easeOut * target))
-      if (progress < 1) {
-        frameId = requestAnimationFrame(step)
-      } else {
-        setDisplayValue(target)
-      }
-    }
-    frameId = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(frameId)
-  }, [target, duration])
-
-  return <>{displayValue.toLocaleString('vi-VN')}</>
-}
-
-function MetricCardSkeleton() {
-  return (
-    <article className="metric-card metric-skeleton">
-      <div className="skeleton-box skeleton-icon" />
-      <div className="skeleton-box" style={{ width: '60%', height: '12px', margin: '4px 0 10px' }} />
-      <div className="skeleton-box" style={{ width: '85%', height: '26px', margin: '8px 0' }} />
-      <div className="skeleton-box" style={{ width: '100%', height: '6px', margin: '8px 0 6px' }} />
-      <div className="skeleton-box" style={{ width: '45%', height: '10px' }} />
-    </article>
-  )
-}
 
 function MealRowSkeleton() {
   return (
@@ -847,35 +683,7 @@ export default function DashboardPage() {
         </section>
 
         {/* 4 THẺ CHỈ SỐ DINH DƯỠNG TRONG NGÀY (4 CỘT CÂN ĐỐI) */}
-        <section className="metric-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
-          {statsLoading ? (
-            <>
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-            </>
-          ) : (
-            dynamicMetrics.map((item) => (
-              <article className={`metric-card ${item.theme}`} key={item.label}>
-                <div className={`metric-icon ${item.theme}`}>
-                  <i className={`bi ${item.icon}`} />
-                </div>
-                <span>{item.label}</span>
-                <strong>
-                  <AnimatedNumber value={item.numericVal} />
-                  {item.unit && <span style={{ marginLeft: '2px', fontSize: '18px' }}>{item.unit}</span>}
-                  <small>{item.targetStr}</small>
-                </strong>
-                <div className="metric-progress">
-                  <i style={{ width: item.progress }} className={item.theme} />
-                </div>
-                <em className={item.theme}>{item.progressText || `${item.progress} mục tiêu`}</em>
-                <small>{item.note}</small>
-              </article>
-            ))
-          )}
-        </section>
+        <MacroProgressCard dynamicMetrics={dynamicMetrics} statsLoading={statsLoading} />
 
         {/* CỘT NHẬT KÝ MÓN ĂN & CHỈ SỐ CƠ THỂ */}
         <section className="dashboard-columns">
@@ -976,82 +784,18 @@ export default function DashboardPage() {
 
         {/* BIỂU ĐỒ 7 NGÀY (CÂN BẰNG CHUYỂN HÓA NĂNG LƯỢNG) */}
         <section className="dashboard-columns lower-grid" style={{ gridTemplateColumns: '1fr' }}>
-          <article className="content-panel chart-panel">
-            <PanelHeading
-              title="Cân bằng năng lượng tuần: Nạp vào vs Tiêu hao"
-              subtitle="Dữ liệu tổng hợp 7 ngày gần nhất giữa bữa ăn và vận động"
-              action={
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                  <div className="chart-legend">
-                    <span>Nạp vào (kcal)</span>
-                    <span>Tiêu hao (kcal)</span>
-                  </div>
-                  <Link to="/trends" style={{ fontSize: '12px', fontWeight: 600, color: '#059669', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#ecfdf5', padding: '4px 10px', borderRadius: '9999px', border: '1px solid #a7f3d0' }}>
-                    Chỉ số &amp; Xu hướng <i className="bi bi-arrow-right" />
-                  </Link>
-                </div>
-              }
-            />
-            {statsLoading ? (
-              <div style={{ height: '128px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', gap: '8px' }}>
-                <i className="bi bi-arrow-repeat" style={{ animation: 'spin 1s linear infinite' }} />
-                <span style={{ fontSize: '0.85rem' }}>Đang tổng hợp dữ liệu chuyển hóa tuần...</span>
-              </div>
-            ) : (
-              <div className="bar-chart">
-                {weeklyDays.map((day) => {
-                const inHeight = Math.min(95, Math.max(day.caloriesIn > 0 ? 6 : 2, Math.round(((day.caloriesIn || 0) / maxCaloInWeek) * 95)))
-                const outHeight = Math.min(95, Math.max(day.caloriesOut > 0 ? 6 : 2, Math.round(((day.caloriesOut || 0) / maxCaloInWeek) * 95)))
-                const isDaySelected = day.date === selectedDate
-
-                return (
-                  <div
-                    className="bar-day"
-                    key={day.date}
-                    onClick={() => setSelectedDate(day.date)}
-                    style={{ cursor: 'pointer', opacity: isDaySelected ? 1 : 0.85 }}
-                    title={`Ngày ${day.date}: Nạp ${day.caloriesIn} kcal | Tiêu hao ${day.caloriesOut} kcal`}
-                  >
-                    <div>
-                      <i style={{ height: `${inHeight}px`, outline: isDaySelected ? '2px solid #064e3b' : 'none' }} />
-                      <b style={{ height: `${outHeight}px` }} />
-                    </div>
-                    <small style={{ fontWeight: isDaySelected ? 700 : 400, color: isDaySelected ? '#047857' : '#5e6e69' }}>
-                      {day.dayLabel}
-                    </small>
-                  </div>
-                )
-              })}
-              </div>
-            )}
-            <div className="chart-summary">
-              <span>
-                Thâm hụt TB tuần
-                <strong className={avgDeficit > 0 ? 'orange-text' : ''}>
-                  {avgDeficit > 0 ? `+${avgDeficit}` : avgDeficit} kcal / ngày
-                </strong>
-              </span>
-              <span>
-                Tuân thủ Macro
-                <strong>{caloPct >= 75 && caloPct <= 110 ? 'Chuẩn mục tiêu' : `${caloPct}% năng lượng`}</strong>
-              </span>
-              <span>
-                Đánh giá chuyển hóa
-                <strong className={eatenCalo > targetCalo * 1.05 ? 'orange-text' : ''}>
-                  {(() => {
-                    const goal = healthProfile?.nutritionGoal?.goal
-                    if (goal === 'gain_weight') {
-                      return eatenCalo >= targetCalo ? 'Thặng dư tăng cân' : 'Chưa đủ thặng dư'
-                    }
-                    if (goal === 'lose_weight') {
-                      return eatenCalo <= targetCalo ? 'Thâm hụt đốt mỡ' : 'Vượt mức calo'
-                    }
-                    return Math.abs(eatenCalo - targetCalo) <= targetCalo * 0.1 ? 'Cân bằng lý tưởng' : (eatenCalo > targetCalo ? 'Dư năng lượng' : 'Thâm hụt nhẹ')
-                  })()}
-                </strong>
-              </span>
-            </div>
-          </article>
+          <CalorieGaugeCard
+            weeklyDays={weeklyDays}
+            selectedDate={selectedDate}
+            onSelectDate={(d) => setSelectedDate(d)}
+            maxCaloInWeek={maxCaloInWeek}
+            statsLoading={statsLoading}
+            avgDeficit={avgDeficit}
+            caloPct={caloPct}
+            eatenCalo={eatenCalo}
+            targetCalo={targetCalo}
+            healthProfile={healthProfile}
+          />
         </section>
 
         {/* KHỐI BÀI TẬP HÔM NAY */}
