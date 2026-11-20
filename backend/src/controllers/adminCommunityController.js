@@ -7,6 +7,40 @@ const Notification = require('../models/Notification');
 const VISIBLE_STATUSES = ['published', 'hidden'];
 const PAGE_SIZE = 10;
 
+function parseStatsDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const parsedDate = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === value ? value : null;
+}
+
+async function getCommunityDashboardStats(req, res) {
+  try {
+    const date = parseStatsDate(String(req.query.date || ''));
+    if (!date) {
+      return res.status(400).json({ message: 'Ngày thống kê Community không hợp lệ' });
+    }
+
+    // Dashboard gửi ngày theo múi giờ Việt Nam; MongoDB lưu createdAt theo UTC.
+    const start = new Date(`${date}T00:00:00.000+07:00`);
+    const endExclusive = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    const pendingPostIds = await PostReport.distinct('postId', { status: 'pending' });
+    const [postsToday, reportedPosts] = await Promise.all([
+      CommunityPost.countDocuments({
+        status: { $in: VISIBLE_STATUSES },
+        createdAt: { $gte: start, $lt: endExclusive },
+      }),
+      pendingPostIds.length
+        ? CommunityPost.countDocuments({ _id: { $in: pendingPostIds }, status: { $in: VISIBLE_STATUSES } })
+        : 0,
+    ]);
+
+    return res.status(200).json({ postsToday, reportedPosts });
+  } catch (error) {
+    console.error('[getCommunityDashboardStats] Lỗi:', error.message);
+    return res.status(500).json({ message: 'Không thể tải thống kê Community' });
+  }
+}
+
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -224,4 +258,4 @@ async function updateCommunityPostModeration(req, res) {
   }
 }
 
-module.exports = { listCommunityPosts, updateCommunityPostModeration };
+module.exports = { getCommunityDashboardStats, listCommunityPosts, updateCommunityPostModeration };

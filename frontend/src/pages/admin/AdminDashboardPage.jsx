@@ -8,7 +8,6 @@ import FoodRequestManagementPage from './FoodRequestManagementPage'
 
 import BlogManagementPage from './BlogManagementPage'
 import CommunityModerationPage from './CommunityModerationPage'
-import { getCommunityDashboardStats } from './communityPostStore'
 
 import ExerciseManagementPage from './ExerciseManagementPage'
 import AdminAnalyticsPage from './AdminAnalyticsPage'
@@ -114,6 +113,7 @@ export default function AdminDashboardPage() {
         axiosInstance.get('/admin/foods/analytics', { params, signal: controller.signal }),
         axiosInstance.get('/admin/exercises/analytics', { params, signal: controller.signal }),
         axiosInstance.get('/admin/blog/analytics', { params, signal: controller.signal }),
+        axiosInstance.get('/admin/community/stats', { params: { date: today }, signal: controller.signal }),
         axiosInstance.get('/admin/food-requests', { params: { limit: 1 }, signal: controller.signal }),
         axiosInstance.get('/admin/users/action-logs', {
           params: { ...params, page: 1, limit: 8, targetType: 'all', action: 'all', adminId: 'all' },
@@ -122,17 +122,17 @@ export default function AdminDashboardPage() {
       ])
       if (controller.signal.aborted) return
 
-      const [usersResult, foodsResult, exercisesResult, blogResult, requestsResult, logsResult] = results
+      const [usersResult, foodsResult, exercisesResult, blogResult, communityResult, requestsResult, logsResult] = results
       const users = usersResult.status === 'fulfilled' ? usersResult.value.data : null
       const foods = foodsResult.status === 'fulfilled' ? foodsResult.value.data : null
       const exercises = exercisesResult.status === 'fulfilled' ? exercisesResult.value.data : null
       const blogs = blogResult.status === 'fulfilled' ? blogResult.value.data : null
+      const community = communityResult.status === 'fulfilled' ? communityResult.value.data : null
       const requests = requestsResult.status === 'fulfilled' ? requestsResult.value.data : null
       const logs = logsResult.status === 'fulfilled' ? logsResult.value.data : null
       const todayExercise = exercises?.daily?.find((row) => row.date === today)
       const todayFood = foods?.daily?.find((row) => row.date === today)
       const todayBlog = blogs?.daily?.find((row) => row.date === today)
-      const communityStats = getCommunityDashboardStats(today)
 
       setDashboardStats({
         newUsers: users ? users.pagination?.total ?? users.data?.length ?? 0 : null,
@@ -142,8 +142,8 @@ export default function AdminDashboardPage() {
         pendingMeals: requests ? requests.summary?.pending || 0 : null,
         lockedUsers: users ? users.summary?.locked || 0 : null,
         draftArticles: blogs ? blogs.summary?.drafts || 0 : null,
-        communityPosts: communityStats.postsToday,
-        reportedCommunityPosts: communityStats.reportedPosts,
+        communityPosts: community ? community.postsToday : null,
+        reportedCommunityPosts: community ? community.reportedPosts : null,
       })
       if (requests?.summary) setPendingRequestsCount(requests.summary.pending || 0)
 
