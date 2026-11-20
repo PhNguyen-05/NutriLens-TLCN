@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import axiosInstance from '../../api/axiosInstance'
 import {
   calendarMonthRange,
   calendarMonthWeeks,
@@ -8,8 +9,9 @@ import {
   MonthCalendarPicker,
   MonthWeekPicker,
 } from './AnalyticsChartPeriod'
-import { COMMUNITY_POSTS_STORAGE_KEY, getCommunityPostsSnapshot } from './communityPostStore'
 import './AdminCommunityAnalyticsPage.css'
+
+const EMPTY_METRICS = { posts: 0, likes: 0, comments: 0, reportedPosts: 0, reportCount: 0 }
 
 const STATUS_DEFINITIONS = [
   { key: 'displaying', label: 'Đang hiển thị', status: 'Đang hiển thị', color: '#11a878' },
@@ -30,37 +32,6 @@ function formatInputDate(value) {
   if (!value) return '—'
   const [year, month, day] = value.split('-')
   return `${day}/${month}/${year}`
-}
-
-function getPostDate(post) {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date(post.createdAt))
-}
-
-function isReportedPost(post) {
-  return Boolean(post.reviewPending)
-}
-
-function summarizePosts(posts, date = '') {
-  const visibleEngagement = posts.filter((post) => !post.reviewPending)
-  return {
-    date,
-    posts: posts.length,
-    likes: visibleEngagement.reduce((sum, post) => sum + Number(post.likes || 0), 0),
-    comments: visibleEngagement.reduce((sum, post) => sum + Number(post.comments || 0), 0),
-    reportedPosts: posts.filter(isReportedPost).length,
-    reportCount: posts.reduce((sum, post) => sum + Number(post.reports || 0), 0),
-  }
-}
-
-function previousPeriodRange(startDate, endDate) {
-  const start = new Date(`${startDate}T12:00:00`)
-  const end = new Date(`${endDate}T12:00:00`)
-  const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
-  const previousEnd = new Date(start)
-  previousEnd.setDate(previousEnd.getDate() - 1)
-  const previousStart = new Date(previousEnd)
-  previousStart.setDate(previousEnd.getDate() - duration + 1)
-  return { startDate: toLocalInputDate(previousStart), endDate: toLocalInputDate(previousEnd) }
 }
 
 function periodChange(current, previous) {
@@ -114,58 +85,61 @@ export default function AdminCommunityAnalyticsPage({ onNavigate }) {
   const [monthSelection, setMonthSelection] = useState(today.slice(0, 7))
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showPeriodWeekPicker, setShowPeriodWeekPicker] = useState(false)
-  const [posts, setPosts] = useState(getCommunityPostsSnapshot)
+  const [analytics, setAnalytics] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
   useEffect(() => {
-    function refreshPosts(event) {
-      if (!event.key || event.key === COMMUNITY_POSTS_STORAGE_KEY) setPosts(getCommunityPostsSnapshot())
-    }
-    window.addEventListener('storage', refreshPosts)
-    return () => window.removeEventListener('storage', refreshPosts)
-  }, [])
+    const controller = new AbortController()
+    setLoading(true)
+    setLoadError('')
+
+    axiosInstance.get('/admin/community/analytics', {
+      params: { from: startDate, to: endDate },
+      signal: controller.signal,
+    })
+      .then(({ data }) => {
+        if (!controller.signal.aborted) setAnalytics(data)
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return
+        setAnalytics(null)
+        setLoadError(error.response?.data?.message || 'Không thể tải dữ liệu thống kê Community. Vui lòng thử lại.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [startDate, endDate, reloadKey])
 
   const dailyRows = useMemo(() => {
-    const postsByDate = new Map()
-    posts.forEach((post) => {
-      const postDate = getPostDate(post)
-      if (postDate < startDate || postDate > endDate) return
-      const datePosts = postsByDate.get(postDate) || []
-      datePosts.push(post)
-      postsByDate.set(postDate, datePosts)
-    })
+    const dailyByDate = new Map((analytics?.daily || []).map((row) => [row.date, row]))
 
     const rows = []
     const cursor = new Date(`${startDate}T12:00:00`)
     const lastDay = new Date(`${endDate}T12:00:00`)
     for (; cursor <= lastDay; cursor.setDate(cursor.getDate() + 1)) {
       const date = toLocalInputDate(cursor)
-      rows.push(summarizePosts(postsByDate.get(date) || [], date))
+      rows.push({ ...EMPTY_METRICS, ...dailyByDate.get(date), date })
     }
     return rows
-  }, [posts, startDate, endDate])
+  }, [analytics, startDate, endDate])
 
   const chartPeriod = useMemo(() => getAnalyticsChartPeriod(dailyRows, {
     sumKeys: ['posts', 'likes', 'comments', 'reportedPosts', 'reportCount'],
   }), [dailyRows])
   const tableRows = period === 'Theo tháng' ? chartPeriod.rowsToDisplay : dailyRows
-  const currentMetrics = summarizePosts(posts.filter((post) => {
-    const postDate = getPostDate(post)
-    return postDate >= startDate && postDate <= endDate
-  }))
-  const previousRange = previousPeriodRange(startDate, endDate)
-  const previousMetrics = summarizePosts(posts.filter((post) => {
-    const postDate = getPostDate(post)
-    return postDate >= previousRange.startDate && postDate <= previousRange.endDate
-  }))
+  const currentMetrics = analytics?.summary?.current || EMPTY_METRICS
+  const previousMetrics = analytics?.summary?.previous || EMPTY_METRICS
   const statusTotals = STATUS_DEFINITIONS.map((definition) => ({
     ...definition,
-    value: posts.filter((post) => definition.key === 'review'
-      ? post.reviewPending
-      : !post.reviewPending && post.status === definition.status).length,
+    value: Number(analytics?.summary?.statuses?.[definition.key] || 0),
   }))
-  const totalPosts = posts.length
+  const totalPosts = Number(analytics?.summary?.total || 0)
   const maxInteraction = Math.max(currentMetrics.likes, currentMetrics.comments, currentMetrics.reportCount, 1)
   const interactions = [
     { label: 'Lượt thích', value: currentMetrics.likes, tone: 'green' },
@@ -257,6 +231,11 @@ export default function AdminCommunityAnalyticsPage({ onNavigate }) {
       </div>
     </div>
 
+    {(loading || loadError) && <div className={`ac-load-feedback ${loadError ? 'error' : ''}`} role={loadError ? 'alert' : 'status'}>
+      <span>{loadError || 'Đang tải dữ liệu thống kê Community...'}</span>
+      {loadError && <button type="button" onClick={() => setReloadKey((value) => value + 1)}>Thử lại</button>}
+    </div>}
+
     <section className="aa-metrics ac-metrics" aria-label="Chỉ số Community trong kỳ">
       {metrics.map((metric) => <article className="aa-metric ac-metric-card" key={metric.label}>
         <span className={`ac-metric-icon ${metric.tone}`}><i className={`bi ${metric.icon}`} /></span>
@@ -280,7 +259,7 @@ export default function AdminCommunityAnalyticsPage({ onNavigate }) {
     </section>
 
     <section className="aa-panel ac-panel ac-details-panel">
-      <div className="ac-details-heading"><div className="aa-panel-heading"><h2><i className="bi bi-list-columns-reverse" />Thống kê chi tiết theo thời gian</h2><p>Dữ liệu từ {formatInputDate(startDate)} đến {formatInputDate(endDate)} · Đồng bộ từ trang kiểm duyệt Community.</p></div><label className="ac-search"><i className="bi bi-search" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder={`Tìm theo ${period === 'Theo tuần' ? 'ngày' : 'tuần'}...`} /></label></div>
+      <div className="ac-details-heading"><div className="aa-panel-heading"><h2><i className="bi bi-list-columns-reverse" />Thống kê chi tiết theo thời gian</h2><p>Dữ liệu từ {formatInputDate(startDate)} đến {formatInputDate(endDate)} · Lấy trực tiếp từ dữ liệu Community.</p></div><label className="ac-search"><i className="bi bi-search" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder={`Tìm theo ${period === 'Theo tuần' ? 'ngày' : 'tuần'}...`} /></label></div>
       <div className="ac-table-wrap"><table className="ac-table"><thead><tr><th>{period === 'Theo tuần' ? 'Ngày' : 'Tuần'}</th><th>Bài đăng mới</th><th>Lượt thích</th><th>Bình luận</th><th>Bài đăng bị báo cáo</th></tr></thead><tbody>
         {pageRows.length ? pageRows.map((row, index) => <tr key={row.date || `${row.startDate}-${index}`}><td>{period === 'Theo tháng' ? `Tuần ${row.weekNumber} (${formatShortChartDate(row.startDate)} – ${formatShortChartDate(row.endDate)})` : formatInputDate(row.date)}</td><td>{number(row.posts)}</td><td>{number(row.likes)}</td><td>{number(row.comments)}</td><td>{number(row.reportedPosts)}</td></tr>) : <tr><td colSpan="5" className="ac-empty-row">Không có dữ liệu trong khoảng thời gian đã chọn.</td></tr>}
         {filteredRows.length > 0 && <tr className="ac-total-row"><td>Tổng cộng</td><td>{number(tableTotals.posts)}</td><td>{number(tableTotals.likes)}</td><td>{number(tableTotals.comments)}</td><td>{number(tableTotals.reports)}</td></tr>}

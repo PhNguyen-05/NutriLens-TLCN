@@ -41,6 +41,116 @@ async function getCommunityDashboardStats(req, res) {
   }
 }
 
+async function getCommunityAnalytics(req, res) {
+  try {
+    const from = parseStatsDate(String(req.query.from || ''));
+    const to = parseStatsDate(String(req.query.to || ''));
+    if (!from || !to || from > to) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê Community không hợp lệ' });
+    }
+
+    const dayMs = 24 * 60 * 60 * 1000;
+    const start = new Date(`${from}T00:00:00.000+07:00`);
+    const endExclusive = new Date(new Date(`${to}T00:00:00.000+07:00`).getTime() + dayMs);
+    const rangeDays = (endExclusive.getTime() - start.getTime()) / dayMs;
+    if (rangeDays > 366) {
+      return res.status(400).json({ message: 'Khoảng ngày thống kê tối đa là 366 ngày' });
+    }
+
+    const previousStart = new Date(start.getTime() - rangeDays * dayMs);
+    const pendingPostIds = await PostReport.distinct('postId', { status: 'pending' });
+    const [publishedTotal, hiddenTotal, pendingPosts, activityByDay] = await Promise.all([
+      CommunityPost.countDocuments({ status: 'published' }),
+      CommunityPost.countDocuments({ status: 'hidden' }),
+      pendingPostIds.length
+        ? CommunityPost.find({ _id: { $in: pendingPostIds }, status: { $in: VISIBLE_STATUSES } }).select('_id status').lean()
+        : [],
+      CommunityPost.aggregate([
+        {
+          $match: {
+            status: { $in: VISIBLE_STATUSES },
+            createdAt: { $gte: previousStart, $lt: endExclusive },
+          },
+        },
+        {
+          $lookup: {
+            from: PostReport.collection.name,
+            localField: '_id',
+            foreignField: 'postId',
+            as: 'reports',
+          },
+        },
+        {
+          $addFields: {
+            reportCount: { $size: { $ifNull: ['$reports', []] } },
+            pendingReportCount: {
+              $size: {
+                $filter: {
+                  input: { $ifNull: ['$reports', []] },
+                  as: 'report',
+                  cond: { $eq: ['$$report.status', 'pending'] },
+                },
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              period: { $cond: [{ $gte: ['$createdAt', start] }, 'current', 'previous'] },
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Ho_Chi_Minh' } },
+            },
+            posts: { $sum: 1 },
+            likes: { $sum: { $cond: [{ $eq: ['$pendingReportCount', 0] }, { $ifNull: ['$likeCount', 0] }, 0] } },
+            comments: { $sum: { $cond: [{ $eq: ['$pendingReportCount', 0] }, { $ifNull: ['$commentCount', 0] }, 0] } },
+            reportedPosts: { $sum: { $cond: [{ $gt: ['$pendingReportCount', 0] }, 1, 0] } },
+            reportCount: { $sum: '$reportCount' },
+          },
+        },
+        { $sort: { '_id.period': 1, '_id.date': 1 } },
+      ]),
+    ]);
+
+    const pendingPublished = pendingPosts.filter((post) => post.status === 'published').length;
+    const pendingHidden = pendingPosts.filter((post) => post.status === 'hidden').length;
+    const totals = {
+      current: { posts: 0, likes: 0, comments: 0, reportedPosts: 0, reportCount: 0 },
+      previous: { posts: 0, likes: 0, comments: 0, reportedPosts: 0, reportCount: 0 },
+    };
+    const daily = [];
+
+    for (const row of activityByDay) {
+      const { period, date } = row._id;
+      const values = {
+        posts: row.posts,
+        likes: row.likes,
+        comments: row.comments,
+        reportedPosts: row.reportedPosts,
+        reportCount: row.reportCount,
+      };
+      Object.keys(values).forEach((key) => { totals[period][key] += values[key]; });
+      if (period === 'current') daily.push({ date, ...values });
+    }
+
+    return res.status(200).json({
+      summary: {
+        total: publishedTotal + hiddenTotal,
+        statuses: {
+          displaying: Math.max(0, publishedTotal - pendingPublished),
+          review: pendingPosts.length,
+          hidden: Math.max(0, hiddenTotal - pendingHidden),
+        },
+        current: totals.current,
+        previous: totals.previous,
+      },
+      daily,
+    });
+  } catch (error) {
+    console.error('[getCommunityAnalytics] Lỗi:', error.message);
+    return res.status(500).json({ message: 'Không thể tải thống kê Community' });
+  }
+}
+
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -258,4 +368,9 @@ async function updateCommunityPostModeration(req, res) {
   }
 }
 
-module.exports = { getCommunityDashboardStats, listCommunityPosts, updateCommunityPostModeration };
+module.exports = {
+  getCommunityAnalytics,
+  getCommunityDashboardStats,
+  listCommunityPosts,
+  updateCommunityPostModeration,
+};

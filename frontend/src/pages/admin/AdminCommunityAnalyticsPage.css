@@ -21,6 +21,36 @@
   gap: 11px;
 }
 
+.ac-load-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid #cfe8f2;
+  border-radius: 8px;
+  background: #f1fbff;
+  color: #376987;
+  font-size: 13px;
+}
+
+.ac-load-feedback.error {
+  border-color: #f1c7c5;
+  background: #fff7f6;
+  color: #a33d38;
+}
+
+.ac-load-feedback button {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .ac-metric-card {
   min-width: 0;
   min-height: 111px;
