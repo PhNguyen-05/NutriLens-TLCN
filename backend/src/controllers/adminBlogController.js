@@ -109,6 +109,13 @@ function validationFailure(res, error) {
   return null;
 }
 
+function resetBlogEngagement(post) {
+  post.viewCount = 0;
+  post.likeCount = 0;
+  post.set('likedBy', []);
+  post.markModified('likedBy');
+}
+
 function parseInlineImage(imageUrl) {
   if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:')) return { image: null };
 
@@ -465,8 +472,11 @@ async function updateBlogPost(req, res) {
     } else {
       post.imageUrl = imageUrl;
     }
-    if (parsed.value.status === 'Đã xuất bản' && previousStatus !== 'Đã xuất bản') {
+    if (parsed.value.status === 'Đã xuất bản') {
+      resetBlogEngagement(post);
       post.publishedAt = new Date();
+    } else if (parsed.value.status === 'Nháp' && previousStatus === 'Đã xuất bản') {
+      resetBlogEngagement(post);
     }
 
     await post.save();
@@ -521,7 +531,12 @@ async function updateBlogPostStatus(req, res) {
     if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
 
     const previousStatus = post.status;
-    if (status === 'Đã xuất bản' && post.status !== 'Đã xuất bản') post.publishedAt = new Date();
+    if (status === 'Đã xuất bản') {
+      if (post.status !== 'Đã ẩn') resetBlogEngagement(post);
+      post.publishedAt = new Date();
+    } else if (status === 'Nháp' && post.status === 'Đã xuất bản') {
+      resetBlogEngagement(post);
+    }
     post.status = status;
     await post.save();
     await post.populate('authorId', AUTHOR_FIELDS);
@@ -572,7 +587,12 @@ async function bulkUpdateBlogPostStatus(req, res) {
     const posts = await BlogPost.find({ _id: { $in: ids } });
     const timestamp = new Date();
     await Promise.all(posts.map(async (post) => {
-      if (status === 'Đã xuất bản' && post.status !== 'Đã xuất bản') post.publishedAt = timestamp;
+      if (status === 'Đã xuất bản') {
+        if (post.status !== 'Đã ẩn') resetBlogEngagement(post);
+        post.publishedAt = timestamp;
+      } else if (status === 'Nháp' && post.status === 'Đã xuất bản') {
+        resetBlogEngagement(post);
+      }
       post.status = status;
       await post.save();
     }));

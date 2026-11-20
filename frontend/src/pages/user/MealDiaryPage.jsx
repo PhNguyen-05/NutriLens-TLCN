@@ -70,7 +70,8 @@ export default function MealDiaryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [date, setDate] = useState(() => {
     const requestedDate = searchParams.get('date')
-    return validDate(requestedDate) ? requestedDate : localDate()
+    const today = localDate()
+    return validDate(requestedDate) && requestedDate <= today ? requestedDate : today
   })
   const [activeMeal, setActiveMeal] = useState('all')
   const [logs, setLogs] = useState([])
@@ -161,6 +162,7 @@ export default function MealDiaryPage() {
   const totalMacroEnergy = macroShares.reduce((sum, macro) => sum + macro.energy, 0)
 
   function changeDate(nextDate) {
+    if (!validDate(nextDate) || nextDate > localDate()) return
     setDate(nextDate)
     setSearchParams({ date: nextDate }, { replace: true })
   }
@@ -181,6 +183,10 @@ export default function MealDiaryPage() {
 
   async function saveEdit(event) {
     event.preventDefault()
+    if (!validDate(editForm.date) || editForm.date > localDate()) {
+      setEditError('Không thể chọn ngày ghi nhận trong tương lai.')
+      return
+    }
     setSavingEdit(true)
     setEditError('')
     try {
@@ -188,6 +194,7 @@ export default function MealDiaryPage() {
         date: editForm.date,
         mealType: editForm.mealType,
         servings: Number(editForm.servings),
+        timezoneOffsetMinutes: new Date().getTimezoneOffset(),
       })
       setEditingLog(null)
       if (editForm.date !== date) changeDate(editForm.date)
@@ -253,7 +260,7 @@ export default function MealDiaryPage() {
         <section className="fd-toolbar" aria-label="Chọn ngày và lọc bữa ăn">
           <div className="fd-date-control">
             <button type="button" onClick={() => changeDate(moveDate(date, -1))} aria-label="Ngày trước"><i className="bi bi-chevron-left" /></button>
-            <label><i className="bi bi-calendar3" /><span>{formatDate(date)}</span><input type="date" value={date} onChange={(event) => event.target.value && changeDate(event.target.value)} aria-label="Chọn ngày nhật ký" /></label>
+            <label><i className="bi bi-calendar3" /><span>{formatDate(date)}</span><input type="date" value={date} max={localDate()} onChange={(event) => event.target.value && changeDate(event.target.value)} aria-label="Chọn ngày nhật ký" /></label>
             <button type="button" onClick={() => changeDate(moveDate(date, 1))} aria-label="Ngày sau" disabled={date >= localDate()}><i className="bi bi-chevron-right" /></button>
             <button className="fd-today-button" type="button" onClick={() => changeDate(localDate())}>Hôm nay</button>
           </div>
@@ -340,7 +347,7 @@ export default function MealDiaryPage() {
         <form className="fd-edit-dialog" onSubmit={saveEdit} role="dialog" aria-modal="true" aria-labelledby="fd-edit-title">
           <header><div><small>NHẬT KÝ BỮA ĂN</small><h2 id="fd-edit-title">Chỉnh sửa món ăn</h2></div><button type="button" onClick={() => setEditingLog(null)} aria-label="Đóng"><i className="bi bi-x-lg" /></button></header>
           <strong className="fd-edit-food-name">{editingLog.foodName}</strong>
-          <label>Ngày ghi nhận<input type="date" value={editForm.date} onChange={(event) => setEditForm((form) => ({ ...form, date: event.target.value }))} required /></label>
+          <label>Ngày ghi nhận<input type="date" value={editForm.date} max={localDate()} onChange={(event) => { if (!event.target.value || event.target.value <= localDate()) { setEditForm((form) => ({ ...form, date: event.target.value })); setEditError('') } }} required /></label>
           <label>Loại bữa ăn<select value={editForm.mealType} onChange={(event) => setEditForm((form) => ({ ...form, mealType: event.target.value }))}>{MEALS.map((meal) => <option key={meal.value} value={meal.value}>{meal.label}</option>)}</select></label>
           <label>Khẩu phần<input type="number" min="0.1" max="99" step="0.1" value={editForm.servings} onChange={(event) => setEditForm((form) => ({ ...form, servings: event.target.value }))} required /></label>
           {editError && <p className="fd-edit-error" role="alert">{editError}</p>}

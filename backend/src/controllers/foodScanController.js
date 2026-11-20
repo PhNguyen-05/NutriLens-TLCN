@@ -577,8 +577,17 @@ async function updateMealLog(req, res, next) {
     const { date, mealType, servings } = req.body;
 
     if (date !== undefined) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const parsedDate = new Date(`${date}T00:00:00Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
         return res.status(400).json({ message: 'Ngày không hợp lệ (YYYY-MM-DD)' });
+      }
+      const timezoneOffset = Number(req.body.timezoneOffsetMinutes ?? 0);
+      if (!Number.isInteger(timezoneOffset) || Math.abs(timezoneOffset) > 840) {
+        return res.status(400).json({ message: 'Múi giờ không hợp lệ' });
+      }
+      const localToday = new Date(Date.now() - timezoneOffset * 60_000).toISOString().slice(0, 10);
+      if (date > localToday) {
+        return res.status(400).json({ message: 'Không thể cập nhật ngày ghi nhận trong tương lai' });
       }
       updates.date = date;
     }
