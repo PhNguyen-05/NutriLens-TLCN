@@ -224,7 +224,8 @@
 .cm-keep-heading > button { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #526d80; font-size: 20px; cursor: pointer; }
 .cm-keep-heading > button:hover { background: #f2f6f8; }
 .cm-keep-post { display: flex; align-items: center; gap: 18px; min-height: 112px; margin-bottom: 23px; padding: 12px 14px; border: 1px solid #dce8f3; border-radius: 12px; background: #f3f8fd; }
-.cm-keep-image { width: 112px; height: 88px; display: grid; flex: 0 0 112px; place-items: center; border-radius: 10px; font-size: 42px; }
+.cm-keep-image { position: relative; overflow: hidden; width: 112px; min-width: 112px; max-width: 112px; height: 88px; min-height: 88px; max-height: 88px; display: grid; flex: 0 0 112px; place-items: center; border-radius: 10px; font-size: 42px; }
+.cm-keep-image > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: cover; }
 .cm-keep-image.salad { background: linear-gradient(145deg, #dff4df, #f9e6ca); }
 .cm-keep-image.run { background: linear-gradient(145deg, #d8efff, #f8dfc6); }
 .cm-keep-image.smoothie { background: linear-gradient(145deg, #d8f1d7, #eaf4c8); }
@@ -297,7 +298,7 @@
   .cm-keep-heading p { font-size: 12px; }
   .cm-keep-heading > button { width: 30px; height: 30px; }
   .cm-keep-post { gap: 11px; min-height: 90px; margin-bottom: 17px; padding: 9px; }
-  .cm-keep-image { width: 76px; height: 70px; flex-basis: 76px; font-size: 34px; }
+  .cm-keep-image { width: 76px; min-width: 76px; max-width: 76px; height: 70px; min-height: 70px; max-height: 70px; flex-basis: 76px; font-size: 34px; }
   .cm-keep-post b { font-size: 14px; }
   .cm-keep-post p { font-size: 12px; }
   .cm-keep-field { font-size: 14px; }
