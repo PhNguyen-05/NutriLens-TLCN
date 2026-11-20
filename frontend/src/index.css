@@ -5977,13 +5977,13 @@ td.fdm-td-center { text-align: center !important; }
 .fdm-btn--del:hover   { background: #ffd0d0; }
 
 /* ══════════ PAGINATION ══════════ */
-.fdm-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid #edf2f7; flex-wrap: wrap; }
-.fdm-page-info { font-size: 12px; color: #7a92a8; }
-.fdm-page-btns { display: flex; gap: 4px; }
-.fdm-page-btns button { width: 30px; height: 30px; border: 1.5px solid #dce8f2; border-radius: 8px; background: #fff; color: #3a5266; font-size: 12px; cursor: pointer; display: grid; place-items: center; transition: all .15s; }
-.fdm-page-btns button:hover:not(:disabled) { background: #edf4fc; border-color: #009b6d; color: #009b6d; }
-.fdm-page-btns button.active { background: #009b6d; border-color: #009b6d; color: #fff; font-weight: 700; }
-.fdm-page-btns button:disabled { opacity: .35; cursor: default; }
+.fdm-pagination, .fdm-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid #edf2f7; flex-wrap: wrap; }
+.fdm-page-info, .fdm-range-info { font-size: 12px; color: #7a92a8; }
+.fdm-page-btns, .fdm-pager { display: flex; gap: 4px; }
+.fdm-page-btns button, .fdm-pager button { width: 30px; height: 30px; border: 1.5px solid #dce8f2; border-radius: 8px; background: #fff; color: #3a5266; font-size: 12px; cursor: pointer; display: grid; place-items: center; transition: all .15s; }
+.fdm-page-btns button:hover:not(:disabled), .fdm-pager button:hover:not(:disabled) { background: #edf4fc; border-color: #009b6d; color: #009b6d; }
+.fdm-page-btns button.active, .fdm-pager button.active { background: #009b6d; border-color: #009b6d; color: #fff; font-weight: 700; }
+.fdm-page-btns button:disabled, .fdm-pager button:disabled { opacity: .35; cursor: default; }
 
 .fdm-state-msg { min-height: 160px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; color: #7a92a8; }
 .fdm-state-msg--err { color: #b03030; }
@@ -7999,6 +7999,10 @@ td.fdm-td-center { text-align: center !important; }
   border: none;
   transition: all 0.15s;
 }
+.ex-btn i {
+  font-size: 0.95rem;
+  line-height: 1;
+}
 .ex-btn--primary { background: #0f3029; color: #fff; white-space: nowrap; }
 .ex-btn--primary:hover:not(:disabled) { background: #137a5b; }
 .ex-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -8414,9 +8418,22 @@ td.fdm-td-center { text-align: center !important; }
   align-items: center;
   gap: 10px;
 }
-.ex-state-empty i { font-size: 2.5rem; color: #cbd5e1; }
+.ex-state-empty > i { font-size: 2.5rem; color: #cbd5e1; }
 .ex-state-empty strong { font-size: 1.05rem; font-weight: 700; color: #1e293b; }
 .ex-state-empty p { font-size: 0.88rem; color: #64748b; margin: 0; }
+.ex-state-empty .ex-btn {
+  font-size: 0.82rem;
+  padding: 7px 16px;
+  border-radius: 8px;
+  gap: 6px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.ex-state-empty .ex-btn i {
+  font-size: 0.95rem !important;
+  color: inherit !important;
+  line-height: 1;
+}
 
 /* ── Overlay (Modal backdrop) ── */
 .ex-overlay {

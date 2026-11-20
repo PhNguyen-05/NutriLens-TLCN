@@ -636,12 +636,12 @@ export default function ExerciseManagementPage() {
         )}
 
         {/* ── Table Footer & Pagination ── */}
-        {!listError && pagination.total > 0 && (
-          <footer className="fdm-foot">
-            <span className="fdm-range-info">
-              Hiển thị <strong>{si}–{ei}</strong> trong <strong>{pagination.total.toLocaleString('vi-VN')}</strong> bài tập
+        {!loading && !listError && pagination.totalPages > 0 && (
+          <footer className="fdm-pagination">
+            <span className="fdm-page-info">
+              Hiển thị {si}–{ei} / {pagination.total.toLocaleString('vi-VN')} bài tập
             </span>
-            <div className="fdm-pager">
+            <div className="fdm-page-btns">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage(1)}
@@ -651,35 +651,33 @@ export default function ExerciseManagementPage() {
               </button>
               <button
                 disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => setPage((p) => p - 1)}
                 title="Trang trước"
               >
                 <i className="bi bi-chevron-left" />
               </button>
-              {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((p) => {
-                if (p === 1 || p === pagination.totalPages || Math.abs(p - page) <= 1) {
+              {Array.from(
+                { length: Math.min(pagination.totalPages, 7) },
+                (_, i) => {
+                  const f = Math.max(
+                    1,
+                    Math.min(page - 3, pagination.totalPages - 6)
+                  )
+                  const pn = f + i
                   return (
                     <button
-                      key={p}
-                      className={p === page ? 'active' : ''}
-                      onClick={() => setPage(p)}
+                      key={pn}
+                      className={pn === page ? 'active' : ''}
+                      onClick={() => setPage(pn)}
                     >
-                      {p}
+                      {pn}
                     </button>
                   )
                 }
-                if (p === page - 2 || p === page + 2) {
-                  return (
-                    <span key={p} className="fdm-ellipsis">
-                      …
-                    </span>
-                  )
-                }
-                return null
-              })}
+              )}
               <button
                 disabled={page >= pagination.totalPages}
-                onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+                onClick={() => setPage((p) => p + 1)}
                 title="Trang sau"
               >
                 <i className="bi bi-chevron-right" />
