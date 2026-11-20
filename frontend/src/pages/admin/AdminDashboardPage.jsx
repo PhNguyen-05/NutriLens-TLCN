@@ -362,11 +362,11 @@ export default function AdminDashboardPage() {
               </div>
               <section className="overview-stat-grid" aria-label="Tổng quan hoạt động hôm nay">
                 {[
-                  { label: 'Người dùng mới hôm nay', value: dashboardStats.newUsers, tone: 'green', icon: 'bi-people-fill' },
-                  { label: 'Món ăn mới hôm nay', value: dashboardStats.meals, tone: 'orange', icon: 'bi-cup-hot-fill' },
-                  { label: 'Lượt ghi nhận bài tập', value: dashboardStats.exercises, tone: 'blue', icon: 'bi-person-walking' },
-                  { label: 'Bài viết Blog mới hôm nay', value: dashboardStats.articles, tone: 'purple', icon: 'bi-file-earmark-text-fill' },
-                  { label: 'Bài đăng Community mới hôm nay', value: dashboardStats.communityPosts, tone: 'mint', icon: 'bi-chat-dots-fill' },
+                  { label: 'Người dùng mới\nhôm nay', value: dashboardStats.newUsers, tone: 'green', icon: 'bi-people-fill' },
+                  { label: 'Món ăn mới\nhôm nay', value: dashboardStats.meals, tone: 'orange', icon: 'bi-cup-hot-fill' },
+                  { label: 'Lượt ghi nhận\nbài tập', value: dashboardStats.exercises, tone: 'blue', icon: 'bi-person-walking' },
+                  { label: 'Bài viết Blog mới\nhôm nay', value: dashboardStats.articles, tone: 'purple', icon: 'bi-file-earmark-text-fill' },
+                  { label: 'Bài đăng Community\nmới hôm nay', value: dashboardStats.communityPosts, tone: 'mint', icon: 'bi-chat-dots-fill' },
                 ].map((stat) => (
                   <article className={'overview-stat-card ' + stat.tone} key={stat.label}>
                     <span className="overview-stat-icon"><i className={'bi ' + stat.icon} /></span>
