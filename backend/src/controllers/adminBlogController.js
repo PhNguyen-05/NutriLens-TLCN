@@ -6,6 +6,7 @@ const AdminActionLog = require('../models/AdminActionLog');
 const BLOG_STATUSES = ['Nháp', 'Đã xuất bản', 'Đã ẩn', 'Đã xóa'];
 const AUTHOR_FIELDS = 'fullName role';
 const VIEWER_ID_PATTERN = /^guest:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const BLOG_VISIT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function getLikeViewerId(req, guestViewerId) {
   if (req.user?.id) return `user:${req.user.id}`;
@@ -328,16 +329,36 @@ async function incrementPublishedBlogView(req, res) {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) return invalidId(res);
 
+    const visitId = String(req.body?.visitId || '').trim();
+    if (!BLOG_VISIT_ID_PATTERN.test(visitId)) {
+      return res.status(400).json({ message: 'Mã lượt truy cập không hợp lệ' });
+    }
+
+    const postId = new mongoose.Types.ObjectId(id);
+    const visitFilter = { postId, eventType: 'view', visitId };
+    let reservation;
+    try {
+      reservation = await BlogEngagementEvent.collection.updateOne(
+        visitFilter,
+        { $setOnInsert: { ...visitFilter, createdAt: new Date(), updatedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (eventError) {
+      if (eventError.code !== 11000) throw eventError;
+      return res.status(200).json({ data: { counted: false } });
+    }
+    if (!reservation.upsertedCount) return res.status(200).json({ data: { counted: false } });
+
     const post = await BlogPost.findOneAndUpdate(
       { _id: id, status: 'Đã xuất bản' },
       { $inc: { viewCount: 1 } },
       { new: true, timestamps: false }
     ).select('viewCount').lean();
-    if (!post) return res.status(404).json({ message: 'Bài viết không tồn tại' });
-    await BlogEngagementEvent.create({ postId: id, eventType: 'view' }).catch((logError) => {
-      console.error('[incrementPublishedBlogView] Không thể lưu lượt xem:', logError.message);
-    });
-    return res.status(200).json({ data: { viewCount: Number(post.viewCount || 0) } });
+    if (!post) {
+      await BlogEngagementEvent.collection.deleteOne(visitFilter);
+      return res.status(404).json({ message: 'Bài viết không tồn tại' });
+    }
+    return res.status(200).json({ data: { viewCount: Number(post.viewCount || 0), counted: true } });
   } catch (err) {
     console.error('[incrementPublishedBlogView] Lỗi:', err.message);
     return res.status(500).json({ message: 'Không thể cập nhật lượt xem' });

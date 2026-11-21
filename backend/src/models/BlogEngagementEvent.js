@@ -14,10 +14,21 @@ const blogEngagementEventSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    visitId: {
+      type: String,
+      trim: true,
+    },
   },
   { timestamps: true }
 );
 
 blogEngagementEventSchema.index({ createdAt: 1, eventType: 1 });
+blogEngagementEventSchema.index(
+  { postId: 1, visitId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { eventType: 'view', visitId: { $type: 'string' } },
+  }
+);
 
 module.exports = mongoose.model('BlogEngagementEvent', blogEngagementEventSchema);

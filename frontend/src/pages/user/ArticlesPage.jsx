@@ -11,6 +11,24 @@ const FAVORITES_PAGE_SIZE = 6
 const BLOG_VIEWER_STORAGE_KEY = 'nutrilens:blog-viewer-id'
 let fallbackBlogViewerId = ''
 
+function getDocumentNavigationType() {
+  const navigationEntry = window.performance?.getEntriesByType?.('navigation')?.[0]
+  if (navigationEntry?.type) return navigationEntry.type
+  return window.performance?.navigation?.type === 1 ? 'reload' : 'navigate'
+}
+
+const INITIAL_DOCUMENT_PATH = typeof window === 'undefined' ? '' : window.location.pathname
+const INITIAL_DOCUMENT_IS_RELOAD = typeof window !== 'undefined' && getDocumentNavigationType() === 'reload'
+let initialReloadSkipClaimed = false
+
+function createBlogVisitId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID()
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16)
+    return (character === 'x' ? random : (random & 0x3) | 0x8).toString(16)
+  })
+}
+
 function createBlogViewerId() {
   const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
     const random = Math.floor(Math.random() * 16)
@@ -332,6 +350,7 @@ function ArticleBody({ content }) {
 
 export function ArticleDetailPage() {
   const { articleId } = useParams()
+  const location = useLocation()
   const { user, accessToken, handleLogout } = useAuth()
   const [viewerId] = useState(getBlogViewerId)
   const [article, setArticle] = useState(null)
@@ -341,7 +360,8 @@ export function ArticleDetailPage() {
   const [isLiked, setIsLiked] = useState(false)
   const [isSavingLike, setIsSavingLike] = useState(false)
   const [favoriteError, setFavoriteError] = useState('')
-  const viewSentForRef = useRef(null)
+  const viewVisitRef = useRef({ articleId: null, visitId: null })
+  const reloadDecisionRef = useRef(null)
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
@@ -354,16 +374,6 @@ export function ArticleDetailPage() {
         if (cancelled) return
         setArticle(data.data)
         setIsLiked(Boolean(data.data.isLiked))
-        if (viewSentForRef.current !== articleId) {
-          viewSentForRef.current = articleId
-          axiosInstance.post(`/blog/${articleId}/view`)
-            .then(({ data: viewData }) => {
-              if (!cancelled) {
-                setArticle((current) => current ? { ...current, viewCount: viewData.data.viewCount } : current)
-              }
-            })
-            .catch(() => {})
-        }
       })
       .catch((error) => {
         if (!cancelled) setLoadError(error.response?.data?.message || 'Không thể tải bài viết. Vui lòng thử lại.')
@@ -375,6 +385,97 @@ export function ArticleDetailPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [accessToken, articleId, reloadToken, viewerId])
+
+  const loadedArticleId = article?._id
+  useEffect(() => {
+    if (loadedArticleId !== articleId) return undefined
+
+    let suppressReloadView = false
+    if (reloadDecisionRef.current?.pathname === location.pathname) {
+      suppressReloadView = reloadDecisionRef.current.suppress
+    } else {
+      suppressReloadView = INITIAL_DOCUMENT_IS_RELOAD
+        && !initialReloadSkipClaimed
+        && location.pathname === INITIAL_DOCUMENT_PATH
+      if (suppressReloadView) initialReloadSkipClaimed = true
+      reloadDecisionRef.current = { pathname: location.pathname, suppress: suppressReloadView }
+    }
+    if (suppressReloadView) return undefined
+
+    if (viewVisitRef.current.articleId !== articleId) {
+      viewVisitRef.current = { articleId, visitId: createBlogVisitId() }
+    }
+    let visitId = viewVisitRef.current.visitId
+    let visibleMilliseconds = 0
+    let visibleSince = document.visibilityState === 'visible' ? performance.now() : null
+    let timer = null
+    let sent = false
+
+    function sendView() {
+      if (sent) return
+      sent = true
+      axiosInstance.post(`/blog/${articleId}/view`, { visitId })
+        .then(({ data }) => {
+          if (!data.data.counted) return
+          setArticle((current) => current?._id === articleId
+            ? { ...current, viewCount: data.data.viewCount }
+            : current)
+        })
+        .catch(() => {})
+    }
+
+    function scheduleView() {
+      if (sent || visibleSince === null) return
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        const now = performance.now()
+        if (visibleSince !== null) visibleMilliseconds += now - visibleSince
+        visibleSince = now
+        if (visibleMilliseconds >= 3000) sendView()
+        else scheduleView()
+      }, Math.max(0, 3000 - visibleMilliseconds))
+    }
+
+    function handleVisibilityChange() {
+      const now = performance.now()
+      if (document.visibilityState === 'hidden') {
+        if (visibleSince !== null) visibleMilliseconds += now - visibleSince
+        visibleSince = null
+        window.clearTimeout(timer)
+      } else if (!sent) {
+        visibleSince = now
+        scheduleView()
+      }
+    }
+
+    function handlePageHide() {
+      if (visibleSince !== null) visibleMilliseconds += performance.now() - visibleSince
+      visibleSince = null
+      window.clearTimeout(timer)
+    }
+
+    function handlePageShow(event) {
+      if (!event.persisted) return
+      visitId = createBlogVisitId()
+      viewVisitRef.current = { articleId, visitId }
+      visibleMilliseconds = 0
+      sent = false
+      visibleSince = document.visibilityState === 'visible' ? performance.now() : null
+      scheduleView()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('pageshow', handlePageShow)
+    scheduleView()
+
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [articleId, loadedArticleId, location.pathname])
 
   const relatedArticles = useMemo(() => {
     if (!article) return []

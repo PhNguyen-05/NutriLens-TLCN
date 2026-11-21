@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const dns = require('dns');
+const BlogEngagementEvent = require('../models/BlogEngagementEvent');
 
 /**
  * Kết nối tới MongoDB.
@@ -36,6 +37,7 @@ async function connectDB() {
   });
 
   await mongoose.connect(uri);
+  await BlogEngagementEvent.createIndexes();
 
   // Dọn dẹp index cũ không còn dùng trong schema để tránh lỗi E11000 duplicate key
   try {
