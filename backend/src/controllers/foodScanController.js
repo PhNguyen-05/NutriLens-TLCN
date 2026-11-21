@@ -382,23 +382,70 @@ async function scanFood(req, res, next) {
       });
     }
 
-    // 3. Tra cứu dinh dưỡng từ DB cho top-1
-    const topPrediction = aiResult.predictions[0];
-    const topSlug = topPrediction?.slug;
-    let food = topSlug ? await Food.findOne({ slug: topSlug }).lean() : null;
-    if (!food && topPrediction?.name) {
-      food = await Food.findOne({
+    // 3. Tra cứu dinh dưỡng cho các món trong danh sách dự đoán để người dùng
+    // có thể chọn món khác top-1 mà vẫn nhận đúng thông tin dinh dưỡng.
+    const predictions = Array.isArray(aiResult.predictions) ? aiResult.predictions : [];
+    const predictionSlugs = [...new Set(predictions.map((prediction) => String(prediction.slug || '').trim().toLowerCase()).filter(Boolean))];
+    const foodsBySlug = predictionSlugs.length
+      ? await Food.find({ slug: { $in: predictionSlugs } })
+        .select('slug name status description imageUrl servingSize calories protein fat carbs fiber sodium')
+        .lean()
+      : [];
+    const foodsByName = [];
+    const matchedSlugs = new Set(foodsBySlug.map((food) => String(food.slug || '').toLowerCase()));
+    const unmatchedNames = [...new Set(predictions
+      .filter((prediction) => !matchedSlugs.has(String(prediction.slug || '').trim().toLowerCase()) && prediction.name)
+      .map((prediction) => String(prediction.name).trim().toLowerCase())
+      .filter(Boolean))];
+    if (unmatchedNames.length) {
+      foodsByName.push(...await Food.find({
         status: 'hidden',
-        $expr: { $eq: [{ $toLower: '$name' }, topPrediction.name.trim().toLowerCase()] },
-      }).lean();
+        $expr: { $in: [{ $toLower: '$name' }, unmatchedNames] },
+      })
+        .select('slug name status description imageUrl servingSize calories protein fat carbs fiber sodium')
+        .lean());
     }
 
-    if (food?.status === 'hidden') {
+    const enrichedPredictions = predictions.map((prediction) => {
+      const slug = String(prediction.slug || '').trim().toLowerCase();
+      const name = String(prediction.name || '').trim().toLowerCase();
+      const food = foodsBySlug.find((candidate) => String(candidate.slug || '').toLowerCase() === slug)
+        || foodsByName.find((candidate) => String(candidate.name || '').trim().toLowerCase() === name);
+      const unavailable = food?.status === 'hidden';
+      const nutrition = food && !unavailable
+        ? {
+            foodSlug: food.slug,
+            foodName: food.name,
+            description: food.description,
+            imageUrl: food.imageUrl,
+            servingSize: food.servingSize,
+            calories: food.calories,
+            protein: food.protein,
+            fat: food.fat,
+            carbs: food.carbs,
+            fiber: food.fiber,
+            sodium: food.sodium,
+          }
+        : null;
+
+      return {
+        ...prediction,
+        nutrition,
+        unavailable,
+        hiddenFood: unavailable ? { slug: food.slug, name: food.name, imageUrl: food.imageUrl } : null,
+      };
+    });
+
+    const topPrediction = enrichedPredictions[0];
+    const topFood = foodsBySlug.find((food) => String(food.slug || '').toLowerCase() === String(topPrediction?.slug || '').trim().toLowerCase())
+      || foodsByName.find((food) => String(food.name || '').trim().toLowerCase() === String(topPrediction?.name || '').trim().toLowerCase());
+
+    if (topFood?.status === 'hidden') {
       return res.status(200).json({
         recognized: true,
         unavailable: true,
-        predictions: aiResult.predictions,
-        hiddenFood: { slug: food.slug, name: food.name, imageUrl: food.imageUrl },
+        predictions: enrichedPredictions,
+        hiddenFood: topPrediction.hiddenFood,
         nutrition: null,
         message: 'Món ăn không khả dụng trong danh mục',
       });
@@ -406,21 +453,9 @@ async function scanFood(req, res, next) {
 
     return res.status(200).json({
       recognized: true,
-      predictions: aiResult.predictions,
-      nutrition: food
-        ? {
-            foodSlug:    food.slug,
-            foodName:    food.name,
-            servingSize: food.servingSize,
-            calories:    food.calories,
-            protein:     food.protein,
-            fat:         food.fat,
-            carbs:       food.carbs,
-            fiber:       food.fiber,
-            sodium:      food.sodium,
-          }
-        : null, // chưa có dữ liệu dinh dưỡng trong DB
-      message: food ? null : 'Nhận diện thành công nhưng chưa có dữ liệu dinh dưỡng',
+      predictions: enrichedPredictions,
+      nutrition: topPrediction?.nutrition || null, // Giữ tương thích với client cũ.
+      message: topPrediction?.nutrition ? null : 'Nhận diện thành công nhưng chưa có dữ liệu dinh dưỡng',
     });
   } catch (err) {
     next(err);
