@@ -18,7 +18,7 @@ data = json.loads(path.read_text(encoding="utf-8"))
 changed = 0
 for c in data:
     new = NAMES.get(c["slug"])
-    if new and c["name"] == c["slug"]:
+    if new and (c.get("name") == c["slug"] or "name" not in c):
         c["name"] = new
         changed += 1
 

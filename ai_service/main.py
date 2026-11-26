@@ -34,11 +34,15 @@ ALLOWED_TYPES = {"image/jpeg", "image/png"}                    # UC13: JPG/PNG
 TOP_K = 3
 
 
-def build_model(arch, num_classes):
+def build_model(arch, num_classes, state_dict=None):
     """Dựng lại đúng kiến trúc lúc huấn luyện (không cần tải trọng số ImageNet)."""
     m = models.get_model(arch, weights=None)
     if arch.startswith("efficientnet"):
-        m.classifier[1] = nn.Linear(m.classifier[1].in_features, num_classes)
+        in_features = m.classifier[1].in_features
+        if state_dict is not None and "classifier.1.1.weight" in state_dict:
+            m.classifier[1] = nn.Sequential(nn.Dropout(0.3), nn.Linear(in_features, num_classes))
+        else:
+            m.classifier[1] = nn.Linear(in_features, num_classes)
     elif arch == "convnext_tiny":
         m.classifier[2] = nn.Linear(m.classifier[2].in_features, num_classes)
     else:  # resnet50
@@ -53,7 +57,7 @@ classes = ckpt["classes"]
 arch = ckpt["arch"]
 size = ckpt["img_size"]
 
-model = build_model(arch, len(classes))
+model = build_model(arch, len(classes), ckpt.get("model"))
 model.load_state_dict(ckpt["model"])
 model.to(device).eval()
 
@@ -61,7 +65,7 @@ meta = json.loads(CLASSES_PATH.read_text(encoding="utf-8"))
 if [c["slug"] for c in meta] != classes:
     raise RuntimeError("Thứ tự lớp trong classes.json không khớp với best_model.pt. "
                        "Hãy dùng đúng classes.json được tạo cùng bộ dữ liệu đã train.")
-names = {c["slug"]: c["name"] for c in meta}
+names = {c["slug"]: c.get("name", c["slug"]) for c in meta}
 
 # Tiền xử lý giống hệt tập val/test lúc huấn luyện
 preprocess = transforms.Compose([
