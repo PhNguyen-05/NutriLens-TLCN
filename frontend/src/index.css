@@ -14750,3 +14750,40 @@ em.metric-theme-green {
   .fd-main .fd-macro-share > small,
   .fd-main .fd-target-note { font-size: 11px !important; }
 }
+
+/* Improve readability on the admin user-management page. */
+.admin-topbar.user-management-topbar p { font-size: 15px !important; }
+.user-admin-body .user-summary small { font-size: 14px !important; }
+.user-admin-body .user-summary strong { font-size: 24px !important; }
+.user-admin-body .user-search input,
+.user-admin-body .user-filter select { font-size: 13px !important; }
+.user-admin-body .user-table { font-size: 13px !important; }
+.user-admin-body .user-table th { font-size: 13px !important; }
+.user-admin-body .user-table td { font-size: 13px !important; }
+.user-admin-body .user-identity strong { font-size: 13px !important; }
+.user-admin-body .user-identity small { font-size: 11px !important; }
+.user-admin-body .gender-pill,
+.user-admin-body .status-pill { font-size: 12px !important; }
+.user-admin-body .user-status-action,
+.user-admin-body .user-action { min-height: 33px; font-size: 12px !important; }
+.user-admin-body .user-action i { font-size: 10px !important; }
+.user-admin-body .user-pagination { font-size: 12px !important; }
+.user-admin-body .user-pagination button { font-size: 12px !important; }
+
+@media (max-width: 560px) {
+  .user-admin-body .user-summary small { font-size: 13px !important; }
+  .user-admin-body .user-summary strong { font-size: 22px !important; }
+  .user-admin-body .user-search input,
+  .user-admin-body .user-filter select { font-size: 12px !important; }
+  .user-admin-body .user-table { font-size: 12px !important; }
+  .user-admin-body .user-table th,
+  .user-admin-body .user-table td { font-size: 12px !important; }
+  .user-admin-body .user-identity strong { font-size: 12px !important; }
+  .user-admin-body .user-identity small { font-size: 10px !important; }
+  .user-admin-body .gender-pill,
+  .user-admin-body .status-pill { font-size: 11px !important; }
+  .user-admin-body .user-status-action,
+  .user-admin-body .user-action { font-size: 11px !important; }
+  .user-admin-body .user-pagination { font-size: 11px !important; }
+  .user-admin-body .user-pagination button { font-size: 11px !important; }
+}

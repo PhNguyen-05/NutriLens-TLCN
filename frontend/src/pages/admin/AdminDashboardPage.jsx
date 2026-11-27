@@ -255,7 +255,7 @@ export default function AdminDashboardPage() {
       </aside>
 
       <main className="admin-content">
-        <header className={`admin-topbar ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-topbar' : ''} ${isDashboard ? 'admin-overview-topbar' : ''}`}>
+        <header className={`admin-topbar ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-topbar' : ''} ${isDashboard ? 'admin-overview-topbar' : ''} ${activeItem === 'Người dùng' ? 'user-management-topbar' : ''}`}>
           <div className={`admin-topbar-title ${activeItem === 'Lịch sử thao tác' ? 'action-log-topbar-title' : ''}`}>
             {activeItem === 'Lịch sử thao tác' && <span className="action-log-heading-icon"><i className="bi bi-clock-history" /></span>}
             <div>
@@ -323,7 +323,7 @@ export default function AdminDashboardPage() {
           </div>
         </header>
 
-        <div className={`admin-body ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-body' : ''} ${isAnalyticsPage ? 'ua-admin-body' : ''}`}>
+        <div className={`admin-body ${activeItem === 'Lịch sử thao tác' ? 'action-log-admin-body' : ''} ${isAnalyticsPage ? 'ua-admin-body' : ''} ${activeItem === 'Người dùng' ? 'user-admin-body' : ''}`}>
           {activeItem === 'Người dùng' ? (
             <UserManagementPage />
           ) : activeItem === 'CommunityAnalytics' ? (
