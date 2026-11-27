@@ -17,6 +17,7 @@ const { uploadFileToCloudinary, isCloudinaryConfigured } = require('../services/
 const { createNotification } = require('../services/notificationService');
 
 const PENDING_FOOD_REQUEST_STATUSES = ['pending', 'Chờ duyệt'];
+const MEAL_START_HOURS = { breakfast: 5, lunch: 11, dinner: 17 };
 
 function readOptionalNumber(body, field, label) {
   const rawValue = body[field];
@@ -491,9 +492,14 @@ async function addMealLog(req, res, next) {
     if (!Number.isInteger(timezoneOffset) || Math.abs(timezoneOffset) > 840) {
       return res.status(400).json({ message: 'Múi giờ không hợp lệ' });
     }
-    const localToday = new Date(Date.now() - timezoneOffset * 60_000).toISOString().slice(0, 10);
+    const localNow = new Date(Date.now() - timezoneOffset * 60_000);
+    const localToday = localNow.toISOString().slice(0, 10);
     if (date > localToday) {
       return res.status(400).json({ message: 'Không thể thêm món ăn vào ngày trong tương lai' });
+    }
+    const mealStartHour = MEAL_START_HOURS[mealType];
+    if (date === localToday && mealStartHour != null && localNow.getUTCHours() < mealStartHour) {
+      return res.status(400).json({ message: 'Bữa ăn này chưa đến khung giờ ghi nhận' });
     }
 
     // Lấy snapshot dinh dưỡng từ DB

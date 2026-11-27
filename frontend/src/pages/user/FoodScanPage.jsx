@@ -26,6 +26,12 @@ const MEAL_LABELS = {
   dinner:    'Bữa tối',
   snack:     'Ăn vặt',
 }
+const MEAL_START_HOURS = { breakfast: 5, lunch: 11, dinner: 17 }
+
+function isFutureMeal(date, mealType, now = new Date()) {
+  const startHour = MEAL_START_HOURS[mealType]
+  return date === now.toLocaleDateString('sv-SE') && startHour != null && now.getHours() < startHour
+}
 
 const FOOD_FEEDBACK_REASONS = {
   reopen: 'Đề nghị mở lại món ăn',
@@ -1003,6 +1009,10 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
       setSaveMsg({ type: 'error', text: 'Không thể thêm món ăn vào ngày trong tương lai.' })
       return
     }
+    if (isFutureMeal(date, mealType)) {
+      setSaveMsg({ type: 'error', text: 'Bữa ăn này chưa đến khung giờ ghi nhận.' })
+      return
+    }
     const pred = result.predictions[selectedPred]
     setSaving(true); setSaveMsg(null)
     try {
@@ -1374,7 +1384,7 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
                   {recognitionImage && <img className="fs-result-image" src={recognitionImage} alt={selectedPrediction.name} onError={(event) => { event.currentTarget.style.display = 'none' }} />}
                   <div className="fs-result-copy">
                     <div className="fs-result-title"><h3>{selectedPrediction.name}</h3><span className="fs-vietnam-food">{selectedUnavailable ? 'Không khả dụng trong danh mục' : 'Món ăn Việt Nam'}</span></div>
-                    <p>{selectedUnavailable ? 'Món ăn không khả dụng trong danh mục. Bạn có thể chọn món khác hoặc gửi đề nghị để Admin xem xét lại món ăn này.' : selectedNutrition?.description || (selectedNutrition ? `${selectedNutrition.servingSize || 0}g · ${roundN(selectedNutrition.calories)} kcal mỗi khẩu phần` : 'AI đã tìm thấy món ăn phù hợp trong cơ sở dữ liệu.')}</p>
+                    {(selectedUnavailable || selectedNutrition?.description) && <p>{selectedUnavailable ? 'Món ăn không khả dụng trong danh mục. Bạn có thể chọn món khác hoặc gửi đề nghị để Admin xem xét lại món ăn này.' : selectedNutrition.description}</p>}
                     <ConfidenceBar value={selectedPrediction.confidence} />
                   </div>
                 </div>
@@ -1385,10 +1395,18 @@ export default function FoodScanPage({ initialMode = 'scan' }) {
               <div className="fs-panel-heading"><div><h2><i className="bi bi-journal-medical" />Thông tin dinh dưỡng (ước tính)</h2><p>Giá trị dinh dưỡng thay đổi theo khẩu phần thực tế.</p></div></div>
               {result?.recognized && selectedNutrition ? <>
                 <div className="fs-nutrition-controls">
-                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} onClick={() => { setMealType(value); setSaveMsg(null) }}>{label}</button>)}</div></fieldset>
-                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} max={todayString()} onChange={(event) => { setDate(event.target.value); setSaveMsg(null) }} /></label>
+                  <fieldset className="fs-meal-selector"><legend>Bữa ăn áp dụng</legend><div>{Object.entries(MEAL_LABELS).map(([value, label]) => <button type="button" key={value} className={mealType === value ? 'active' : ''} title={MEAL_START_HOURS[value] != null ? `${label} có thể chọn từ ${String(MEAL_START_HOURS[value]).padStart(2, '0')}:00` : undefined} disabled={isFutureMeal(date, value)} onClick={() => { setMealType(value); setSaveMsg(null) }}>{label}</button>)}</div></fieldset>
+                  <label className="fs-nutrition-field"><span>Thời gian ghi nhận</span><input type="date" value={date} max={todayString()} onChange={(event) => {
+                    const nextDate = event.target.value
+                    setDate(nextDate)
+                    if (mealType && isFutureMeal(nextDate, mealType)) {
+                      setMealType('')
+                      setSaveMsg({ type: 'error', text: 'Bữa ăn này chưa đến khung giờ ghi nhận.' })
+                    } else setSaveMsg(null)
+                  }} /></label>
                   <label className="fs-nutrition-field"><span>Khẩu phần ăn</span><select value={servings} onChange={(event) => setServings(Number(event.target.value))}>{[0.5, 1, 1.5, 2, 3].map((value) => <option key={value} value={value}>{value} khẩu phần ({Math.round((selectedNutrition.servingSize || 0) * value)}g)</option>)}</select></label>
                 </div>
+                <p className="fs-meal-time-hint">Bữa sáng chọn từ 05:00, bữa trưa từ 11:00, bữa tối từ 17:00. Bữa ăn vặt không có khung giờ cố định.</p>
                 <NutritionTable nutrition={selectedNutrition} servings={servings} />
                 {selectedNutrition.fiber != null && <div className="fs-nutrition-note"><i className="bi bi-lightbulb-fill" /><span><strong>Đánh giá dinh dưỡng</strong>Món ăn cung cấp năng lượng và các nhóm chất theo khẩu phần đã chọn.</span></div>}
               </> : <div className="fs-nutrition-empty"><i className="bi bi-bar-chart-line" /><span>{selectedUnavailable || hiddenFoodMatch ? 'Thông tin dinh dưỡng chưa khả dụng. Bạn có thể chọn món khác hoặc gửi đề nghị để Admin xem xét lại món ăn này.' : result?.recognized ? 'Chưa có dữ liệu dinh dưỡng cho món này trong hệ thống.' : 'Nhận diện món ăn để xem calories, protein, carbohydrate và chất béo.'}</span></div>}

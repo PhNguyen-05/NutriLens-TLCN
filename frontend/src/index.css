@@ -3669,7 +3669,9 @@ input[type='password']::-webkit-strong-password-auto-fill-button {
 .fs-meal-selector legend, .fs-nutrition-field > span { display: block; margin-bottom: 5px; color: #647671; font-size: 0.82rem; font-weight: 650; }
 .fs-meal-selector > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 6px; background: #f1f5f4; }
 .fs-meal-selector button { min-width: 0; min-height: 31px; padding: 0 5px; border: 0; border-radius: 4px; background: transparent; color: #647671; font-size: 0.79rem; cursor: pointer; }
+.fs-meal-selector button:disabled { color: #aab6b2; cursor: not-allowed; opacity: .55; }
 .fs-meal-selector button.active { background: #07966c; color: #fff; font-weight: 700; }
+.fs-meal-time-hint { margin: -5px 0 10px; color: #83928e; font-size: .74rem; line-height: 1.4; }
 .fs-nutrition-field { display: grid; min-width: 0; }
 .fs-nutrition-field input, .fs-nutrition-field select { width: 100%; min-width: 0; height: 37px; padding: 0 8px; border: 1px solid #dfe8e5; border-radius: 5px; background: #fff; color: #455c56; font: inherit; font-size: 0.84rem; }
 .fs-macro-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
@@ -14679,4 +14681,72 @@ em.metric-theme-green {
     width: 96px;
     height: 96px;
   }
+}
+
+/* Larger, easier-to-read text across the daily meal diary content. */
+.fd-shell .fd-heading p { font-size: 16px !important; }
+.fd-main .fd-back-button { font-size: 14.5px !important; }
+.fd-main .fd-date-control label { font-size: 17px !important; }
+.fd-main .fd-date-control .fd-today-button,
+.fd-main .fd-meal-filters button { font-size: 14.5px !important; }
+.fd-main .fd-alert { font-size: 14px !important; }
+.fd-main .fd-metric-body > small { font-size: 12px !important; }
+.fd-main .fd-metric-body > strong { font-size: 19px !important; }
+.fd-main .fd-metric-body > strong span { font-size: 12px !important; }
+.fd-main .fd-metric-body > em { font-size: 11px !important; }
+.fd-main .fd-panel-heading h2 { font-size: 19px !important; }
+.fd-main .fd-panel-heading p { font-size: 14px !important; }
+.fd-main .fd-entry-count { font-size: 13px !important; }
+.fd-main .fd-meal-label { font-size: 14px !important; }
+.fd-main .fd-meal-group > header > strong { font-size: 15px !important; }
+.fd-main .fd-food-copy h3 { font-size: 16px !important; }
+.fd-main .fd-food-copy > p { font-size: 14px !important; }
+.fd-main .fd-food-macros span { font-size: 13px !important; }
+.fd-main .fd-food-calories { font-size: 17px !important; }
+.fd-main .fd-food-calories small { font-size: 12px !important; }
+.fd-main .fd-food-actions button { font-size: 12.5px !important; }
+.fd-main .fd-calorie-chart strong { font-size: 19px !important; }
+.fd-main .fd-calorie-chart small { font-size: 13px !important; }
+.fd-main .fd-distribution-legend > div { font-size: 13px !important; }
+.fd-main .fd-distribution-legend small,
+.fd-main .fd-distribution-legend strong { font-size: 12px !important; }
+.fd-main .fd-side-total { font-size: 13px !important; }
+.fd-main .fd-side-total strong { font-size: 18px !important; }
+.fd-main .fd-side-total small { font-size: 12px !important; }
+.fd-main .fd-macro-share-ring > strong { font-size: 15px !important; }
+.fd-main .fd-macro-share > strong { font-size: 13px !important; }
+.fd-main .fd-macro-share > small { font-size: 12px !important; }
+.fd-main .fd-target-note { font-size: 13px !important; }
+.fd-main .fd-empty > strong { font-size: 18px !important; }
+.fd-main .fd-empty > p,
+.fd-main .fd-empty > a { font-size: 14px !important; }
+
+@media (max-width: 560px) {
+  .fd-shell .fd-heading p { font-size: 14px !important; }
+  .fd-main .fd-date-control label { font-size: 15px !important; }
+  .fd-main .fd-date-control .fd-today-button,
+  .fd-main .fd-meal-filters button { font-size: 13.5px !important; }
+  .fd-main .fd-metric-body > small { font-size: 11px !important; }
+  .fd-main .fd-metric-body > strong { font-size: 16px !important; }
+  .fd-main .fd-metric-body > strong span { font-size: 9px !important; }
+  .fd-main .fd-metric-body > em { font-size: 10px !important; }
+  .fd-main .fd-panel-heading h2 { font-size: 17px !important; }
+  .fd-main .fd-panel-heading p { font-size: 13px !important; }
+  .fd-main .fd-meal-label { font-size: 13px !important; }
+  .fd-main .fd-meal-group > header > strong { font-size: 14px !important; }
+  .fd-main .fd-food-copy h3 { font-size: 13px !important; }
+  .fd-main .fd-food-copy > p { font-size: 12px !important; }
+  .fd-main .fd-food-macros span { font-size: 10px !important; }
+  .fd-main .fd-food-calories { font-size: 12px !important; }
+  .fd-main .fd-food-calories small { font-size: 10px !important; }
+  .fd-main .fd-food-actions button { font-size: 11px !important; }
+  .fd-main .fd-distribution-legend > div { font-size: 12px !important; }
+  .fd-main .fd-distribution-legend small,
+  .fd-main .fd-distribution-legend strong,
+  .fd-main .fd-side-total small { font-size: 11px !important; }
+  .fd-main .fd-side-total { font-size: 12px !important; }
+  .fd-main .fd-side-total strong { font-size: 16px !important; }
+  .fd-main .fd-macro-share > strong { font-size: 12px !important; }
+  .fd-main .fd-macro-share > small,
+  .fd-main .fd-target-note { font-size: 11px !important; }
 }
